@@ -43,4 +43,33 @@
              Text="Copied @(WorkMateLocalizationFile->Count()) WorkMate PO file(s) into $(MSBuildProjectDirectory)/Localization." />
   </Target>
 
+  <!--
+    WorkMate's recipes.
+
+    Orchard Core 3.0.1 finds recipes in two places only: inside an extension, through
+    RecipeHarvester, and in the application's own content folder, through
+    ApplicationRecipeHarvester ("Finds recipes in the application content folder"). A recipe
+    sitting in /recipes at the repository root is in neither, so the setup screen would never
+    offer it and the pipeline could not apply it.
+
+    The specification puts recipes in /recipes and that stays the source of truth, so this copies
+    them into the host's content root on build. The destination is git-ignored, as the
+    Localization folder is, so there is no tracked duplicate to drift.
+  -->
+  <Target Name="CopyWorkMateRecipes"
+          AfterTargets="Build"
+          Condition="'$(MSBuildProjectName)' == 'WorkMate.Web'">
+
+    <ItemGroup>
+      <WorkMateRecipeFile Include="$(MSBuildThisFileDirectory)recipes/**/*.recipe.json" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(WorkMateRecipeFile)"
+          DestinationFiles="@(WorkMateRecipeFile->'$(MSBuildProjectDirectory)/Recipes/%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="normal"
+             Text="Copied @(WorkMateRecipeFile->Count()) WorkMate recipe(s) into $(MSBuildProjectDirectory)/Recipes." />
+  </Target>
+
 </Project>

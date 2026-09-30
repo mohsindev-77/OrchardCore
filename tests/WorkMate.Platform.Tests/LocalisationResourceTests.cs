@@ -155,7 +155,7 @@ public sealed class LocalisationResourceTests
              .Replace("\\n", "\n", StringComparison.Ordinal)
              .Replace("\\\\", "\\", StringComparison.Ordinal);
 
-    private static string RepositoryRoot { get; } = FindRepositoryRoot();
+    internal static string RepositoryRoot { get; } = FindRepositoryRoot();
 
     private static string FindRepositoryRoot()
     {

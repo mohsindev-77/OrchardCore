@@ -25,9 +25,31 @@ public sealed class Permissions : IPermissionProvider
     public Task<IEnumerable<Permission>> GetPermissionsAsync() =>
         Task.FromResult<IEnumerable<Permission>>(AllPermissions);
 
-    // The platform roles and the permissions each one starts with are declared alongside the
-    // roles themselves. Orchard's RoleUpdater applies stereotypes both when a role is created
-    // and when a feature is enabled, so a later module's permissions reach these roles without
-    // the base recipe being reopened.
-    public IEnumerable<PermissionStereotype> GetDefaultStereotypes() => [];
+    /// <summary>
+    /// Which of this module's permissions each platform role starts with.
+    ///
+    /// Orchard's RoleUpdater applies these when a role is created and again when a feature is
+    /// enabled, so the grant happens whichever comes first: the base recipe creating the roles,
+    /// or this feature being switched on later. Every module declares its own permissions the
+    /// same way, which is why the base recipe never has to list another module's permissions.
+    ///
+    /// Changing the platform settings changes currency, fiscal year and the working week, which
+    /// every calculation downstream depends on. It stays with the two administrator roles. The
+    /// HR administrator configures the business inside those constraints; the manager, employee
+    /// and auditor roles get nothing from this module, and their permissions arrive with the
+    /// modules that give them work to do.
+    /// </summary>
+    public IEnumerable<PermissionStereotype> GetDefaultStereotypes() =>
+    [
+        new PermissionStereotype
+        {
+            Name = PlatformRoles.PlatformAdministrator,
+            Permissions = [ManageWorkMateSettings],
+        },
+        new PermissionStereotype
+        {
+            Name = PlatformRoles.TenantAdministrator,
+            Permissions = [ManageWorkMateSettings],
+        },
+    ];
 }

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using OrchardCore.Entities;
 using OrchardCore.Environment.Shell;
 using WorkMate.Platform.Models;
@@ -23,9 +24,20 @@ public sealed class WorkMateSettingsServiceTests
         settings.TextDirection.Should().Be(TextDirectionPreference.FollowCulture);
         settings.FiscalYearStartMonth.Should().Be(1);
         settings.FiscalYearStartDay.Should().Be(1);
-        settings.CurrencyCode.Should().Be("AED");
-        settings.WeekStartsOn.Should().Be(DayOfWeek.Monday);
+        settings.CurrencyCode.Should().Be("BHD");
+        settings.WeekStartsOn.Should().Be(DayOfWeek.Sunday);
         settings.WorkingDays.Should().BeEquivalentTo(WorkMateSettings.DefaultWorkingDays);
+    }
+
+    [Fact]
+    public void TheDefaultsAreBahrainiBecauseTheFirstTenantsAreInBahrain()
+    {
+        var settings = new WorkMateSettings();
+
+        settings.CurrencyCode.Should().Be("BHD");
+        settings.WeekStartsOn.Should().Be(DayOfWeek.Sunday);
+        settings.WorkingDays.Should().BeEquivalentTo(
+            [DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday]);
     }
 
     [Fact]
@@ -69,6 +81,32 @@ public sealed class WorkMateSettingsServiceTests
 
         settings.DefaultCulture.Should().Be("en-US",
             "a default locale the tenant would refuse to save is not a sensible default");
+    }
+
+    [Fact]
+    public async Task FallingBackOnTheDefaultLocaleIsLoggedAsAWarning()
+    {
+        // The fallback keeps the tenant working, but it means something is wrong with the
+        // tenant's setup, so it must not be silent.
+        var context = new TestContext(tenantName: "gulf-trading-config");
+        context.Localization.SupportedCultures = ["en-US"];
+        context.Localization.DefaultCulture = "en-US";
+
+        await context.Service.GetAsync();
+
+        var warning = context.Logger.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning).Subject;
+
+        warning.Message.Should().Contain("gulf-trading-config").And.Contain("en").And.Contain("en-US");
+    }
+
+    [Fact]
+    public async Task ATenantWhoseCulturesAreFineLogsNothing()
+    {
+        var context = new TestContext();
+
+        await context.Service.GetAsync();
+
+        context.Logger.Entries.Should().BeEmpty();
     }
 
     [Fact]
@@ -281,14 +319,19 @@ public sealed class WorkMateSettingsServiceTests
                 },
             };
 
+            Logger = new RecordingLogger<WorkMateSettingsService>();
+
             Service = new WorkMateSettingsService(
                 SiteService,
                 Localization,
                 Authorization,
                 HttpContextAccessor,
                 new ShellSettings { Name = tenantName },
+                Logger,
                 new PassThroughStringLocalizer<WorkMateSettingsService>());
         }
+
+        public RecordingLogger<WorkMateSettingsService> Logger { get; }
 
         public FakeSiteService SiteService { get; }
 

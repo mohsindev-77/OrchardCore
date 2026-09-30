@@ -14,9 +14,10 @@ nothing about employees, and it holds no business logic.
 | `WorkMateSettingsDisplayDriver` | The settings editor, at `Admin/Settings/workmate`. It shapes data for the view and delegates every decision to the service. |
 | `Permissions.ManageWorkMateSettings` | Read and change the platform settings. |
 | `AdminMenu` | Puts the editor under Configuration → Settings → WorkMate, hidden from anyone without the permission. |
+| `PlatformRoles` | The six role names of specification section 3, as constants, because the base recipe and every module's permission stereotypes have to agree on them. |
+| `Permissions.GetDefaultStereotypes` | Grants `ManageWorkMateSettings` to the two administrator roles. Orchard's `RoleUpdater` applies it when a role is created and when this feature is enabled, so the order of the two does not matter. |
 
-Still to come in this slice: the six platform roles and their base permissions,
-`recipes/base.recipe.json`, the bilingual text field (ADR-0003), the shared
+Still to come in this slice: the bilingual text field (ADR-0003), the shared
 component set, the RTL-aware layout extension, and structured logging scopes.
 
 ## Depends on
@@ -30,8 +31,22 @@ Every other WorkMate module depends on this one.
 
 ## Recipe steps
 
-None yet. `recipes/base.recipe.json` is rewritten in the next step of this
-slice and will set `WorkMateSettings` through Orchard's `Settings` step.
+This module ships no recipe step of its own. It is configured by the base
+recipe, `recipes/base.recipe.json`, which owns the six steps of specification
+section 3 and is verified by applying it to a fresh tenant.
+
+Two things about recipes in Orchard Core 3.0.1 that the base recipe had to be
+built around, both found by applying it rather than by reading:
+
+- Orchard finds recipes inside an extension or in the application's own content
+  folder, and nowhere else. `/recipes` is neither, so
+  `Directory.Build.targets` copies them into the host's content root on build.
+- The `Roles` step ignores a permission name it does not recognise, without
+  warning. `ManageGroupSettings` is a template for per-group permissions rather
+  than a permission a role can hold, so granting it read correctly and did
+  nothing. Until the integration suite asserts effective permissions after an
+  apply, a permission name added to a recipe is worth checking on a real
+  tenant.
 
 ## Localisation
 

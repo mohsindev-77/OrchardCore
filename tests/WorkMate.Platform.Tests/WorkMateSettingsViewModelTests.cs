@@ -59,7 +59,7 @@ public sealed class WorkMateSettingsViewModelTests
     }
 
     [Theory]
-    [InlineData("  aed  ", "AED")]
+    [InlineData("  bhd  ", "BHD")]
     [InlineData("sar", "SAR")]
     public void ACurrencyTypedInAnyCaseOrWithSpacesIsNormalised(string typed, string expected) =>
         new WorkMateSettingsViewModel { CurrencyCode = typed }.ToSettings().CurrencyCode.Should().Be(expected);

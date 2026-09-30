@@ -8,5 +8,8 @@ App_Data/
 .env
 TestResults/
 
-# Orchard Core translation files copied in at build time
+# Orchard Core translation files copied in at build time, along with WorkMate's own
 src/WorkMate.Web/Localization/
+
+# Recipes copied in from /recipes at build time; /recipes is the source of truth
+src/WorkMate.Web/Recipes/

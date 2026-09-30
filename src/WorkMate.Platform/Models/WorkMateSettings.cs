@@ -83,17 +83,21 @@ public sealed class WorkMateSettings
     }
 
     public const string DefaultCultureName = "en";
-    public const string DefaultCurrencyCode = "AED";
+
+    // The first tenants are in Bahrain, so the defaults are Bahraini: the dinar, and a
+    // Sunday-to-Thursday week. A tenant elsewhere changes them once, on this screen or through
+    // its own recipe; nothing in the platform assumes them.
+    public const string DefaultCurrencyCode = "BHD";
     public const int DefaultFiscalYearStartMonth = 1;
     public const int DefaultFiscalYearStartDay = 1;
-    public const DayOfWeek DefaultWeekStartsOn = DayOfWeek.Monday;
+    public const DayOfWeek DefaultWeekStartsOn = DayOfWeek.Sunday;
 
     public static readonly DayOfWeek[] DefaultWorkingDays =
     [
+        DayOfWeek.Sunday,
         DayOfWeek.Monday,
         DayOfWeek.Tuesday,
         DayOfWeek.Wednesday,
         DayOfWeek.Thursday,
-        DayOfWeek.Friday,
     ];
 }

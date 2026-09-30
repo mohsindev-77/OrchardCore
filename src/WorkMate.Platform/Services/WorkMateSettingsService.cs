@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using OrchardCore.Entities;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Localization;
@@ -10,13 +11,28 @@ using WorkMate.Platform.Models;
 namespace WorkMate.Platform.Services;
 
 /// <inheritdoc />
-public sealed class WorkMateSettingsService : IWorkMateSettingsService
+public sealed partial class WorkMateSettingsService : IWorkMateSettingsService
 {
+    // Log messages are for operators, not users, so they are not localised. A source-generated
+    // LoggerMessage keeps the analyzers happy and the message template in one place.
+    [LoggerMessage(
+        EventId = 1000,
+        Level = LogLevel.Warning,
+        Message = "Tenant '{TenantName}' has default locale '{ConfiguredCulture}' in its WorkMate settings, "
+            + "which is not one of its supported cultures ({SupportedCultures}). Falling back to '{FallbackCulture}'. "
+            + "Check that the base recipe ran and that this tenant's cultures were not narrowed afterwards.")]
+    private partial void LogDefaultCultureFallback(
+        string tenantName,
+        string configuredCulture,
+        string supportedCultures,
+        string fallbackCulture);
+
     private readonly ISiteService _siteService;
     private readonly ILocalizationService _localizationService;
     private readonly IAuthorizationService _authorizationService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ShellSettings _shellSettings;
+    private readonly ILogger<WorkMateSettingsService> _logger;
     private readonly IStringLocalizer S;
 
     public WorkMateSettingsService(
@@ -25,6 +41,7 @@ public sealed class WorkMateSettingsService : IWorkMateSettingsService
         IAuthorizationService authorizationService,
         IHttpContextAccessor httpContextAccessor,
         ShellSettings shellSettings,
+        ILogger<WorkMateSettingsService> logger,
         IStringLocalizer<WorkMateSettingsService> stringLocalizer)
     {
         _siteService = siteService;
@@ -32,6 +49,7 @@ public sealed class WorkMateSettingsService : IWorkMateSettingsService
         _authorizationService = authorizationService;
         _httpContextAccessor = httpContextAccessor;
         _shellSettings = shellSettings;
+        _logger = logger;
         S = stringLocalizer;
     }
 
@@ -59,7 +77,15 @@ public sealed class WorkMateSettingsService : IWorkMateSettingsService
 
         if (!supportedCultures.Contains(settings.DefaultCulture, StringComparer.OrdinalIgnoreCase))
         {
-            settings.DefaultCulture = await _localizationService.GetDefaultCultureAsync();
+            var fallback = await _localizationService.GetDefaultCultureAsync();
+
+            LogDefaultCultureFallback(
+                _shellSettings.Name,
+                settings.DefaultCulture,
+                string.Join(", ", supportedCultures),
+                fallback);
+
+            settings.DefaultCulture = fallback;
         }
 
         return settings;

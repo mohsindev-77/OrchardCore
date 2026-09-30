@@ -3,42 +3,171 @@
   "displayName": "WorkMate 2.0 base",
   "description": "Runs on every new tenant before anything customer-specific. Edition recipes and sector packs layer on top; they never replace it.",
   "author": "Aramis Enterprise Solutions",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "issetuprecipe": true,
   "categories": ["workmate"],
   "tags": ["workmate", "base"],
+
+  "$notes": [
+    "The six steps of specification section 3, in order.",
+    "Steps carrying a $stub property are placeholders for a module that has not shipped its recipe step yet. Each names the module that will own it. A test asserts that no $stub step survives its module.",
+    "Feature ids are verified against the pinned Orchard Core version with tools/api-probe --features. OrchardCore.Search.Lucene and OrchardCore.Search.Elasticsearch are marked obsolete in 3.0.1; OrchardCore.Lucene is the current id (ADR-0004).",
+    "This file is the source of truth. Directory.Build.targets copies it into the host's content root at build, which is where Orchard's ApplicationRecipeHarvester looks."
+  ],
+
   "steps": [
     {
-      "name": "feature",
+      "$comment": "Step 1 of 6. Enable the platform features and the entitled module features. HCM modules are not here: they are an entitlement decision and arrive through an edition recipe.",
+      "name": "Feature",
       "enable": [
-        "OrchardCore.Admin", "OrchardCore.Roles", "OrchardCore.Users", "OrchardCore.Settings",
-        "OrchardCore.Contents", "OrchardCore.ContentTypes", "OrchardCore.ContentFields",
-        "OrchardCore.Localization", "OrchardCore.ContentLocalization",
-        "OrchardCore.Workflows", "OrchardCore.Recipes", "OrchardCore.Deployment",
-        "OrchardCore.AuditTrail", "OrchardCore.Media", "OrchardCore.Search.Lucene",
-        "WorkMate.Platform", "WorkMate.Dimensions", "WorkMate.Records",
-        "WorkMate.Approvals", "WorkMate.Entitlement", "WorkMate.Reporting"
+        "OrchardCore.Features",
+        "OrchardCore.Admin",
+        "OrchardCore.Settings",
+        "OrchardCore.Roles",
+        "OrchardCore.Users",
+        "OrchardCore.Navigation",
+        "OrchardCore.Resources",
+        "OrchardCore.Title",
+        "OrchardCore.Contents",
+        "OrchardCore.ContentTypes",
+        "OrchardCore.ContentFields",
+        "OrchardCore.Localization",
+        "OrchardCore.Localization.AdminCulturePicker",
+        "OrchardCore.ContentLocalization",
+        "OrchardCore.DataLocalization",
+        "OrchardCore.Workflows",
+        "OrchardCore.Recipes",
+        "OrchardCore.Deployment",
+        "OrchardCore.AuditTrail",
+        "OrchardCore.Media",
+        "OrchardCore.Lucene",
+        "OrchardCore.Themes",
+
+        "TheAdmin",
+        "TheTheme",
+
+        "WorkMate.Platform",
+        "WorkMate.Dimensions",
+        "WorkMate.Records",
+        "WorkMate.Approvals",
+        "WorkMate.Entitlement",
+        "WorkMate.Reporting"
       ]
     },
+
     {
+      "$comment": "Step 1 of 6, continued. Select the themes. A theme takes two things and both are easy to miss: its feature has to be enabled, in the step above, and it has to be selected, here. Enabling without selecting leaves the admin with no layout; selecting without enabling leaves the theme's shapes unavailable and Orchard falls back to the admin theme, which has no front-end Layout shape, so every front-end page throws - including /Login, and nobody can sign in at all. Section 3: 'The admin theme is Orchard's, extended with a WorkMate layout'. TheTheme is a placeholder for the site: the employee and manager surfaces become a front-end theme in WorkMate.Hcm.SelfService, and these two lines change to name it.",
+      "name": "themes",
+      "admin": "TheAdmin",
+      "site": "TheTheme"
+    },
+
+    {
+      "$comment": "Step 2 of 6. Create the six platform roles. PermissionBehavior is Add on every role, deliberately: the default is Replace, which would make an edition recipe layered on top wipe these grants rather than add to them. Only permissions verified to exist in the pinned version are listed; each module grants its own through a PermissionStereotype when its feature is enabled, so this list never has to name another module's permissions.",
       "name": "Roles",
       "Roles": [
-        { "Name": "Platform Administrator", "Permissions": [] },
-        { "Name": "Tenant Administrator", "Permissions": [] },
-        { "Name": "HR Administrator", "Permissions": [] },
-        { "Name": "Manager", "Permissions": [] },
-        { "Name": "Employee", "Permissions": [] },
-        { "Name": "Auditor", "Permissions": [] }
+        {
+          "Name": "Platform Administrator",
+          "Description": "The delivery team. Configures the tenant, including features and deployment.",
+          "PermissionBehavior": "Add",
+          "Permissions": [
+            "AccessAdminPanel",
+            "ManageFeatures",
+            "ManageSettings",
+            "ManageUsers",
+            "ListUsers",
+            "ViewUsers",
+            "EditUsers",
+            "AssignRoleToUsers",
+            "ManageDeploymentPlan",
+            "Export",
+            "Import",
+            "ViewAuditTrail",
+            "ManageAuditTrailSettings"
+          ]
+        },
+        {
+          "Name": "Tenant Administrator",
+          "Description": "The customer's own administrator. Configures the business, not the platform.",
+          "PermissionBehavior": "Add",
+          "Permissions": [
+            "AccessAdminPanel",
+            "ManageSettings",
+            "ListUsers",
+            "ViewUsers",
+            "EditUsers",
+            "AssignRoleToUsers",
+            "ViewAuditTrail"
+          ]
+        },
+        {
+          "Name": "HR Administrator",
+          "Description": "Runs human capital administration. Its permissions arrive with the HCM modules.",
+          "PermissionBehavior": "Add",
+          "Permissions": ["AccessAdminPanel", "ListUsers", "ViewUsers"]
+        },
+        {
+          "Name": "Manager",
+          "Description": "Sees and approves for their own part of the organisation.",
+          "PermissionBehavior": "Add",
+          "Permissions": []
+        },
+        {
+          "Name": "Employee",
+          "Description": "Sees and requests for themselves.",
+          "PermissionBehavior": "Add",
+          "Permissions": []
+        },
+        {
+          "Name": "Auditor",
+          "Description": "Reads everything and changes nothing.",
+          "PermissionBehavior": "Add",
+          "Permissions": ["AccessAdminPanel", "ViewAuditTrail"]
+        }
       ]
     },
+
     {
-      "name": "settings",
-      "LocalizationSettings": { "DefaultCulture": "en", "SupportedCultures": ["en", "ar"] }
+      "$comment": "Step 3 of 6. Default site settings and the two cultures every tenant has. WorkMateSettings defaults to Bahrain because the first tenants are there; a tenant elsewhere overrides it in its own recipe or on the settings screen.",
+      "name": "Settings",
+      "LocalizationSettings": {
+        "DefaultCulture": "en",
+        "SupportedCultures": ["en", "ar"]
+      },
+      "WorkMateSettings": {
+        "DefaultCulture": "en",
+        "Calendar": "GregorianWithHijri",
+        "TextDirection": "FollowCulture",
+        "FiscalYearStartMonth": 1,
+        "FiscalYearStartDay": 1,
+        "CurrencyCode": "BHD",
+        "WorkingDays": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"],
+        "WeekStartsOn": "Sunday",
+        "CustomerCode": ""
+      }
     },
-    { "name": "dimension-types", "_todo": "System dimension types; implemented by WorkMate.Dimensions (prompt 3)." },
-    { "name": "structures", "_todo": "Primary Organisation structure; implemented by WorkMate.Dimensions (prompt 3)." },
-    { "name": "form-definitions", "_todo": "Standard employee sections and request forms; WorkMate.Records (prompt 4)." },
-    { "name": "reports", "_todo": "Standard report library; WorkMate.Reporting." }
-  ],
-  "_note": "Feature names, role and settings step shapes must be verified against the pinned Orchard Core version. Steps marked _todo are stubs until their module ships its recipe step."
+
+    {
+      "$comment": "Step 4 of 6. Register the system dimension types and the primary Organisation structure.",
+      "$stub": { "module": "WorkMate.Dimensions", "prompt": 2, "step": "dimension-types" },
+      "name": "dimension-types"
+    },
+    {
+      "$comment": "Step 4 of 6, continued.",
+      "$stub": { "module": "WorkMate.Dimensions", "prompt": 2, "step": "structures" },
+      "name": "structures"
+    },
+
+    {
+      "$comment": "Step 5 of 6. Create the standard content types every tenant has.",
+      "$stub": { "module": "WorkMate.Records", "prompt": 4, "step": "form-definitions" },
+      "name": "form-definitions"
+    },
+
+    {
+      "$comment": "Step 6 of 6. Install the standard report library.",
+      "$stub": { "module": "WorkMate.Reporting", "prompt": null, "step": "reports" },
+      "name": "reports"
+    }
+  ]
 }
