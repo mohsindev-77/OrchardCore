@@ -20,6 +20,11 @@
     <PackageVersion Include="OrchardCore.Recipes.Abstractions" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Security" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Localization.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Infrastructure.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.DisplayManagement" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Navigation.Core" Version="$(OrchardCoreVersion)" />
+    <!-- Test-only: the concrete ISite implementation, so tests exercise the real type. -->
+    <PackageVersion Include="OrchardCore.Settings" Version="$(OrchardCoreVersion)" />
 
     <!-- Security overrides for packages Orchard Core pulls in (NuGet audit, 30 Sep 2026) -->
     <PackageVersion Include="AngleSharp" Version="1.8.2" />

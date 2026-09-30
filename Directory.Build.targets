@@ -1,0 +1,46 @@
+<Project>
+
+  <!--
+    WorkMate's own translations.
+
+    Orchard Core 3.0.1 resolves PO files through ModularPoFileLocationProvider, which looks
+    for {ContentRoot}/Localization/{culture}/{FeatureId}.po. For the host that directory is
+    src/WorkMate.Web/Localization, and it is git-ignored because Orchard's own translation
+    packages write some two hundred OrchardCore.*.po files into it at build time.
+
+    So each module keeps its own translations tracked beside the code that raises the
+    strings, at src/<Module>/Localization/{culture}/<FeatureId>.po, and this target copies
+    them into the host's content root on build. Localisation stays the owning module's
+    concern, as rule 10 requires, and nothing WorkMate writes lands in an ignored folder.
+  -->
+  <Target Name="CopyWorkMateLocalization"
+          AfterTargets="Build"
+          Condition="'$(MSBuildProjectName)' == 'WorkMate.Web'">
+
+    <ItemGroup>
+      <WorkMateLocalizationSource Include="$(MSBuildThisFileDirectory)src/*/Localization/*/*.po"
+                                  Exclude="$(MSBuildProjectDirectory)/Localization/**/*.po" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!--
+        The culture is the name of the folder the file sits in, taken here rather than from
+        %(RecursiveDir): a glob that mixes * and ** hands the whole matched span to
+        RecursiveDir, which would nest the module name into the destination path. The metadata
+        is applied in a second ItemGroup because an item cannot read its own %(FullPath) while
+        it is being created.
+      -->
+      <WorkMateLocalizationFile Include="@(WorkMateLocalizationSource)">
+        <Culture>$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName('%(FullPath)'))))</Culture>
+      </WorkMateLocalizationFile>
+    </ItemGroup>
+
+    <Copy SourceFiles="@(WorkMateLocalizationFile)"
+          DestinationFiles="@(WorkMateLocalizationFile->'$(MSBuildProjectDirectory)/Localization/%(Culture)/%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="normal"
+             Text="Copied @(WorkMateLocalizationFile->Count()) WorkMate PO file(s) into $(MSBuildProjectDirectory)/Localization." />
+  </Target>
+
+</Project>

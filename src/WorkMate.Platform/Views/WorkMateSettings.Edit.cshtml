@@ -1,0 +1,148 @@
+@using System.Globalization
+@model WorkMateSettingsViewModel
+
+@*
+    The platform settings editor. Every string here goes through the localiser; day and month
+    names come from the active culture rather than from resources, so they are already correct
+    in Arabic and in any culture added later. Direction is not set here: Orchard Core 3.0.1
+    already lays the admin shell out right to left under an RTL culture.
+*@
+
+@{
+    var culture = CultureInfo.CurrentUICulture;
+    var daysOfWeek = new[]
+    {
+        (Day: DayOfWeek.Sunday, For: nameof(Model.WorksSunday), Selected: Model.WorksSunday),
+        (Day: DayOfWeek.Monday, For: nameof(Model.WorksMonday), Selected: Model.WorksMonday),
+        (Day: DayOfWeek.Tuesday, For: nameof(Model.WorksTuesday), Selected: Model.WorksTuesday),
+        (Day: DayOfWeek.Wednesday, For: nameof(Model.WorksWednesday), Selected: Model.WorksWednesday),
+        (Day: DayOfWeek.Thursday, For: nameof(Model.WorksThursday), Selected: Model.WorksThursday),
+        (Day: DayOfWeek.Friday, For: nameof(Model.WorksFriday), Selected: Model.WorksFriday),
+        (Day: DayOfWeek.Saturday, For: nameof(Model.WorksSaturday), Selected: Model.WorksSaturday),
+    };
+
+    // The checkboxes are generated, so their names and ids are built from the prefix Orchard
+    // gave this shape rather than by asp-for.
+    var sundayName = Html.NameFor(m => m.WorksSunday);
+    var sundayId = Html.IdFor(m => m.WorksSunday);
+    var fieldPrefix = sundayName[..^nameof(Model.WorksSunday).Length];
+    var idPrefix = sundayId[..^nameof(Model.WorksSunday).Length];
+}
+
+<h2>@T["WorkMate platform settings"]</h2>
+<p class="text-muted">@T["These settings apply across every WorkMate module in this tenant. Each module keeps its own settings separately."]</p>
+
+<fieldset class="mb-4">
+    <legend class="fs-5">@T["Language and calendar"]</legend>
+
+    <div class="mb-3">
+        <label asp-for="DefaultCulture" class="form-label">@T["Default locale"]</label>
+        <select asp-for="DefaultCulture" class="form-select w-auto">
+            @foreach (var supported in Model.SupportedCultures)
+            {
+                <option value="@supported" selected="@(string.Equals(supported, Model.DefaultCulture, StringComparison.OrdinalIgnoreCase))">
+                    @CultureInfo.GetCultureInfo(supported).NativeName (@supported)
+                </option>
+            }
+        </select>
+        <span asp-validation-for="DefaultCulture" class="text-danger"></span>
+        <div class="form-text">@T["The language a user sees before they choose one. It must be one of the tenant's supported cultures."]</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Calendar" class="form-label">@T["Calendar"]</label>
+        <select asp-for="Calendar" class="form-select w-auto">
+            <option value="@CalendarPreference.Gregorian">@T["Gregorian"]</option>
+            <option value="@CalendarPreference.UmmAlQura">@T["Umm al-Qura"]</option>
+            <option value="@CalendarPreference.GregorianWithHijri">@T["Gregorian, with Hijri alongside"]</option>
+        </select>
+        <div class="form-text">@T["How dates are shown. Dates are always stored in the Gregorian calendar, whichever you choose."]</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="TextDirection" class="form-label">@T["Text direction"]</label>
+        <select asp-for="TextDirection" class="form-select w-auto">
+            <option value="@TextDirectionPreference.FollowCulture">@T["Follow the language"]</option>
+            <option value="@TextDirectionPreference.RightToLeft">@T["Always right to left"]</option>
+            <option value="@TextDirectionPreference.LeftToRight">@T["Always left to right"]</option>
+        </select>
+        <div class="form-text">@T["Following the language is right for most tenants: Arabic reads right to left and English left to right."]</div>
+    </div>
+</fieldset>
+
+<fieldset class="mb-4">
+    <legend class="fs-5">@T["Financial year and currency"]</legend>
+
+    <div class="row g-3 mb-3">
+        <div class="col-auto">
+            <label asp-for="FiscalYearStartMonth" class="form-label">@T["Financial year starts in"]</label>
+            <select asp-for="FiscalYearStartMonth" class="form-select w-auto">
+                @for (var month = 1; month <= 12; month++)
+                {
+                    <option value="@month" selected="@(month == Model.FiscalYearStartMonth)">
+                        @culture.DateTimeFormat.GetMonthName(month)
+                    </option>
+                }
+            </select>
+            <span asp-validation-for="FiscalYearStartMonth" class="text-danger"></span>
+        </div>
+        <div class="col-auto">
+            <label asp-for="FiscalYearStartDay" class="form-label">@T["on day"]</label>
+            <input asp-for="FiscalYearStartDay" type="number" min="1" max="31" class="form-control w-auto" />
+            <span asp-validation-for="FiscalYearStartDay" class="text-danger"></span>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="CurrencyCode" class="form-label">@T["Currency"]</label>
+        <input asp-for="CurrencyCode" class="form-control w-auto" maxlength="3" />
+        <span asp-validation-for="CurrencyCode" class="text-danger"></span>
+        <div class="form-text">@T["A three-letter ISO 4217 code, such as AED. Payroll elements may override it."]</div>
+    </div>
+</fieldset>
+
+<fieldset class="mb-4">
+    <legend class="fs-5">@T["Working week"]</legend>
+
+    <div class="mb-3">
+        <span class="form-label d-block">@T["Working days"]</span>
+        @foreach (var day in daysOfWeek)
+        {
+            var fieldName = fieldPrefix + day.For;
+            var fieldId = idPrefix + day.For;
+
+            <div class="form-check form-check-inline">
+                @* The hidden field gives an unchecked box a value, which is how a bool binds. *@
+                <input type="checkbox" class="form-check-input" id="@fieldId" name="@fieldName" value="true" checked="@day.Selected" />
+                <input type="hidden" name="@fieldName" value="false" />
+                <label class="form-check-label" for="@fieldId">@culture.DateTimeFormat.GetDayName(day.Day)</label>
+            </div>
+        }
+        @Html.ValidationMessage(nameof(WorkMateSettings.WorkingDays), new { @class = "text-danger d-block" })
+        <div class="form-text">@T["Leave, attendance and payroll all count days against this week."]</div>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="WeekStartsOn" class="form-label">@T["Week starts on"]</label>
+        <select asp-for="WeekStartsOn" class="form-select w-auto">
+            @foreach (var day in daysOfWeek)
+            {
+                <option value="@day.Day" selected="@(day.Day == Model.WeekStartsOn)">
+                    @culture.DateTimeFormat.GetDayName(day.Day)
+                </option>
+            }
+        </select>
+        <div class="form-text">@T["Used by rosters and by any report grouped into weeks."]</div>
+    </div>
+</fieldset>
+
+<fieldset class="mb-4">
+    <legend class="fs-5">@T["Customer"]</legend>
+
+    <div class="mb-3">
+        <label asp-for="CustomerCode" class="form-label">@T["Customer code"]</label>
+        <input asp-for="CustomerCode" class="form-control w-auto" />
+        <span asp-validation-for="CustomerCode" class="text-danger"></span>
+        <div class="form-text">@T["The short code this customer is known by. It is taken from the tenant name until you set it here."]</div>
+    </div>
+</fieldset>

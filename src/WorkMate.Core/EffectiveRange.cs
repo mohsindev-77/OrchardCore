@@ -1,7 +1,11 @@
 namespace WorkMate.Core;
 
 /// <summary>
-/// A half-open effective range. <see cref="To"/> is null for an open-ended record.
+/// A closed effective range: both <see cref="From"/> and <see cref="To"/> are inclusive,
+/// and <see cref="To"/> is null for an open-ended record. Two adjacent ranges therefore
+/// end and begin on consecutive days, never on the same day — the mid-month transfer in
+/// /docs/dimension-engine-architecture.md is the worked example: the old assignment runs
+/// to 15 March and the new one from 16 March.
 /// Every dated write on the platform takes one of these explicitly.
 /// </summary>
 public readonly record struct EffectiveRange(DateOnly From, DateOnly? To)

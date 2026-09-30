@@ -2,7 +2,23 @@
   <ItemGroup>
     <PackageReference Include="OrchardCore.Application.Cms.Targets" />
   </ItemGroup>
+  <!--
+    Every WorkMate module is referenced here so that Orchard discovers it as an extension.
+    A module that is not referenced cannot be enabled by a recipe, so the pipeline's
+    "apply every recipe to a fresh tenant" gate would not exercise it. Referencing a module
+    does not enable it: the entitlement record decides that, per specification section 3.
+  -->
   <ItemGroup>
     <ProjectReference Include="../WorkMate.Platform/WorkMate.Platform.csproj" />
+    <ProjectReference Include="../WorkMate.Dimensions/WorkMate.Dimensions.csproj" />
+    <ProjectReference Include="../WorkMate.Records/WorkMate.Records.csproj" />
+    <ProjectReference Include="../WorkMate.Approvals/WorkMate.Approvals.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Core/WorkMate.Hcm.Core.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Leave/WorkMate.Hcm.Leave.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Attendance/WorkMate.Hcm.Attendance.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Payroll/WorkMate.Hcm.Payroll.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.SelfService/WorkMate.Hcm.SelfService.csproj" />
+    <ProjectReference Include="../WorkMate.Entitlement/WorkMate.Entitlement.csproj" />
+    <ProjectReference Include="../WorkMate.Reporting/WorkMate.Reporting.csproj" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <!-- The module ships MVC views, which the Razor SDK only compiles when this is set. -->
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="OrchardCore.Module.Targets" />
     <PackageReference Include="OrchardCore.ContentManagement" />
@@ -6,9 +10,19 @@
     <PackageReference Include="OrchardCore.Recipes.Abstractions" />
     <PackageReference Include="OrchardCore.Security" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
+    <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
+    <PackageReference Include="OrchardCore.DisplayManagement" />
+    <PackageReference Include="OrchardCore.Navigation.Core" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WorkMate.Core/WorkMate.Core.csproj" />
-
+  </ItemGroup>
+  <ItemGroup>
+    <!-- So that internal rules can be asserted directly instead of only through a public API. -->
+    <InternalsVisibleTo Include="WorkMate.Platform.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tracked here, copied into the host's content root by Directory.Build.targets. -->
+    <None Include="Localization/**/*.po" />
   </ItemGroup>
 </Project>

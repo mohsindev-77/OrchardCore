@@ -1,0 +1,133 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: WorkMate.Platform\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+# Arabic translations for WorkMate.Platform.
+#
+# Tracked here, beside the module that raises the strings. Directory.Build.targets copies this
+# file into the host's content root at build time, where Orchard's ModularPoFileLocationProvider
+# finds it as Localization/ar/WorkMate.Platform.po.
+#
+# English is the msgid, so there is no en file.
+
+#: WorkMate.Platform.Navigation.AdminMenu
+msgid "Configuration"
+msgstr "الإعدادات"
+
+msgid "Settings"
+msgstr "الإعدادات العامة"
+
+msgid "WorkMate"
+msgstr "ورك ميت"
+
+#: WorkMate.Platform.Views.WorkMateSettings.Edit
+msgid "WorkMate platform settings"
+msgstr "إعدادات منصة ورك ميت"
+
+msgid "These settings apply across every WorkMate module in this tenant. Each module keeps its own settings separately."
+msgstr "تنطبق هذه الإعدادات على جميع وحدات ورك ميت في هذا المستأجر. وتحتفظ كل وحدة بإعداداتها الخاصة بشكل منفصل."
+
+msgid "Language and calendar"
+msgstr "اللغة والتقويم"
+
+msgid "Default locale"
+msgstr "اللغة الافتراضية"
+
+msgid "The language a user sees before they choose one. It must be one of the tenant's supported cultures."
+msgstr "اللغة التي يراها المستخدم قبل أن يختار لغته. ويجب أن تكون إحدى اللغات المدعومة لدى المستأجر."
+
+msgid "Calendar"
+msgstr "التقويم"
+
+msgid "Gregorian"
+msgstr "الميلادي"
+
+msgid "Umm al-Qura"
+msgstr "أم القرى"
+
+msgid "Gregorian, with Hijri alongside"
+msgstr "الميلادي مع الهجري"
+
+msgid "How dates are shown. Dates are always stored in the Gregorian calendar, whichever you choose."
+msgstr "طريقة عرض التواريخ. تُحفظ التواريخ دائمًا بالتقويم الميلادي مهما كان اختيارك."
+
+msgid "Text direction"
+msgstr "اتجاه النص"
+
+msgid "Follow the language"
+msgstr "حسب اللغة"
+
+msgid "Always right to left"
+msgstr "من اليمين إلى اليسار دائمًا"
+
+msgid "Always left to right"
+msgstr "من اليسار إلى اليمين دائمًا"
+
+msgid "Following the language is right for most tenants: Arabic reads right to left and English left to right."
+msgstr "الاتجاه حسب اللغة هو الخيار المناسب لمعظم المستأجرين: العربية تُقرأ من اليمين إلى اليسار والإنجليزية من اليسار إلى اليمين."
+
+msgid "Financial year and currency"
+msgstr "السنة المالية والعملة"
+
+msgid "Financial year starts in"
+msgstr "تبدأ السنة المالية في"
+
+msgid "on day"
+msgstr "في يوم"
+
+msgid "Currency"
+msgstr "العملة"
+
+msgid "A three-letter ISO 4217 code, such as AED. Payroll elements may override it."
+msgstr "رمز من ثلاثة أحرف حسب معيار ISO 4217، مثل AED. ويمكن لعناصر الرواتب تجاوزه."
+
+msgid "Working week"
+msgstr "أسبوع العمل"
+
+msgid "Working days"
+msgstr "أيام العمل"
+
+msgid "Leave, attendance and payroll all count days against this week."
+msgstr "تحتسب الإجازات والحضور والرواتب أيامها وفق هذا الأسبوع."
+
+msgid "Week starts on"
+msgstr "يبدأ الأسبوع يوم"
+
+msgid "Used by rosters and by any report grouped into weeks."
+msgstr "يُستخدم في جداول المناوبات وفي أي تقرير مُجمَّع أسبوعيًا."
+
+msgid "Customer"
+msgstr "العميل"
+
+msgid "Customer code"
+msgstr "رمز العميل"
+
+msgid "The short code this customer is known by. It is taken from the tenant name until you set it here."
+msgstr "الرمز المختصر الذي يُعرف به هذا العميل. ويؤخذ من اسم المستأجر إلى أن تحدده هنا."
+
+#: WorkMate.Platform.Services.WorkMateSettingsService
+msgid "The default locale must be one of the tenant's supported cultures: {0}."
+msgstr "يجب أن تكون اللغة الافتراضية إحدى اللغات المدعومة لدى المستأجر: {0}."
+
+msgid "The fiscal year must start in a month from 1 to 12."
+msgstr "يجب أن تبدأ السنة المالية في شهر من ١ إلى ١٢."
+
+msgid "The fiscal year must start on a day from 1 to {0} for the month chosen."
+msgstr "يجب أن تبدأ السنة المالية في يوم من ١ إلى {0} للشهر المختار."
+
+msgid "The currency must be a three-letter ISO 4217 code, such as AED."
+msgstr "يجب أن تكون العملة رمزًا من ثلاثة أحرف حسب معيار ISO 4217، مثل AED."
+
+msgid "At least one day of the week must be a working day."
+msgstr "يجب أن يكون يوم واحد على الأقل من أيام الأسبوع يوم عمل."
+
+msgid "A day of the week cannot be listed as a working day more than once."
+msgstr "لا يمكن إدراج يوم من أيام الأسبوع كيوم عمل أكثر من مرة."
+
+msgid "The customer code may contain lower-case letters, digits and hyphens only, and must start with a letter."
+msgstr "يمكن أن يحتوي رمز العميل على أحرف إنجليزية صغيرة وأرقام وشرطات فقط، ويجب أن يبدأ بحرف."
