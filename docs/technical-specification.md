@@ -1,4 +1,4 @@
-# WorkMate 2.0 — Technical Specification for Orchard Core
+﻿# WorkMate 2.0 — Technical Specification for Orchard Core
 
 Sep 29, 2026 · @Umair Tariq
 
@@ -22,7 +22,7 @@ Where a section states a rule, it is binding. Where it states a mechanism, the m
 
 Orchard Core's APIs move between releases: module names, service interfaces, and the shapes of content definition, workflow and indexing calls have all changed across versions. Before any module is started, the team pins one Orchard Core version in the solution, records it here, and checks every type and interface this document names against it. A mechanism that turns out to work differently in the pinned version is a finding to record in section 11, not a reason to depart from the design silently.
 
-**Pinned version:** \[to be recorded at project start\]
+**Pinned version:** Orchard Core 3.0.1 on .NET 10 (see ADR-0001)
 
 ### Companion documents
 

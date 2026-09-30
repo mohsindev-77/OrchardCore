@@ -7,3 +7,6 @@ App_Data/
 *.log
 .env
 TestResults/
+
+# Orchard Core translation files copied in at build time
+src/WorkMate.Web/Localization/
