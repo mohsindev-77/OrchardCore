@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared abstractions only. This project must never reference OrchardCore. -->
+</Project>

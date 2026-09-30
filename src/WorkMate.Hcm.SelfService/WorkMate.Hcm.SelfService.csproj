@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <ItemGroup>
+    <PackageReference Include="OrchardCore.Module.Targets" />
+    <PackageReference Include="OrchardCore.ContentManagement" />
+    <PackageReference Include="OrchardCore.Data.YesSql" />
+    <PackageReference Include="OrchardCore.Recipes.Abstractions" />
+    <PackageReference Include="OrchardCore.Security" />
+    <PackageReference Include="OrchardCore.Localization.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WorkMate.Core/WorkMate.Core.csproj" />
+    <ProjectReference Include="../WorkMate.Platform/WorkMate.Platform.csproj" />
+    <ProjectReference Include="../WorkMate.Dimensions/WorkMate.Dimensions.csproj" />
+    <ProjectReference Include="../WorkMate.Records/WorkMate.Records.csproj" />
+    <ProjectReference Include="../WorkMate.Approvals/WorkMate.Approvals.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Leave/WorkMate.Hcm.Leave.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Attendance/WorkMate.Hcm.Attendance.csproj" />
+    <ProjectReference Include="../WorkMate.Hcm.Payroll/WorkMate.Hcm.Payroll.csproj" />
+  </ItemGroup>
+</Project>

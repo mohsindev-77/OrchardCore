@@ -1,0 +1,44 @@
+{
+  "name": "WorkMate.Base",
+  "displayName": "WorkMate 2.0 base",
+  "description": "Runs on every new tenant before anything customer-specific. Edition recipes and sector packs layer on top; they never replace it.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": true,
+  "categories": ["workmate"],
+  "tags": ["workmate", "base"],
+  "steps": [
+    {
+      "name": "feature",
+      "enable": [
+        "OrchardCore.Admin", "OrchardCore.Roles", "OrchardCore.Users", "OrchardCore.Settings",
+        "OrchardCore.Contents", "OrchardCore.ContentTypes", "OrchardCore.ContentFields",
+        "OrchardCore.Localization", "OrchardCore.ContentLocalization",
+        "OrchardCore.Workflows", "OrchardCore.Recipes", "OrchardCore.Deployment",
+        "OrchardCore.AuditTrail", "OrchardCore.Media", "OrchardCore.Search.Lucene",
+        "WorkMate.Platform", "WorkMate.Dimensions", "WorkMate.Records",
+        "WorkMate.Approvals", "WorkMate.Entitlement", "WorkMate.Reporting"
+      ]
+    },
+    {
+      "name": "Roles",
+      "Roles": [
+        { "Name": "Platform Administrator", "Permissions": [] },
+        { "Name": "Tenant Administrator", "Permissions": [] },
+        { "Name": "HR Administrator", "Permissions": [] },
+        { "Name": "Manager", "Permissions": [] },
+        { "Name": "Employee", "Permissions": [] },
+        { "Name": "Auditor", "Permissions": [] }
+      ]
+    },
+    {
+      "name": "settings",
+      "LocalizationSettings": { "DefaultCulture": "en", "SupportedCultures": ["en", "ar"] }
+    },
+    { "name": "dimension-types", "_todo": "System dimension types; implemented by WorkMate.Dimensions (prompt 3)." },
+    { "name": "structures", "_todo": "Primary Organisation structure; implemented by WorkMate.Dimensions (prompt 3)." },
+    { "name": "form-definitions", "_todo": "Standard employee sections and request forms; WorkMate.Records (prompt 4)." },
+    { "name": "reports", "_todo": "Standard report library; WorkMate.Reporting." }
+  ],
+  "_note": "Feature names, role and settings step shapes must be verified against the pinned Orchard Core version. Steps marked _todo are stubs until their module ships its recipe step."
+}

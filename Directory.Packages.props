@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    PINNED ORCHARD CORE VERSION.
+    Set once at project start and recorded in docs/adr/0001-orchard-core-version.md.
+    The value below is a placeholder seen as the latest stable on a package tracker
+    on 2026-09-29; confirm with `dotnet package search OrchardCore.Module.Targets`
+    before the first restore, then update the ADR. Every API in the specification
+    must be verified against whatever is pinned here.
+  -->
+  <PropertyGroup>
+    <OrchardCoreVersion>3.0.1</OrchardCoreVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="OrchardCore.Application.Cms.Targets" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Module.Targets" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Theme.Targets" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.ContentManagement" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.ContentTypes.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Data.YesSql" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Workflows.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Recipes.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Security" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Localization.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.1" />
+  </ItemGroup>
+</Project>
