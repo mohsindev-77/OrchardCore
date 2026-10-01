@@ -16,9 +16,34 @@ nothing about employees, and it holds no business logic.
 | `AdminMenu` | Puts the editor under Configuration → Settings → WorkMate, hidden from anyone without the permission. |
 | `PlatformRoles` | The six role names of specification section 3, as constants, because the base recipe and every module's permission stereotypes have to agree on them. |
 | `Permissions.GetDefaultStereotypes` | Grants `ManageWorkMateSettings` to the two administrator roles. Orchard's `RoleUpdater` applies it when a role is created and when this feature is enabled, so the order of the two does not matter. |
+| `BilingualTextField` | The bilingual name field every later module uses, with its settings, drivers and views. ADR-0003 records why it is here rather than in `WorkMate.Core`. |
+| The component set | `<workmate-bilingual>`, `<workmate-date-range>`, and placeholders for `<workmate-dimension-picker>` and `<workmate-employee-picker>`. One implementation each, so a control looks and behaves the same on the admin and on the employee front end. |
+| `WorkMateNavbarDisplayDriver` | WorkMate's chrome in the admin header — the approval badge — and the shared `workmate-admin` stylesheet. |
+| `WorkMateLogScope` | Tenant, user and correlation id on every log line. |
 
-Still to come in this slice: the bilingual text field (ADR-0003), the shared
-component set, the RTL-aware layout extension, and structured logging scopes.
+## The shell
+
+The admin theme is Orchard's, extended rather than replaced. TheAdmin's views
+are compiled into its assembly and a theme's templates outrank a module's, so a
+module cannot override the admin `Layout`. Orchard Core 3.0.1 provides a
+`Navbar` model that modules contribute to through a display driver —
+`OrchardCore.Admin`, `OrchardCore.Localization` and `OrchardCore.Notifications`
+all add their navbar items that way — so WorkMate uses the same door.
+
+Direction is not reimplemented. 3.0.1 already lays the admin out right to left
+under an RTL culture, ships a `bootstrap-rtl` resource, and exposes
+`Orchard.IsRightToLeft()` and `Orchard.CultureDir()` to views. WorkMate's own
+stylesheet uses CSS logical properties, so there is one sheet rather than a
+mirrored pair.
+
+The approval badge renders in its empty state because `WorkMate.Approvals` owns
+the pending-task count and does not exist yet. The driver moves to that module
+when there is something to count.
+
+The two pickers are placeholders that render a disabled control saying what
+they are waiting for, with a hidden field preserving any value already on the
+record — so opening and saving a form cannot erase a placement that a recipe or
+an import put there.
 
 ## Depends on
 
@@ -59,6 +84,18 @@ msgid.
 
 `LocalisationResourceTests` fails the build if a localised string has no
 Arabic entry, or if an entry survives a string that has gone.
+`UserVisibleStringTests` fails it if a string reaches a user without going
+through the localiser at all: every Razor view is checked, and so is every call
+to a declared list of C# sinks whose string argument is rendered. Permission
+descriptions are the one exclusion, because Orchard localises those as data
+through `OrchardCore.DataLocalization`; the exclusion is pinned by a test so it
+cannot grow quietly.
+
+`dotnet publish` from a clean checkout is part of this: MSBuild evaluates
+content globs before any target runs, so the build-time copy has not happened
+yet when publish decides what to include. `Directory.Build.targets` adds the PO
+files and the recipes to `ResolvedFileToPublish` directly. Verified by
+publishing from a clean state and running the output.
 
 ## Notes on the pinned Orchard Core version
 

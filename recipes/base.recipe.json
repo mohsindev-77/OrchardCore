@@ -63,7 +63,7 @@
     },
 
     {
-      "$comment": "Step 2 of 6. Create the six platform roles. PermissionBehavior is Add on every role, deliberately: the default is Replace, which would make an edition recipe layered on top wipe these grants rather than add to them. Only permissions verified to exist in the pinned version are listed; each module grants its own through a PermissionStereotype when its feature is enabled, so this list never has to name another module's permissions.",
+      "$comment": "Step 2 of 6. Create the six platform roles. PermissionBehavior is Add on every role, deliberately: the default is Replace, which would make an edition recipe layered on top wipe these grants rather than add to them. Every permission name here is pinned by PermissionNameTests against the constant that declares it in the pinned version, because the Roles step ignores a name it does not recognise without saying so. Each module grants its own permissions through a PermissionStereotype when its feature is enabled, so this list never has to name another module's. ManageRoles is Platform Administrator only until product decision 2 settles who configures a customer; Tenant Administrator can assign existing roles to users but not edit role definitions.",
       "name": "Roles",
       "Roles": [
         {
@@ -74,9 +74,10 @@
             "AccessAdminPanel",
             "ManageFeatures",
             "ManageSettings",
+            "ManageRoles",
             "ManageUsers",
             "ListUsers",
-            "ViewUsers",
+            "View Users",
             "EditUsers",
             "AssignRoleToUsers",
             "ManageDeploymentPlan",
@@ -94,7 +95,7 @@
             "AccessAdminPanel",
             "ManageSettings",
             "ListUsers",
-            "ViewUsers",
+            "View Users",
             "EditUsers",
             "AssignRoleToUsers",
             "ViewAuditTrail"
@@ -104,7 +105,7 @@
           "Name": "HR Administrator",
           "Description": "Runs human capital administration. Its permissions arrive with the HCM modules.",
           "PermissionBehavior": "Add",
-          "Permissions": ["AccessAdminPanel", "ListUsers", "ViewUsers"]
+          "Permissions": ["AccessAdminPanel", "ListUsers", "View Users"]
         },
         {
           "Name": "Manager",

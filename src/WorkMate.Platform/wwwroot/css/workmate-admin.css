@@ -1,0 +1,75 @@
+/*
+    WorkMate's admin shell extensions.
+
+    Orchard Core 3.0.1 already lays the admin out right to left under an RTL culture and ships a
+    bootstrap-rtl stylesheet, so this does not reimplement direction. It styles WorkMate's own
+    chrome, and it does so with logical properties — inline-start and inline-end rather than left
+    and right — so one sheet is correct in both directions and there is no mirrored copy to keep
+    in step.
+*/
+
+.workmate-navbar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-inline-start: 0.5rem;
+}
+
+.workmate-approval-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding-block: 0.15rem;
+    padding-inline: 0.5rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.workmate-approval-badge[data-state="pending"] {
+    background-color: var(--bs-warning-bg-subtle, #fff3cd);
+    color: var(--bs-warning-text-emphasis, #664d03);
+}
+
+.workmate-approval-badge[data-state="none"] {
+    background-color: var(--bs-secondary-bg-subtle, #e9ecef);
+    color: var(--bs-secondary-color, #6c757d);
+}
+
+/* The bilingual editor: two columns that stack on a narrow screen. */
+.workmate-bilingual legend {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.workmate-bilingual input[lang="ar"] {
+    font-family: system-ui, "Segoe UI", Tahoma, sans-serif;
+}
+
+/* The second language on a display shape, set apart without being hidden. */
+.workmate-bilingual-alternate {
+    margin-inline-start: 0.5rem;
+    unicode-bidi: isolate;
+}
+
+.workmate-bilingual-value {
+    unicode-bidi: isolate;
+}
+
+.workmate-date-range legend {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+/* A picker that is declared but not yet implemented should look unfinished, not broken. */
+.workmate-dimension-picker input[disabled],
+.workmate-employee-picker input[disabled] {
+    background-image: repeating-linear-gradient(
+        135deg,
+        transparent,
+        transparent 6px,
+        rgba(0, 0, 0, 0.03) 6px,
+        rgba(0, 0, 0, 0.03) 12px
+    );
+}

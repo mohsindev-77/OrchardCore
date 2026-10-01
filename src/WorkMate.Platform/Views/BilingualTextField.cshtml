@@ -1,0 +1,26 @@
+@model DisplayBilingualTextFieldViewModel
+
+@*
+    Display shows the reader's language, falling back to the other rather than to nothing: a
+    half-translated record should still be readable, and an empty name reads as missing data.
+    The other language follows in smaller type so that both are visible where both matter.
+*@
+
+@{
+    var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+    var primary = Model.Field.ForCulture(culture);
+    var isArabicPrimary = Orchard.IsRightToLeft();
+    var secondary = isArabicPrimary ? Model.En : Model.Ar;
+}
+
+@if (!string.IsNullOrWhiteSpace(primary))
+{
+    <span class="workmate-bilingual-value" dir="@(isArabicPrimary ? "rtl" : "ltr")" lang="@(isArabicPrimary ? "ar" : "en")">@primary</span>
+
+    @if (!string.IsNullOrWhiteSpace(secondary) && !string.Equals(secondary, primary, StringComparison.Ordinal))
+    {
+        <span class="workmate-bilingual-alternate text-muted small"
+              dir="@(isArabicPrimary ? "ltr" : "rtl")"
+              lang="@(isArabicPrimary ? "en" : "ar")">@secondary</span>
+    }
+}

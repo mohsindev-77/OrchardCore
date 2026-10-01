@@ -140,6 +140,18 @@ if (args[0] == "--features")
     return 0;
 }
 
+if (args[0] == "--strings")
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: --strings <assembly-name-fragment> [regex-filter]");
+        return 1;
+    }
+
+    ListStrings(args[1], args.Length > 2 ? args[2] : null);
+    return 0;
+}
+
 foreach (var query in args)
 {
     Console.WriteLine($"=========== {query}");
@@ -383,6 +395,70 @@ static bool DescribeMatchingMethods(Type type, string methodNameFragment, string
     }
 
     return found;
+}
+
+/// <summary>
+/// Prints an assembly's string literals. Not everything a module defines reaches its public
+/// surface: Orchard Core 3.0.1 builds some permission names inside a method rather than exposing
+/// them as constants, and a recipe that names one of those has no compile-time check at all. The
+/// literals are in the metadata string heap either way, so this reads them from there.
+/// </summary>
+void ListStrings(string assemblyFragment, string? filter)
+{
+    var pattern = filter is null
+        ? null
+        : new System.Text.RegularExpressions.Regex(
+            filter,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    var matched = 0;
+
+    foreach (var path in orchardAssemblies)
+    {
+        var name = Path.GetFileNameWithoutExtension(path);
+
+        if (!name.Contains(assemblyFragment, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        matched++;
+        Console.WriteLine($"=========== {name}");
+
+        // Metadata keeps string literals in the #US heap as UTF-16 and type and member names in
+        // the #Strings heap as UTF-8, so both encodings are scanned. Decoding the file twice and
+        // pulling out printable runs finds them without depending on a heap-walking API.
+        var bytes = File.ReadAllBytes(path);
+        var seen = new SortedSet<string>(StringComparer.Ordinal);
+
+        foreach (var encoding in new[] { System.Text.Encoding.Unicode, System.Text.Encoding.UTF8 })
+        {
+            foreach (System.Text.RegularExpressions.Match run in
+                System.Text.RegularExpressions.Regex.Matches(
+                    encoding.GetString(bytes),
+                    "[ -~]{3,}"))
+            {
+                var value = run.Value;
+
+                if (pattern is not null && !pattern.IsMatch(value))
+                {
+                    continue;
+                }
+
+                seen.Add(value);
+            }
+        }
+
+        foreach (var value in seen)
+        {
+            Console.WriteLine($"   {value}");
+        }
+    }
+
+    if (matched == 0)
+    {
+        Console.WriteLine($"   No Orchard assembly matched '{assemblyFragment}'.");
+    }
 }
 
 void ListFeatures()

@@ -1,0 +1,20 @@
+@*
+    The approval badge in the admin header, from specification section 3.
+
+    It renders in its empty state because WorkMate.Approvals owns the pending-task count and does
+    not exist yet. Showing the badge now, with nothing in it, is the honest version: the chrome is
+    in place and the number is visibly absent, rather than a fake count or a gap that nobody
+    notices is missing.
+
+    Requesting the shared stylesheet here rather than in a layout means any surface that renders
+    WorkMate chrome gets the styling, including the employee front end later.
+*@
+
+<style asp-name="workmate-admin" at="Head"></style>
+
+<li class="nav-item workmate-navbar-item">
+    <span class="workmate-approval-badge" data-state="none" title="@T["Approvals waiting for you"]">
+        <span aria-hidden="true">&#10003;</span>
+        <span>@T["Approvals"]</span>
+    </span>
+</li>

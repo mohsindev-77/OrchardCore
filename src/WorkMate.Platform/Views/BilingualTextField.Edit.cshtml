@@ -1,0 +1,44 @@
+@model EditBilingualTextFieldViewModel
+
+@*
+    The bilingual field editor. Both languages side by side, each input carrying its own
+    direction and lang attribute so that Arabic types right to left inside an English page and
+    English types left to right inside an Arabic one. This is the pattern every later module
+    reuses through the workmate-bilingual tag helper.
+*@
+
+@{
+    var label = Model.PartFieldDefinition?.DisplayName() ?? string.Empty;
+    var hint = Orchard.IsRightToLeft() && !string.IsNullOrWhiteSpace(Model.Settings.HintAr)
+        ? Model.Settings.HintAr
+        : Model.Settings.Hint;
+    var maxLength = Model.Settings.MaxLength > 0 ? Model.Settings.MaxLength : (int?)null;
+}
+
+<fieldset class="mb-3 workmate-bilingual">
+    <legend class="form-label">
+        @label
+        @if (Model.Settings.RequireEnglish || Model.Settings.RequireArabic)
+        {
+            <span class="text-danger" aria-hidden="true">*</span>
+        }
+    </legend>
+
+    <div class="row g-2">
+        <div class="col-md-6">
+            <label asp-for="En" class="form-label small text-muted">@T["English"]</label>
+            <input asp-for="En" class="form-control" dir="ltr" lang="en" maxlength="@maxLength" />
+            <span asp-validation-for="En" class="text-danger"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="Ar" class="form-label small text-muted">@T["Arabic"]</label>
+            <input asp-for="Ar" class="form-control" dir="rtl" lang="ar" maxlength="@maxLength" />
+            <span asp-validation-for="Ar" class="text-danger"></span>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(hint))
+    {
+        <div class="form-text">@hint</div>
+    }
+</fieldset>

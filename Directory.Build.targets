@@ -72,4 +72,55 @@
              Text="Copied @(WorkMateRecipeFile->Count()) WorkMate recipe(s) into $(MSBuildProjectDirectory)/Recipes." />
   </Target>
 
+  <!--
+    The same files, for publish.
+
+    The two targets above copy into the host's project directory, which is what `dotnet run` and
+    the tests read. That is not enough for `dotnet publish`: MSBuild evaluates content globs
+    before any target runs, so on a clean checkout — a CI agent, which never built first — the
+    copies do not exist yet when publish decides what to include. Verified by publishing from a
+    clean state: base.recipe.json was absent from the output, which would have shipped a WorkMate
+    that cannot create a tenant.
+
+    So publish takes the files straight from /recipes and from each module, adding them to
+    ResolvedFileToPublish before publish computes its file list, rather than relying on a copy
+    having happened first.
+  -->
+  <Target Name="PublishWorkMateContent"
+          BeforeTargets="ComputeFilesToPublish"
+          Condition="'$(MSBuildProjectName)' == 'WorkMate.Web'">
+
+    <ItemGroup>
+      <WorkMateRecipeToPublish Include="$(MSBuildThisFileDirectory)recipes/**/*.recipe.json" />
+      <WorkMateLocalizationToPublishSource Include="$(MSBuildThisFileDirectory)src/*/Localization/*/*.po"
+                                           Exclude="$(MSBuildProjectDirectory)/Localization/**/*.po" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <WorkMateLocalizationToPublish Include="@(WorkMateLocalizationToPublishSource)">
+        <Culture>$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName('%(FullPath)'))))</Culture>
+      </WorkMateLocalizationToPublish>
+    </ItemGroup>
+
+    <ItemGroup>
+      <!--
+        The metadata references are qualified with their item type. Unqualified, %(Culture) and
+        friends batch over everything already in ResolvedFileToPublish — which is every file the
+        app publishes — and the build fails on the first one that has no such metadata.
+      -->
+      <ResolvedFileToPublish Include="@(WorkMateRecipeToPublish)">
+        <RelativePath>Recipes/%(WorkMateRecipeToPublish.Filename)%(WorkMateRecipeToPublish.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+
+      <ResolvedFileToPublish Include="@(WorkMateLocalizationToPublish)">
+        <RelativePath>Localization/%(WorkMateLocalizationToPublish.Culture)/%(WorkMateLocalizationToPublish.Filename)%(WorkMateLocalizationToPublish.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+
+    <Message Importance="normal"
+             Text="Publishing @(WorkMateRecipeToPublish->Count()) WorkMate recipe(s) and @(WorkMateLocalizationToPublish->Count()) PO file(s)." />
+  </Target>
+
 </Project>

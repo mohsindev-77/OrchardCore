@@ -131,3 +131,71 @@ msgstr "لا يمكن إدراج يوم من أيام الأسبوع كيوم ع
 
 msgid "The customer code may contain lower-case letters, digits and hyphens only, and must start with a letter."
 msgstr "يمكن أن يحتوي رمز العميل على أحرف إنجليزية صغيرة وأرقام وشرطات فقط، ويجب أن يبدأ بحرف."
+
+#: WorkMate.Platform.Drivers.BilingualTextFieldDisplayDriver
+msgid "English"
+msgstr "الإنجليزية"
+
+msgid "Arabic"
+msgstr "العربية"
+
+msgid "{0} is required in English."
+msgstr "{0} مطلوب باللغة الإنجليزية."
+
+msgid "{0} is required in Arabic."
+msgstr "{0} مطلوب باللغة العربية."
+
+msgid "{0} in English must be {1} characters or fewer."
+msgstr "يجب ألا يتجاوز {0} بالإنجليزية {1} حرفًا."
+
+msgid "{0} in Arabic must be {1} characters or fewer."
+msgstr "يجب ألا يتجاوز {0} بالعربية {1} حرفًا."
+
+#: WorkMate.Platform.Views.BilingualTextFieldSettings.Edit
+msgid "Help text (English)"
+msgstr "نص المساعدة (بالإنجليزية)"
+
+msgid "Help text (Arabic)"
+msgstr "نص المساعدة (بالعربية)"
+
+msgid "Shown under the field. Every label and help text is bilingual at definition time."
+msgstr "يظهر أسفل الحقل. كل تسمية ونص مساعدة ثنائي اللغة عند التعريف."
+
+msgid "Require the English text"
+msgstr "اشتراط النص الإنجليزي"
+
+msgid "English is the sort key and the fallback, so it is required unless you have a reason."
+msgstr "الإنجليزية هي مفتاح الترتيب والبديل الاحتياطي، لذا فهي مطلوبة ما لم يكن لديك سبب."
+
+msgid "Require the Arabic text"
+msgstr "اشتراط النص العربي"
+
+msgid "Maximum length"
+msgstr "الحد الأقصى للطول"
+
+msgid "Applies to each language separately. Zero means no limit."
+msgstr "ينطبق على كل لغة على حدة. الصفر يعني بلا حد."
+
+#: WorkMate.Platform.Components.DateRangeTagHelper
+msgid "Effective from"
+msgstr "ساري من"
+
+msgid "Effective to"
+msgstr "ساري إلى"
+
+msgid "Leave the end date empty while the record is still current. An end date is the last day it applies."
+msgstr "اترك تاريخ النهاية فارغًا ما دام السجل ساريًا. تاريخ النهاية هو آخر يوم ينطبق فيه."
+
+#: WorkMate.Platform.Components.PlaceholderPickerTagHelpers
+msgid "The organisation picker arrives with the dimension engine. Placement is set through the dimension records for now."
+msgstr "تصل أداة اختيار الوحدة التنظيمية مع محرك الأبعاد. يُحدَّد التعيين من خلال سجلات الأبعاد في الوقت الحالي."
+
+msgid "The employee picker arrives with the employee record."
+msgstr "تصل أداة اختيار الموظف مع سجل الموظف."
+
+#: WorkMate.Platform.Views.WorkMateApprovalBadge
+msgid "Approvals"
+msgstr "الموافقات"
+
+msgid "Approvals waiting for you"
+msgstr "الموافقات المنتظرة منك"

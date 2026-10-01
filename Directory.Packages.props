@@ -23,8 +23,21 @@
     <PackageVersion Include="OrchardCore.Infrastructure.Abstractions" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.DisplayManagement" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Navigation.Core" Version="$(OrchardCoreVersion)" />
-    <!-- Test-only: the concrete ISite implementation, so tests exercise the real type. -->
+    <PackageVersion Include="OrchardCore.ContentManagement.Display" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.ResourceManagement" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Admin.Abstractions" Version="$(OrchardCoreVersion)" />
+    <!--
+      Test-only. OrchardCore.Settings gives tests the concrete ISite implementation; the rest
+      declare the Permission constants the base recipe names, so that a permission name in a
+      recipe is checked against the pinned version rather than trusted. The Roles recipe step
+      ignores a name it does not recognise without warning, which makes a typo invisible.
+    -->
     <PackageVersion Include="OrchardCore.Settings" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Roles.Core" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Users.Core" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Deployment.Core" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.AuditTrail.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Features" Version="$(OrchardCoreVersion)" />
 
     <!-- Security overrides for packages Orchard Core pulls in (NuGet audit, 30 Sep 2026) -->
     <PackageVersion Include="AngleSharp" Version="1.8.2" />

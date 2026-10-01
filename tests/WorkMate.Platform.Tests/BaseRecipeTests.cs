@@ -166,6 +166,18 @@ public sealed class BaseRecipeTests
     }
 
     [Fact]
+    public void UsersCannotRegisterThemselves()
+    {
+        // The base recipe selects a site theme, which means every tenant has a reachable public
+        // login page. Registration must not come with it: a WorkMate user is an employee the HR
+        // administrator creates, and anyone who could sign themselves up would land inside the
+        // tenant's boundary. It stays off until someone turns it on deliberately.
+        EnabledFeatures.Should().NotContain(
+            "OrchardCore.Users.Registration",
+            "a public login page must not come with a public sign-up page");
+    }
+
+    [Fact]
     public void EveryStubStepNamesTheModuleThatWillOwnIt()
     {
         var stubs = Steps.Where(step => step!["$stub"] is not null).ToList();

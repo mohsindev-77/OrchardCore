@@ -1,0 +1,29 @@
+@model BilingualTextFieldSettingsViewModel
+
+<div class="mb-3">
+    <label asp-for="Hint" class="form-label">@T["Help text (English)"]</label>
+    <input asp-for="Hint" class="form-control" dir="ltr" lang="en" />
+    <div class="form-text">@T["Shown under the field. Every label and help text is bilingual at definition time."]</div>
+</div>
+
+<div class="mb-3">
+    <label asp-for="HintAr" class="form-label">@T["Help text (Arabic)"]</label>
+    <input asp-for="HintAr" class="form-control" dir="rtl" lang="ar" />
+</div>
+
+<div class="form-check mb-2">
+    <input asp-for="RequireEnglish" type="checkbox" class="form-check-input" />
+    <label asp-for="RequireEnglish" class="form-check-label">@T["Require the English text"]</label>
+    <div class="form-text">@T["English is the sort key and the fallback, so it is required unless you have a reason."]</div>
+</div>
+
+<div class="form-check mb-3">
+    <input asp-for="RequireArabic" type="checkbox" class="form-check-input" />
+    <label asp-for="RequireArabic" class="form-check-label">@T["Require the Arabic text"]</label>
+</div>
+
+<div class="mb-3">
+    <label asp-for="MaxLength" class="form-label">@T["Maximum length"]</label>
+    <input asp-for="MaxLength" type="number" min="0" class="form-control w-auto" />
+    <div class="form-text">@T["Applies to each language separately. Zero means no limit."]</div>
+</div>
