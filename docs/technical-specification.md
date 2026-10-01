@@ -497,16 +497,24 @@ To settle in the first sprint. Each is recorded as an architecture decision reco
 
 | # | Decision | Default if not decided | Owner |
 | --- | --- | --- | --- |
-| 1 | Orchard Core version to pin | Latest stable at project start | Head of Technology |
 | 2 | Database per tenant or shared database with table prefix | Database per tenant for Enterprise; prefix for shared cloud | Head of Technology |
 | 3 | Formula engine: build an expression evaluator or adopt a sandboxed library | Adopt, with a hard whitelist of functions | Software Development Manager |
 | 4 | Front-end for the employee theme: server-rendered Razor with progressive enhancement, or a SPA over the API | Server-rendered; the API exists for mobile regardless | Technology team |
 | 5 | Mobile: native per platform or a cross-platform framework | Cross-platform, with native modules where push and biometrics require | Technology team |
 | 6 | Distributed cache for multi-node cloud | Redis, enabled per deployment | Head of Technology |
-| 7 | Search: Lucene or Elasticsearch | Lucene for shared cloud; Elasticsearch offered at Enterprise | Technology team |
 | 8 | Attendance device adapters to build first | Named once the first customer's devices are known | Delivery |
 | 9 | ERP journal export formats to build first | Generic CSV plus one named ERP adapter | Delivery |
 | 10 | Whether the dimension engine ships as a separately versioned package | Yes, from the start | Head of Technology |
+
+Numbers are not reused when a decision is struck, so that an ADR citing a
+decision by number keeps meaning what it meant.
+
+### Settled
+
+| # | Decision | Settled by |
+| --- | --- | --- |
+| 1 | Orchard Core version to pin | ADR-0001: Orchard Core 3.0.1 on .NET 10. Upgrading the pin is itself a new ADR |
+| 7 | Search: Lucene or Elasticsearch | ADR-0004: Lucene for shared cloud, Elasticsearch offered at Enterprise later |
 
 ### How to raise a new one
 

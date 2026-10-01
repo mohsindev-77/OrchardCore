@@ -38,6 +38,8 @@
     <PackageVersion Include="OrchardCore.Deployment.Core" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.AuditTrail.Abstractions" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Features" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Roles.Abstractions" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
 
     <!-- Security overrides for packages Orchard Core pulls in (NuGet audit, 30 Sep 2026) -->
     <PackageVersion Include="AngleSharp" Version="1.8.2" />

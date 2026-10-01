@@ -1,7 +1,8 @@
 # ADR-0004: Lucene is the search provider for shared cloud
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-09-30
+**Accepted:** 2026-10-01
 **Deciders:** Head of Technology
 
 ## Context
@@ -45,8 +46,7 @@ query through Orchard's provider-neutral indexing and search abstractions, so
 that offering Elasticsearch at Enterprise stays a recipe change.
 
 ## Consequences
-Section 11 decision 7 is settled and can be struck from the open list once
-this ADR is accepted.
+Section 11 decision 7 is settled and has been struck from the open list.
 
 Shared cloud gets search with no additional infrastructure, which is the point
 of choosing Lucene: it is in-process and needs no separate cluster to operate

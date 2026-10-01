@@ -21,6 +21,18 @@ nothing about employees, and it holds no business logic.
 | `WorkMateNavbarDisplayDriver` | WorkMate's chrome in the admin header — the approval badge — and the shared `workmate-admin` stylesheet. |
 | `WorkMateLogScope` | Tenant, user and correlation id on every log line. |
 
+## Decisions taken
+
+Approved on 1 October 2026 after review of prompt 1. They are recorded here
+rather than only in a pull request so that the next person to read this module
+finds the reasoning beside the code.
+
+| Decision | What was approved |
+| --- | --- |
+| Defaults are Bahraini | Currency **BHD**, working week **Sunday to Thursday**, week starts **Sunday**. The first tenants are in Bahrain. Nothing in the platform assumes them: a tenant elsewhere changes them on the settings screen or in its own recipe, and `BaseRecipeTests` keeps the recipe and the code defaults in step. |
+| Hijri shows alongside Gregorian | The default calendar is **Gregorian with Hijri**. Specification section 9 says Hijri is shown "where the tenant enables it" and does not say whether that is on by default; for these customers it is. Dates are stored Gregorian regardless. |
+| Role definitions are the delivery team's | **`ManageRoles` goes to Platform Administrator only.** Tenant Administrator keeps `AssignRoleToUsers`, so it can put people into existing roles, which is the day-to-day need. This stands until product decision 2 — who configures a customer — is settled, at which point it is revisited rather than assumed. `PermissionNameTests` and the integration suite both hold it. |
+
 ## The shell
 
 The admin theme is Orchard's, extended rather than replaced. TheAdmin's views
@@ -59,6 +71,12 @@ Every other WorkMate module depends on this one.
 This module ships no recipe step of its own. It is configured by the base
 recipe, `recipes/base.recipe.json`, which owns the six steps of specification
 section 3 and is verified by applying it to a fresh tenant.
+
+`WorkMate.Integration.Tests` stands a real tenant up with it — the same file,
+through the same setup endpoint, on SQLite — and asserts what the tenant
+actually holds: the six roles, each role's effective permissions, a reachable
+`/Login` with no `/Register`, and the `en`/`ar` cultures. One tenant serves the
+whole collection, so the suite runs in about twenty seconds.
 
 Two things about recipes in Orchard Core 3.0.1 that the base recipe had to be
 built around, both found by applying it rather than by reading:

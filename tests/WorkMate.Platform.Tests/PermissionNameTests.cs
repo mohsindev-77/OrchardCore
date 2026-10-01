@@ -28,7 +28,7 @@ public sealed class PermissionNameTests
     [
         typeof(OrchardCore.Admin.AdminPermissions),          // AccessAdminPanel
         typeof(OrchardCore.Roles.RolesPermissions),          // ManageRoles
-        typeof(OrchardCore.Settings.Permissions),            // ManageSettings
+        typeof(OrchardCore.Settings.SettingsPermissions),    // ManageSettings
         typeof(OrchardCore.Users.UsersPermissions),           // ListUsers, ViewUsers, EditUsers, …
         typeof(OrchardCore.Deployment.DeploymentPermissions),// Export, Import, ManageDeploymentPlan
         typeof(OrchardCore.AuditTrail.AuditTrailPermissions),// ViewAuditTrail, ManageAuditTrailSettings

@@ -5,6 +5,10 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="OrchardCore.Roles.Abstractions" />
+    <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
+    <PackageReference Include="OrchardCore.Localization.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />
