@@ -31,6 +31,11 @@ public sealed class Startup : StartupBase
         services.AddNavigationProvider<AdminMenu>();
 
         services.AddScoped<IWorkMateSettingsService, WorkMateSettingsService>();
+
+        // System authority: the explicit opt-in a recipe step or background task enters when it
+        // genuinely runs as the platform. Scoped, so it cannot outlive the shell scope that
+        // entered it. Every module's services consult it, which is why it lives here.
+        services.AddScoped<ISystemOperation, SystemOperation>();
         services.AddSiteDisplayDriver<WorkMateSettingsDisplayDriver>();
 
         // The bilingual field, per ADR-0003: the value object is in WorkMate.Core, the Orchard

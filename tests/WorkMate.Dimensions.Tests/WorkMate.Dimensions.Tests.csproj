@@ -5,6 +5,14 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
+    <!--
+      The dimension engine's dates live in index columns, and EffectiveDatesTests asserts the
+      round trip against a real provider rather than against the conversion's own arithmetic.
+      That needs the dialects, which is what these two bring.
+    -->
+    <PackageReference Include="YesSql.Core" />
+    <PackageReference Include="YesSql.Provider.Sqlite" />
+    <PackageReference Include="YesSql.Provider.SqlServer" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Dimensions/WorkMate.Dimensions.csproj" />

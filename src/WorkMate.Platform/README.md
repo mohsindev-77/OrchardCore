@@ -20,6 +20,7 @@ nothing about employees, and it holds no business logic.
 | The component set | `<workmate-bilingual>`, `<workmate-date-range>`, and placeholders for `<workmate-dimension-picker>` and `<workmate-employee-picker>`. One implementation each, so a control looks and behaves the same on the admin and on the employee front end. |
 | `WorkMateNavbarDisplayDriver` | WorkMate's chrome in the admin header — the approval badge — and the shared `workmate-admin` stylesheet. |
 | `WorkMateLogScope` | Tenant, user and correlation id on every log line. |
+| `ISystemOperation` | System authority as an explicit, scoped opt-in. A recipe step, background task or maintenance command enters it with a logged reason; outside it, a caller with no authenticated user is refused. Scoped, so it cannot outlive the shell scope that entered it. Every module's services consult it, which is why it is here rather than in one of them. |
 
 ## Decisions taken
 
@@ -32,6 +33,7 @@ finds the reasoning beside the code.
 | Defaults are Bahraini | Currency **BHD**, working week **Sunday to Thursday**, week starts **Sunday**. The first tenants are in Bahrain. Nothing in the platform assumes them: a tenant elsewhere changes them on the settings screen or in its own recipe, and `BaseRecipeTests` keeps the recipe and the code defaults in step. |
 | Hijri shows alongside Gregorian | The default calendar is **Gregorian with Hijri**. Specification section 9 says Hijri is shown "where the tenant enables it" and does not say whether that is on by default; for these customers it is. Dates are stored Gregorian regardless. |
 | Role definitions are the delivery team's | **`ManageRoles` goes to Platform Administrator only.** Tenant Administrator keeps `AssignRoleToUsers`, so it can put people into existing roles, which is the day-to-day need. This stands until product decision 2 — who configures a customer — is settled, at which point it is revisited rather than assumed. `PermissionNameTests` and the integration suite both hold it. |
+| No user is not authority | Approved 2 October 2026. A service that finds no authenticated user **refuses**, rather than assuming it must be a trusted background caller. The opposite rule — treat a missing HTTP context as full authority — was implemented first and rejected in review, because it would exempt every background job ever added to the product from every permission check, by default and with nothing in the code saying so. `ISystemOperation` is the replacement: authority is claimed explicitly, scoped to one operation, and logged with a reason. |
 
 ## The shell
 

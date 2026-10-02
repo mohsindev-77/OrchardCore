@@ -48,17 +48,12 @@ void Offer(string path, bool isOrchard)
     }
 }
 
-foreach (var package in Directory.GetDirectories(nugetCache))
+void OfferPackage(string packageDirectory, string version)
 {
-    if (!Path.GetFileName(package).StartsWith("orchardcore", StringComparison.OrdinalIgnoreCase))
-    {
-        continue;
-    }
-
-    var lib = Path.Combine(package, pinnedVersion, "lib");
+    var lib = Path.Combine(packageDirectory, version, "lib");
     if (!Directory.Exists(lib))
     {
-        continue;
+        return;
     }
 
     foreach (var targetFramework in Directory.GetDirectories(lib))
@@ -67,6 +62,46 @@ foreach (var package in Directory.GetDirectories(nugetCache))
         {
             Offer(assembly, isOrchard: true);
         }
+    }
+}
+
+// YesSql is not pinned in Directory.Packages.props; Orchard Core pins it transitively, and the
+// dimension engine's indexes and index providers are YesSql types rather than Orchard ones. The
+// version to report on is therefore the one the pinned Orchard packages declare, read from their
+// nuspecs rather than guessed from whatever happens to be newest in the cache.
+var companionVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+foreach (var package in Directory.GetDirectories(nugetCache))
+{
+    if (!Path.GetFileName(package).StartsWith("orchardcore", StringComparison.OrdinalIgnoreCase))
+    {
+        continue;
+    }
+
+    OfferPackage(package, pinnedVersion);
+
+    var nuspec = Path.Combine(package, pinnedVersion, $"{Path.GetFileName(package)}.nuspec");
+    if (!File.Exists(nuspec))
+    {
+        continue;
+    }
+
+    foreach (System.Text.RegularExpressions.Match dependency in
+        System.Text.RegularExpressions.Regex.Matches(
+            File.ReadAllText(nuspec),
+            @"id=""(?<id>YesSql[^""]*)""\s+version=""(?<version>[^""]+)"""))
+    {
+        companionVersions[dependency.Groups["id"].Value] = dependency.Groups["version"].Value;
+    }
+}
+
+foreach (var (id, version) in companionVersions)
+{
+    var package = Path.Combine(nugetCache, id.ToLowerInvariant());
+
+    if (Directory.Exists(package))
+    {
+        OfferPackage(package, version);
     }
 }
 

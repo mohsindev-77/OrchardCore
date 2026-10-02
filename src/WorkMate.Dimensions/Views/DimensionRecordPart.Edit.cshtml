@@ -1,0 +1,79 @@
+@model DimensionRecordPartViewModel
+
+@*
+    The standard fields every dimension record carries. The type's own attribute schema renders
+    below this, on the part named for the content type, which is why this template says nothing
+    about it.
+
+    There is deliberately no parent picker here. A record's placement is a dated link scoped to
+    a structure, and a record sits on several structures at once; offering a single parent field
+    would quietly collapse every axis into one tree. Placement is done in the organisation
+    designer, against IDimensionService, with an effective date on the operation.
+*@
+
+<fieldset class="mb-3">
+    <div class="row g-2">
+        <div class="col-md-4">
+            <label asp-for="Code" class="form-label">@T["Code"]</label>
+            <input asp-for="Code" class="form-control" dir="ltr" maxlength="50" />
+            <span asp-validation-for="Code" class="text-danger"></span>
+            <div class="form-text">@T["Unique within this tenant, and never reused once retired."]</div>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="NameEn" class="form-label">@T["Name (English)"]</label>
+            <input asp-for="NameEn" class="form-control" dir="ltr" lang="en" />
+            <span asp-validation-for="NameEn" class="text-danger"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="NameAr" class="form-label">@T["Name (Arabic)"]</label>
+            <input asp-for="NameAr" class="form-control" dir="rtl" lang="ar" />
+            <span asp-validation-for="NameAr" class="text-danger"></span>
+        </div>
+    </div>
+</fieldset>
+
+<fieldset class="mb-3">
+    <legend class="form-label">@T["Effective dates"]</legend>
+    <div class="row g-2">
+        <div class="col-md-4">
+            <label asp-for="EffectiveFrom" class="form-label">@T["From"]</label>
+            <input asp-for="EffectiveFrom" type="date" class="form-control" />
+            <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="EffectiveTo" class="form-label">@T["To"]</label>
+            <input asp-for="EffectiveTo" type="date" class="form-control" />
+            <span asp-validation-for="EffectiveTo" class="text-danger"></span>
+            <div class="form-text">@T["Leave empty while the record is open ended. The last day is included."]</div>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check mb-2">
+                <input asp-for="IsActive" type="checkbox" class="form-check-input" />
+                <label asp-for="IsActive" class="form-check-label">@T["Offered in pickers"]</label>
+            </div>
+        </div>
+    </div>
+</fieldset>
+
+<fieldset class="mb-3">
+    <div class="row g-2">
+        <div class="col-md-3">
+            <label asp-for="SortOrder" class="form-label">@T["Sort order"]</label>
+            <input asp-for="SortOrder" type="number" class="form-control" dir="ltr" />
+            <span asp-validation-for="SortOrder" class="text-danger"></span>
+        </div>
+        <div class="col-md-3">
+            <label asp-for="CostCentreCode" class="form-label">@T["Cost centre code"]</label>
+            <input asp-for="CostCentreCode" class="form-control" dir="ltr" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="GlAccountRef" class="form-label">@T["GL account"]</label>
+            <input asp-for="GlAccountRef" class="form-control" dir="ltr" />
+        </div>
+        <div class="col-md-3">
+            <label asp-for="HeadEmployeeId" class="form-label">@T["Head of unit"]</label>
+            <workmate-employee-picker for="HeadEmployeeId" />
+            <div class="form-text">@T["The head need not be a member of this unit."]</div>
+        </div>
+    </div>
+</fieldset>

@@ -1,14 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <!-- The module ships MVC views, which the Razor SDK only compiles when this is set. -->
+    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="OrchardCore.Module.Targets" />
     <PackageReference Include="OrchardCore.ContentManagement" />
+    <PackageReference Include="OrchardCore.ContentManagement.Display" />
+    <PackageReference Include="OrchardCore.DisplayManagement" />
     <PackageReference Include="OrchardCore.Data.YesSql" />
     <PackageReference Include="OrchardCore.Recipes.Abstractions" />
     <PackageReference Include="OrchardCore.Security" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
+    <!--
+      Infrastructure.Abstractions gives IIdGenerator, which mints the stable ids dimension types
+      and structures are referenced by. AuditTrail.Abstractions is how specification section 4's
+      "recorded in the audit trail with a diff" is satisfied. Title is referenced for
+      TitlePartSettings alone: section 4 requires TitlePart bound to NameEn on every generated
+      type, and the settings type is the only way to express that binding.
+    -->
+    <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
+    <PackageReference Include="OrchardCore.AuditTrail.Abstractions" />
+    <PackageReference Include="OrchardCore.Title" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WorkMate.Core/WorkMate.Core.csproj" />
     <ProjectReference Include="../WorkMate.Platform/WorkMate.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- So that internal rules can be asserted directly instead of only through a public API. -->
+    <InternalsVisibleTo Include="WorkMate.Dimensions.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tracked here, copied into the host's content root by Directory.Build.targets. -->
+    <None Include="Localization/**/*.po" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,228 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: WorkMate.Dimensions\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+# Arabic translations for WorkMate.Dimensions.
+#
+# Tracked here, beside the module that raises the strings. Directory.Build.targets copies this
+# file into the host's content root at build time, where Orchard's ModularPoFileLocationProvider
+# finds it as Localization/ar/WorkMate.Dimensions.po.
+#
+# English is the msgid, so there is no en file.
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "Dimensions"
+msgstr "الأبعاد"
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "Dimension type changed"
+msgstr "تم تغيير نوع البعد"
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "A dimension type was created, changed or retired."
+msgstr "تم إنشاء نوع بعد أو تغييره أو إيقافه."
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "Structure changed"
+msgstr "تم تغيير الهيكل"
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "A structure or its levels were created or changed."
+msgstr "تم إنشاء هيكل أو مستوياته أو تغييرها."
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "Content definition changed"
+msgstr "تم تغيير تعريف المحتوى"
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "A content type was created or altered on behalf of a dimension type."
+msgstr "تم إنشاء نوع محتوى أو تعديله نيابةً عن نوع بعد."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "A dimension type code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."
+msgstr "يجب أن يبدأ رمز نوع البعد بحرف، ويمكن أن يحتوي على حروف وأرقام وشرطات وشرطات سفلية، بحد أقصى خمسين حرفًا."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "A dimension type with the code '{0}' already exists in this tenant, or did and was retired."
+msgstr "يوجد بالفعل نوع بعد بالرمز '{0}' في هذا المستأجر، أو كان موجودًا وتم إيقافه."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The code '{0}' would create the content type '{1}', which already exists in this tenant. Choose another code."
+msgstr "سينشئ الرمز '{0}' نوع المحتوى '{1}' الموجود بالفعل في هذا المستأجر. اختر رمزًا آخر."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "An attribute name must start with a letter and may contain letters and digits only, up to fifty characters."
+msgstr "يجب أن يبدأ اسم السمة بحرف، ويمكن أن يحتوي على حروف وأرقام فقط، بحد أقصى خمسين حرفًا."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The attribute '{0}' is declared more than once."
+msgstr "تم تعريف السمة '{0}' أكثر من مرة."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The attribute '{0}' needs a label in both English and Arabic."
+msgstr "تحتاج السمة '{0}' إلى تسمية بالإنجليزية والعربية معًا."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "'{0}' is a standard field that every dimension record already carries. Choose another attribute name."
+msgstr "'{0}' حقل قياسي يحمله كل سجل بعد بالفعل. اختر اسم سمة آخر."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The attribute '{0}' cannot be removed from the dimension type '{1}'. Removing a field deletes the data held in it, and that is not permitted until the guard rails for destructive definition changes are agreed."
+msgstr "لا يمكن إزالة السمة '{0}' من نوع البعد '{1}'. إزالة الحقل تحذف البيانات المخزنة فيه، وهذا غير مسموح به حتى يتم الاتفاق على ضوابط التغييرات المدمِّرة للتعريفات."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The attribute '{0}' is a {1} and cannot be changed to a {2}. Add a new attribute instead."
+msgstr "السمة '{0}' من النوع {1} ولا يمكن تغييرها إلى {2}. أضف سمة جديدة بدلًا من ذلك."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "The dimension type '{0}' is defined by WorkMate and cannot be retired."
+msgstr "نوع البعد '{0}' معرَّف من قِبل WorkMate ولا يمكن إيقافه."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+msgid "There is no dimension type with the id '{0}' in this tenant."
+msgstr "لا يوجد نوع بعد بالمعرّف '{0}' في هذا المستأجر."
+
+#: WorkMate.Dimensions.Services.DimensionTypeService
+#: WorkMate.Dimensions.Services.StructureService
+msgid "A name is required in both English and Arabic."
+msgstr "الاسم مطلوب بالإنجليزية والعربية معًا."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "A structure code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."
+msgstr "يجب أن يبدأ رمز الهيكل بحرف، ويمكن أن يحتوي على حروف وأرقام وشرطات وشرطات سفلية، بحد أقصى خمسين حرفًا."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "A structure with the code '{0}' already exists in this tenant."
+msgstr "يوجد بالفعل هيكل بالرمز '{0}' في هذا المستأجر."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "A structure needs at least one level."
+msgstr "يحتاج الهيكل إلى مستوى واحد على الأقل."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "A dimension type may appear only once in a structure's levels."
+msgstr "لا يمكن أن يظهر نوع البعد إلا مرة واحدة في مستويات الهيكل."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "'{0}' is already the primary organisation structure. Clear that first, then set this one."
+msgstr "'{0}' هو بالفعل الهيكل التنظيمي الأساسي. ألغِ ذلك أولًا، ثم عيّن هذا."
+
+#: WorkMate.Dimensions.Services.StructureService
+msgid "There is no structure with the id '{0}' in this tenant."
+msgstr "لا يوجد هيكل بالمعرّف '{0}' في هذا المستأجر."
+
+# ---- Record layer: the handler's validation messages ----
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "A code is required."
+msgstr "الرمز مطلوب."
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "A code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."
+msgstr "يجب أن يبدأ الرمز بحرف، ويمكن أن يحتوي على حروف وأرقام وشرطات وشرطات سفلية، بحد أقصى خمسين حرفًا."
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "The code '{0}' is already used by another dimension record in this tenant."
+msgstr "الرمز '{0}' مستخدم بالفعل في سجل بعد آخر في هذا المستأجر."
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "An effective from date is required."
+msgstr "تاريخ بداية السريان مطلوب."
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "The effective to date cannot be before the effective from date."
+msgstr "لا يمكن أن يسبق تاريخ نهاية السريان تاريخ بدايته."
+
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "This content type is not a dimension type, so it cannot carry a dimension record."
+msgstr "نوع المحتوى هذا ليس نوع بعد، لذلك لا يمكنه حمل سجل بعد."
+
+# ---- Record layer: the editor and display templates ----
+
+#: Views/DimensionRecordPart.Edit.cshtml
+#: Views/DimensionRecordPart.cshtml
+msgid "Code"
+msgstr "الرمز"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Unique within this tenant, and never reused once retired."
+msgstr "فريد داخل هذا المستأجر، ولا يُعاد استخدامه بعد الإيقاف."
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Name (English)"
+msgstr "الاسم (بالإنجليزية)"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Name (Arabic)"
+msgstr "الاسم (بالعربية)"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Effective dates"
+msgstr "تواريخ السريان"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "From"
+msgstr "من"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "To"
+msgstr "إلى"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Leave empty while the record is open ended. The last day is included."
+msgstr "اتركه فارغًا ما دام السجل مفتوح المدة. اليوم الأخير مشمول."
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Offered in pickers"
+msgstr "متاح في قوائم الاختيار"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Sort order"
+msgstr "ترتيب العرض"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+#: Views/DimensionRecordPart.cshtml
+msgid "Cost centre code"
+msgstr "رمز مركز التكلفة"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+#: Views/DimensionRecordPart.cshtml
+msgid "GL account"
+msgstr "حساب الأستاذ العام"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Head of unit"
+msgstr "رئيس الوحدة"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "The head need not be a member of this unit."
+msgstr "ليس من الضروري أن يكون الرئيس عضوًا في هذه الوحدة."
+
+#: Views/DimensionRecordPart.cshtml
+msgid "Name"
+msgstr "الاسم"
+
+#: Views/DimensionRecordPart.cshtml
+msgid "Effective"
+msgstr "السريان"
+
+#: Views/DimensionRecordPart.cshtml
+msgid "From {0}"
+msgstr "من {0}"
+
+#: Views/DimensionRecordPart.cshtml
+msgid "{0} to {1}"
+msgstr "من {0} إلى {1}"
+
+#: Views/DimensionRecordPart.cshtml
+msgid "Status"
+msgstr "الحالة"
+
+#: Views/DimensionRecordPart.cshtml
+msgid "Not offered in pickers"
+msgstr "غير متاح في قوائم الاختيار"

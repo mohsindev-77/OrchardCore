@@ -9,6 +9,11 @@
     <PackageReference Include="OrchardCore.Roles.Abstractions" />
     <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
+    <!-- For the dimension engine's tenant tests: the audit trail category it registers, the
+         content definitions it generates, and the title part settings it binds. -->
+    <PackageReference Include="OrchardCore.AuditTrail.Abstractions" />
+    <PackageReference Include="OrchardCore.ContentManagement" />
+    <PackageReference Include="OrchardCore.Title" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />

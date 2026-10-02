@@ -1,0 +1,48 @@
+@model DimensionRecordPartViewModel
+
+@*
+    A dimension record as read. The name shown is the record's current name; a historical
+    report resolves the name as at its own date through the dated name history instead, which
+    is a different question and a different query.
+*@
+
+@{
+    var name = Orchard.IsRightToLeft() && !string.IsNullOrWhiteSpace(Model.NameAr)
+        ? Model.NameAr
+        : Model.NameEn;
+
+    var from = Model.EffectiveFrom?.ToShortDateString() ?? string.Empty;
+
+    var effective = Model.EffectiveTo is null
+        ? T["From {0}", from]
+        : T["{0} to {1}", from, Model.EffectiveTo.Value.ToShortDateString()];
+}
+
+<dl class="row workmate-dimension-record">
+    <dt class="col-sm-3">@T["Code"]</dt>
+    <dd class="col-sm-9" dir="ltr">@Model.Code</dd>
+
+    <dt class="col-sm-3">@T["Name"]</dt>
+    <dd class="col-sm-9">@name</dd>
+
+    <dt class="col-sm-3">@T["Effective"]</dt>
+    <dd class="col-sm-9">@effective</dd>
+
+    @if (!string.IsNullOrWhiteSpace(Model.CostCentreCode))
+    {
+        <dt class="col-sm-3">@T["Cost centre code"]</dt>
+        <dd class="col-sm-9" dir="ltr">@Model.CostCentreCode</dd>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.GlAccountRef))
+    {
+        <dt class="col-sm-3">@T["GL account"]</dt>
+        <dd class="col-sm-9" dir="ltr">@Model.GlAccountRef</dd>
+    }
+
+    @if (!Model.IsActive)
+    {
+        <dt class="col-sm-3">@T["Status"]</dt>
+        <dd class="col-sm-9">@T["Not offered in pickers"]</dd>
+    }
+</dl>
