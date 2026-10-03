@@ -58,6 +58,7 @@
       dimension engine's date round-trip test can open a real dialect: no product project
       references them, because a module reaches YesSql through OrchardCore.Data.YesSql.
     -->
+    <PackageVersion Include="YesSql.Abstractions" Version="5.4.7" />
     <PackageVersion Include="YesSql.Core" Version="5.4.7" />
     <PackageVersion Include="YesSql.Provider.Sqlite" Version="5.4.7" />
     <PackageVersion Include="YesSql.Provider.SqlServer" Version="5.4.7" />

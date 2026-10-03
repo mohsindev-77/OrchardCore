@@ -2,6 +2,7 @@ using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
 using WorkMate.Dimensions.Indexes;
+using WorkMate.Dimensions.Internal.Graph;
 using WorkMate.Dimensions.Services;
 using YesSql.Sql;
 
@@ -131,6 +132,7 @@ public sealed class Migrations : DataMigration
             .Column<string>(nameof(DimensionRecordPartIndex.Code), column => column.WithLength(CodeLength))
             .Column<string>(nameof(DimensionRecordPartIndex.DimensionTypeId), column => column.WithLength(IdentifierLength))
             .Column<string>(nameof(DimensionRecordPartIndex.NameEn), column => column.WithLength(NameLength))
+            .Column<string>(nameof(DimensionRecordPartIndex.NameAr), column => column.WithLength(NameLength))
             .Column<bool>(nameof(DimensionRecordPartIndex.IsActive))
             .Column<int>(nameof(DimensionRecordPartIndex.SortOrder))
             .Column<DateTime>(nameof(DimensionRecordPartIndex.EffectiveFrom))
@@ -176,5 +178,98 @@ public sealed class Migrations : DataMigration
                 nameof(DimensionNameIndex.EffectiveToInclusive)));
 
         return 2;
+    }
+
+    /// <summary>
+    /// The graph layer: links, the dated closure index, and employee assignments.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0005 is the contract for these three. The closure table carries an effective range as
+    /// well as a depth, which is where this departs from the architecture's four-column
+    /// description, and the index column order below is the order the dated descendant query
+    /// filters in — structure, ancestor, then the range — because that query is the one the
+    /// 200 ms acceptance criterion is about.
+    /// </remarks>
+    public async Task<int> UpdateFrom2Async()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<DimensionLinkIndex>(table => table
+            .Column<string>(nameof(DimensionLinkIndex.StructureId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(DimensionLinkIndex.ChildId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(DimensionLinkIndex.ParentId), column => column.WithLength(IdentifierLength))
+            .Column<DateTime>(nameof(DimensionLinkIndex.EffectiveFrom))
+            .Column<DateTime>(nameof(DimensionLinkIndex.EffectiveToInclusive)));
+
+        await SchemaBuilder.AlterIndexTableAsync<DimensionLinkIndex>(table =>
+        {
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionLinkIndex)}_Child",
+                nameof(DimensionLinkIndex.StructureId),
+                nameof(DimensionLinkIndex.ChildId));
+
+            // Walking down to find a moved subtree, and the verification walk.
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionLinkIndex)}_Parent",
+                nameof(DimensionLinkIndex.StructureId),
+                nameof(DimensionLinkIndex.ParentId));
+        });
+
+        await SchemaBuilder.CreateMapIndexTableAsync<DimensionClosureIndex>(table => table
+            .Column<string>(nameof(DimensionClosureIndex.StructureId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(DimensionClosureIndex.AncestorId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(DimensionClosureIndex.DescendantId), column => column.WithLength(IdentifierLength))
+            .Column<int>(nameof(DimensionClosureIndex.Depth))
+            .Column<DateTime>(nameof(DimensionClosureIndex.EffectiveFrom))
+            .Column<DateTime>(nameof(DimensionClosureIndex.EffectiveToInclusive)));
+
+        await SchemaBuilder.AlterIndexTableAsync<DimensionClosureIndex>(table =>
+        {
+            // "Everyone under this node, as at this date" — the hot path, and the one the
+            // performance gate is written against.
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionClosureIndex)}_Descendants",
+                nameof(DimensionClosureIndex.StructureId),
+                nameof(DimensionClosureIndex.AncestorId),
+                nameof(DimensionClosureIndex.EffectiveFrom),
+                nameof(DimensionClosureIndex.EffectiveToInclusive));
+
+            // "Everyone above this node" — approvals walking up a chain.
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionClosureIndex)}_Ancestors",
+                nameof(DimensionClosureIndex.StructureId),
+                nameof(DimensionClosureIndex.DescendantId),
+                nameof(DimensionClosureIndex.EffectiveFrom),
+                nameof(DimensionClosureIndex.EffectiveToInclusive));
+        });
+
+        await SchemaBuilder.CreateMapIndexTableAsync<EmployeeAssignmentIndex>(table => table
+            .Column<string>(nameof(EmployeeAssignmentIndex.EmployeeId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(EmployeeAssignmentIndex.StructureId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(EmployeeAssignmentIndex.NodeId), column => column.WithLength(IdentifierLength))
+            .Column<decimal>(nameof(EmployeeAssignmentIndex.AllocationPercent))
+            .Column<bool>(nameof(EmployeeAssignmentIndex.IsPrimary))
+            .Column<DateTime>(nameof(EmployeeAssignmentIndex.EffectiveFrom))
+            .Column<DateTime>(nameof(EmployeeAssignmentIndex.EffectiveToInclusive)));
+
+        await SchemaBuilder.AlterIndexTableAsync<EmployeeAssignmentIndex>(table =>
+        {
+            // The outer half of "every employee under this node as at a date": filter by
+            // structure and date here, and let the closure sub-select narrow the node.
+            table.CreateIndex(
+                $"IDX_{nameof(EmployeeAssignmentIndex)}_Node",
+                nameof(EmployeeAssignmentIndex.StructureId),
+                nameof(EmployeeAssignmentIndex.NodeId),
+                nameof(EmployeeAssignmentIndex.EffectiveFrom),
+                nameof(EmployeeAssignmentIndex.EffectiveToInclusive));
+
+            // "Where does this person work", which self-service asks on every page.
+            table.CreateIndex(
+                $"IDX_{nameof(EmployeeAssignmentIndex)}_Employee",
+                nameof(EmployeeAssignmentIndex.EmployeeId),
+                nameof(EmployeeAssignmentIndex.StructureId),
+                nameof(EmployeeAssignmentIndex.EffectiveFrom),
+                nameof(EmployeeAssignmentIndex.EffectiveToInclusive));
+        });
+
+        return 3;
     }
 }

@@ -187,39 +187,6 @@ public sealed class DimensionRecordTenantTests
         });
 
     [Fact]
-    public async Task ACodeAlreadyUsedByAnotherRecordIsRejectedEvenAcrossDimensionTypes() =>
-        await InTenantAsSystemAsync(async services =>
-        {
-            var manager = services.GetRequiredService<IContentManager>();
-
-            var first = await GivenADimensionTypeAsync(services, "rec-first");
-            var second = await GivenADimensionTypeAsync(services, "rec-second");
-
-            var original = await NewRecordAsync(services, first, part =>
-            {
-                part.Code = "SHARED-CODE";
-                part.NameEn = "Original";
-                part.NameAr = "الأصل";
-                part.EffectiveFrom = new DateOnly(2026, 1, 1);
-            });
-
-            (await CreateAsync(services, original))
-                .Succeeded.Should().BeTrue();
-
-            var duplicate = await NewRecordAsync(services, second, part =>
-            {
-                part.Code = "SHARED-CODE";
-                part.NameEn = "Duplicate";
-                part.NameAr = "مكرر";
-                part.EffectiveFrom = new DateOnly(2026, 1, 1);
-            });
-
-            (await CreateAsync(services, duplicate))
-                .Succeeded.Should().BeFalse(
-                    "a code is unique within the tenant, not within a dimension type");
-        });
-
-    [Fact]
     public async Task SavingTheSameRecordTwiceIsNotADuplicateOfItself() =>
         await InTenantAsSystemAsync(async services =>
         {
@@ -240,8 +207,9 @@ public sealed class DimensionRecordTenantTests
             item.Alter<DimensionRecordPart>(part => part.NameEn = "Renamed");
 
             (await manager.ValidateAsync(item)).Succeeded.Should().BeTrue(
-                "the uniqueness check must exclude the record's own rows, or editing a record "
-                + "would report it as a duplicate of itself");
+                "editing an existing record must not report it as a duplicate of itself. This "
+                + "is the case that makes record code uniqueness awkward to enforce from a "
+                + "validation handler, and the reason it moves to IDimensionValidator");
         });
 
     [Fact]

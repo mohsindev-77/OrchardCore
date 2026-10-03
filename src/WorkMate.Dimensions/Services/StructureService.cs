@@ -14,6 +14,24 @@ public sealed class StructureService : IStructureService
 {
     private readonly ISession _session;
     private readonly IDimensionTypeService _dimensionTypeService;
+
+    /// <summary>
+    /// The graph service, resolved on first use rather than on construction.
+    /// </summary>
+    /// <remarks>
+    /// There is a real dependency cycle here, and the laziness is how it is broken rather than
+    /// hidden. The graph service needs structure configuration — which dimension types are
+    /// levels of which axis — so it depends on this service. This service needs to tell the
+    /// graph when those levels change, because a level gained or lost changes the closure for
+    /// every record of that type.
+    ///
+    /// The alternative was to have the graph read the structure tables directly, which rule 9
+    /// forbids: one aggregate, one service, and a service that needs another aggregate injects
+    /// that aggregate's service. Deferring the resolution keeps the rule and costs one
+    /// indirection, and both services are scoped to the same shell scope so the instance is the
+    /// same one either way.
+    /// </remarks>
+    private readonly Lazy<IDimensionGraphService> _graph;
     private readonly IAuditTrailManager _auditTrailManager;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IIdGenerator _idGenerator;
@@ -22,6 +40,7 @@ public sealed class StructureService : IStructureService
     public StructureService(
         ISession session,
         IDimensionTypeService dimensionTypeService,
+        Lazy<IDimensionGraphService> graph,
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
         IIdGenerator idGenerator,
@@ -29,6 +48,7 @@ public sealed class StructureService : IStructureService
     {
         _session = session;
         _dimensionTypeService = dimensionTypeService;
+        _graph = graph;
         _auditTrailManager = auditTrailManager;
         _authorisation = authorisation;
         _idGenerator = idGenerator;
@@ -92,6 +112,18 @@ public sealed class StructureService : IStructureService
         };
 
         await _session.SaveCheckedAsync(document, cancellationToken);
+
+        // A new axis is retrospective in exactly the way a new level is: the records of its
+        // level types already exist, and they are on the axis the moment it is declared. A
+        // customer adding a Location axis to a tenant that already has five hundred branches
+        // expects to see five hundred branches on it, not an empty tree.
+        await _graph.Value.OnStructureLevelsChangedAsync(
+            document.StructureId,
+            levelDimensionTypeIds,
+            [],
+            await _authorisation.TodayAsync(),
+            cancellationToken);
+
         await RecordChangeAsync(document, before: null, cancellationToken);
 
         return DimensionResult.Success(document);
@@ -140,6 +172,8 @@ public sealed class StructureService : IStructureService
         var typeCodes = await TypeCodesByIdAsync(cancellationToken);
         var before = StructureState.Of(document, typeCodes);
 
+        var levelsBefore = document.Levels.Select(level => level.DimensionTypeId).ToList();
+
         document.Name = name;
         document.Levels = ToLevels(levelDimensionTypeIds);
         document.AllowSkipLevel = allowSkipLevel;
@@ -147,6 +181,27 @@ public sealed class StructureService : IStructureService
         document.IsPrimaryOrganisation = isPrimaryOrganisation;
 
         await _session.SaveCheckedAsync(document, cancellationToken);
+
+        // The closure has to follow the levels, not just the records.
+        //
+        // A level gained is retrospective: the records of that dimension type already exist, and
+        // they are part of this axis the moment the level is declared. Without this they would
+        // be invisible on an axis they belong to, with nothing on screen to say why. A level
+        // lost is the mirror case, and it closes rather than deletes, so everything before the
+        // change keeps resolving.
+        var added = levelDimensionTypeIds.Except(levelsBefore, StringComparer.Ordinal).ToList();
+        var removed = levelsBefore.Except(levelDimensionTypeIds, StringComparer.Ordinal).ToList();
+
+        if (added.Count > 0 || removed.Count > 0)
+        {
+            await _graph.Value.OnStructureLevelsChangedAsync(
+                structureId,
+                added,
+                removed,
+                await _authorisation.TodayAsync(),
+                cancellationToken);
+        }
+
         await RecordChangeAsync(document, before, cancellationToken);
 
         return DimensionResult.Success(document);

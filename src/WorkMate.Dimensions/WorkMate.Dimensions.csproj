@@ -28,8 +28,14 @@
     <ProjectReference Include="../WorkMate.Platform/WorkMate.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- So that internal rules can be asserted directly instead of only through a public API. -->
+    <!--
+      So that internal rules can be asserted directly instead of only through a public API.
+      The integration suite needs it for one thing in particular: proving that closure
+      verification actually detects a corrupt index. There is deliberately no public way to
+      corrupt the index, so the only way to show the safety net works is to reach past it.
+    -->
     <InternalsVisibleTo Include="WorkMate.Dimensions.Tests" />
+    <InternalsVisibleTo Include="WorkMate.Integration.Tests" />
   </ItemGroup>
   <ItemGroup>
     <!-- Tracked here, copied into the host's content root by Directory.Build.targets. -->

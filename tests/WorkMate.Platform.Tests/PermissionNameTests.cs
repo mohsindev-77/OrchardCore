@@ -70,6 +70,32 @@ public sealed class PermissionNameTests
     }
 
     [Fact]
+    public void OnlyThePlatformAdministratorMayImportARecipe()
+    {
+        // This is a security boundary, not a preference.
+        //
+        // A recipe step runs inside WorkMate.Platform's ISystemOperation scope, and system
+        // authority outranks the signed-in user: the step acts as the platform, not as whoever
+        // clicked Import. That is correct — a configuration package has to be able to create
+        // dimension types and structures regardless of who applied it — but it means Import is
+        // effectively a grant of every permission a recipe step can exercise.
+        //
+        // So Import stays with the delivery team. Granting it to another role would hand that
+        // role everything, through a door nobody would think to look behind. If the grant ever
+        // needs to move, the authority model has to be revisited in the same change, and
+        // failing this test is what forces that conversation.
+        var holders = GrantsInTheBaseRecipe()
+            .Where(grant => grant.Permission == OrchardCore.Deployment.DeploymentPermissions.Import.Name)
+            .Select(grant => grant.Role)
+            .ToList();
+
+        holders.Should().BeEquivalentTo(
+            [PlatformRoles.PlatformAdministrator],
+            "Import runs recipe steps on the platform's own authority, so granting it to a role "
+            + "grants that role everything a recipe step can do");
+    }
+
+    [Fact]
     public void TheTenantAdministratorCanStillPutPeopleIntoRoles() =>
         GrantsInTheBaseRecipe().Should().Contain(
             (PlatformRoles.TenantAdministrator, OrchardCore.Users.UsersPermissions.AssignRoleToUsers.Name));

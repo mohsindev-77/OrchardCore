@@ -127,10 +127,6 @@ msgid "A code must start with a letter and may contain letters, digits, hyphens 
 msgstr "يجب أن يبدأ الرمز بحرف، ويمكن أن يحتوي على حروف وأرقام وشرطات وشرطات سفلية، بحد أقصى خمسين حرفًا."
 
 #: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
-msgid "The code '{0}' is already used by another dimension record in this tenant."
-msgstr "الرمز '{0}' مستخدم بالفعل في سجل بعد آخر في هذا المستأجر."
-
-#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
 msgid "An effective from date is required."
 msgstr "تاريخ بداية السريان مطلوب."
 
@@ -226,3 +222,53 @@ msgstr "الحالة"
 #: Views/DimensionRecordPart.cshtml
 msgid "Not offered in pickers"
 msgstr "غير متاح في قوائم الاختيار"
+
+# ---- Graph layer: moves, merges and assignments ----
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionGraphService
+msgid "A record cannot be its own parent."
+msgstr "لا يمكن أن يكون السجل أبًا لنفسه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionGraphService
+msgid "'{0}' is at or below '{1}' at some point in time, so moving '{1}' under it would create a cycle."
+msgstr "'{0}' يقع عند '{1}' أو تحته في وقت ما، لذا فإن نقل '{1}' تحته سينشئ حلقة مغلقة."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionService
+msgid "There is no dimension record with the id '{0}' in this tenant."
+msgstr "لا يوجد سجل بعد بالمعرّف '{0}' في هذا المستأجر."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionService
+msgid "There is no name in effect on {0} to correct."
+msgstr "لا يوجد اسم ساري في {0} ليتم تصحيحه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionService
+msgid "The record had no name on {0}, so it cannot be renamed from then."
+msgstr "لم يكن للسجل اسم في {0}، لذا لا يمكن إعادة تسميته اعتبارًا من ذلك التاريخ."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionService
+msgid "A record cannot be merged into itself."
+msgstr "لا يمكن دمج السجل في نفسه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionService
+msgid "'{0}' is inside '{1}', so it cannot be the target of merging '{1}' into it."
+msgstr "'{0}' يقع داخل '{1}'، لذا لا يمكن أن يكون هدفًا لدمج '{1}' فيه."
+
+#: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
+msgid "A placement needs at least one node. Use the end operation to remove an employee from an axis."
+msgstr "يحتاج التعيين إلى وحدة واحدة على الأقل. استخدم عملية الإنهاء لإزالة موظف من محور."
+
+#: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
+msgid "Allocations must total 100 percent on any one date. These total {0}."
+msgstr "يجب أن يكون مجموع النسب 100 بالمئة في أي تاريخ. مجموع هذه النسب {0}."
+
+#: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
+msgid "An allocation must be greater than zero. Remove the placement instead."
+msgstr "يجب أن تكون النسبة أكبر من صفر. احذف التعيين بدلًا من ذلك."
+
+#: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
+msgid "Exactly one placement must be primary, so that matrix cases stay unambiguous. {0} are marked primary."
+msgstr "يجب أن يكون تعيين واحد فقط أساسيًا، حتى تبقى الحالات المصفوفية واضحة. عدد التعيينات الأساسية {0}."
+
+#: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
+msgid "An employee cannot be placed at the same node twice on the same date."
+msgstr "لا يمكن تعيين الموظف في الوحدة نفسها مرتين في التاريخ نفسه."

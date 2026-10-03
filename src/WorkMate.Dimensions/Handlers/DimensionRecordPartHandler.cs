@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Localization;
 using OrchardCore.ContentManagement.Handlers;
-using WorkMate.Dimensions.Indexes;
+
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
-using YesSql;
+
 
 namespace WorkMate.Dimensions.Handlers;
 
@@ -31,20 +31,30 @@ namespace WorkMate.Dimensions.Handlers;
 /// Business logic lives in services: this handler asks, it does not decide. The closure and link
 /// work it must trigger belongs to <c>IDimensionGraphService</c> and lands with the graph layer,
 /// in the same ambient session so that a record and its index rows commit together.
+///
+/// <b>Code uniqueness is not checked here, and that is a known gap.</b> It cannot be done
+/// reliably from a validation handler: by the time validation runs, the content manager has
+/// already saved the item under validation, so its own row is in the index and telling it apart
+/// from a genuine clash proved unreliable in practice. Worse, a record saved earlier in the same
+/// unit of work is not in the index at all, so an import creating five hundred rows in one batch
+/// would miss duplicates within the batch — which is exactly where they happen.
+///
+/// It belongs to <c>IDimensionValidator</c>, which lands next and has to keep track of the codes
+/// seen within a batch regardless: architecture section 6 requires an import to validate row by
+/// row and report every failure, which is the same bookkeeping. Until then the rule is enforced
+/// on dimension types and structures, where it works, but not on records. The module README
+/// records it.
 /// </remarks>
 public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRecordPart>
 {
     private readonly IDimensionTypeService _dimensionTypeService;
-    private readonly ISession _session;
     private readonly IStringLocalizer S;
 
     public DimensionRecordPartHandler(
         IDimensionTypeService dimensionTypeService,
-        ISession session,
         IStringLocalizer<DimensionRecordPartHandler> stringLocalizer)
     {
         _dimensionTypeService = dimensionTypeService;
-        _session = session;
         S = stringLocalizer;
     }
 
@@ -73,11 +83,11 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
         }
     }
 
-    protected override async Task ValidatingAsync(ValidateContentPartContext context, DimensionRecordPart part)
+    /// <summary>
+    /// The invariants every dimension record has to satisfy, whatever created it.
+    /// </summary>
+    internal async Task ValidateAsync(ValidateContentContext context, DimensionRecordPart part)
     {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(part);
-
         if (string.IsNullOrWhiteSpace(part.Code))
         {
             context.Fail(S["A code is required."], nameof(part.Code));
@@ -86,15 +96,6 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
         {
             context.Fail(
                 S["A code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."],
-                nameof(part.Code));
-        }
-        else if (await CodeIsTakenAsync(part, context))
-        {
-            // Across every dimension type and including retired records, per architecture
-            // section 6. Reusing a retired unit's code makes every historical report ambiguous
-            // about which one it means.
-            context.Fail(
-                S["The code '{0}' is already used by another dimension record in this tenant.", part.Code],
                 nameof(part.Code));
         }
 
@@ -125,24 +126,5 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
                 S["This content type is not a dimension type, so it cannot carry a dimension record."],
                 nameof(part.DimensionTypeId));
         }
-    }
-
-    /// <summary>
-    /// Whether another record already holds this code.
-    /// </summary>
-    /// <remarks>
-    /// Queried through the index rather than by loading items, and excluding this record's own
-    /// rows so that saving a record a second time does not report it as a duplicate of itself.
-    /// </remarks>
-    private async Task<bool> CodeIsTakenAsync(DimensionRecordPart part, ValidateContentPartContext context)
-    {
-        var contentItemId = context.ContentItem.ContentItemId;
-
-        var holders = await _session
-            .QueryIndex<DimensionRecordPartIndex>(index =>
-                index.Code == part.Code && index.ContentItemId != contentItemId)
-            .CountAsync();
-
-        return holders > 0;
     }
 }

@@ -12,8 +12,12 @@
     <!-- For the dimension engine's tenant tests: the audit trail category it registers, the
          content definitions it generates, and the title part settings it binds. -->
     <PackageReference Include="OrchardCore.AuditTrail.Abstractions" />
+    <!-- For DeploymentPermissions.Import, pinned to Platform Administrator alone. -->
+    <PackageReference Include="OrchardCore.Deployment.Core" />
     <PackageReference Include="OrchardCore.ContentManagement" />
     <PackageReference Include="OrchardCore.Title" />
+    <!-- For the one test that reaches past the graph service to corrupt the closure on purpose. -->
+    <PackageReference Include="YesSql.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />

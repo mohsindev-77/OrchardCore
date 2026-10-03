@@ -32,6 +32,9 @@ public sealed class DimensionRecordPartIndex : MapIndex
     /// <summary>Indexed so a picker can sort and filter by name without loading the items.</summary>
     public string NameEn { get; set; } = string.Empty;
 
+    /// <summary>Carried so a picker can show the Arabic name without loading the items either.</summary>
+    public string NameAr { get; set; } = string.Empty;
+
     public bool IsActive { get; set; }
 
     public int SortOrder { get; set; }
@@ -88,6 +91,7 @@ public sealed class DimensionRecordPartIndexProvider : IndexProvider<ContentItem
                     Code = part.Code,
                     DimensionTypeId = part.DimensionTypeId,
                     NameEn = part.NameEn,
+                    NameAr = part.NameAr,
                     IsActive = part.IsActive,
                     SortOrder = part.SortOrder,
                     EffectiveFrom = EffectiveDates.ToColumn(part.EffectiveFrom),

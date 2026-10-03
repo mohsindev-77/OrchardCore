@@ -1,0 +1,1004 @@
+using Microsoft.Extensions.Localization;
+using WorkMate.Core;
+using WorkMate.Dimensions.Indexes;
+using WorkMate.Dimensions.Services;
+using YesSql;
+using YesSql.Services;
+
+namespace WorkMate.Dimensions.Internal.Graph;
+
+/// <inheritdoc />
+/// <remarks>
+/// Internal, like the tables it owns. Only the interface is public.
+/// </remarks>
+internal sealed class DimensionGraphService : IDimensionGraphService
+{
+    private readonly ISession _session;
+    private readonly IStructureService _structureService;
+    private readonly IDimensionAuthorisation _authorisation;
+    private readonly IStringLocalizer S;
+
+    public DimensionGraphService(
+        ISession session,
+        IStructureService structureService,
+        IDimensionAuthorisation authorisation,
+        IStringLocalizer<DimensionGraphService> stringLocalizer)
+    {
+        _session = session;
+        _structureService = structureService;
+        _authorisation = authorisation;
+        S = stringLocalizer;
+    }
+
+    // ---- resolve ----------------------------------------------------------------------
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetAncestorsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.DescendantId == recordId &&
+                index.Depth > 0 &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .OrderBy(index => index.Depth)
+            .ListAsync(cancellationToken);
+
+        return await HydrateAsync(rows.Select(row => (row.AncestorId, row.Depth)), cancellationToken);
+    }
+
+    public async Task<Page<DimensionNodeRef>> GetDescendantsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        // Depth > 0 excludes the self pair: "descendants" never includes the node itself, and a
+        // caller that wants it says so by adding it.
+        var total = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId == recordId &&
+                index.Depth > 0 &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .CountAsync(cancellationToken);
+
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId == recordId &&
+                index.Depth > 0 &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .OrderBy(index => index.Depth)
+            .ThenBy(index => index.DescendantId)
+            .Skip(skip)
+            .Take(take)
+            .ListAsync(cancellationToken);
+
+        var items = await HydrateAsync(rows.Select(row => (row.DescendantId, row.Depth)), cancellationToken);
+
+        return new Page<DimensionNodeRef>(items, total, skip, take);
+    }
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetChildrenAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId == recordId &&
+                index.Depth == 1 &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        var children = await HydrateAsync(rows.Select(row => (row.DescendantId, row.Depth)), cancellationToken);
+
+        return [.. children.OrderBy(child => child.SortOrder).ThenBy(child => child.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<bool> IsUnderAsync(
+        string structureId,
+        string recordId,
+        string ancestorId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        // One row lookup, as architecture section 4 promises.
+        return await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId == ancestorId &&
+                index.DescendantId == recordId &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .CountAsync(cancellationToken) > 0;
+    }
+
+    public async Task<int?> GetDepthAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        var deepest = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.DescendantId == recordId &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .OrderByDescending(index => index.Depth)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return deepest?.Depth;
+    }
+
+    // ---- maintenance ------------------------------------------------------------------
+
+    public async Task EnsureSelfPairsAsync(
+        string recordId,
+        string dimensionTypeId,
+        EffectiveRange effectiveRange,
+        CancellationToken cancellationToken = default)
+    {
+        foreach (var structure in await StructuresWithLevelAsync(dimensionTypeId, cancellationToken))
+        {
+            await RecomputeSubtreeAsync(structure.StructureId, recordId, effectiveRange, cancellationToken);
+        }
+    }
+
+    public async Task OnStructureLevelsChangedAsync(
+        string structureId,
+        IReadOnlyList<string> addedDimensionTypeIds,
+        IReadOnlyList<string> removedDimensionTypeIds,
+        DateOnly effectiveDate,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(addedDimensionTypeIds);
+        ArgumentNullException.ThrowIfNull(removedDimensionTypeIds);
+
+        // A level gained is retrospective: the records of that type already exist and become
+        // part of this axis the moment the level is declared. Without self pairs they would be
+        // invisible on an axis they belong to, with nothing to say why.
+        foreach (var dimensionTypeId in addedDimensionTypeIds)
+        {
+            foreach (var record in await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+            {
+                await RecomputeSubtreeAsync(structureId, record.RecordId, record.EffectiveRange, cancellationToken);
+            }
+        }
+
+        // A level lost is not a deletion. The records stop being on this axis from the effective
+        // date, and everything before it keeps resolving.
+        var lastDayOnAxis = effectiveDate.AddDays(-1);
+
+        foreach (var dimensionTypeId in removedDimensionTypeIds)
+        {
+            foreach (var record in await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+            {
+                // A link document is created when there is none, rather than skipped. A root of
+                // the departing type has never been moved and so has no links at all, but it is
+                // still on the axis and its self pair still has to be capped — otherwise the
+                // one kind of record that leaves without trace is the one at the top.
+                var link = await LoadLinkAsync(structureId, record.RecordId, cancellationToken)
+                    ?? new DimensionLinkDocument { StructureId = structureId, RecordId = record.RecordId };
+
+                link.OnAxisUntil = lastDayOnAxis;
+                link.Parents = [.. CloseAt(link.Parents, lastDayOnAxis)];
+
+                await _session.SaveCheckedAsync(link, cancellationToken);
+
+                // The node's own rows and everything hanging off it: a child of a departing node
+                // loses an ancestor on that date too.
+                await RecomputeSubtreeAsync(structureId, record.RecordId, record.EffectiveRange, cancellationToken);
+            }
+        }
+    }
+
+    public async Task<DimensionResult<int>> MoveAsync(
+        string structureId,
+        string recordId,
+        string? newParentId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.MoveDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<int>();
+        }
+
+        if (string.Equals(recordId, newParentId, StringComparison.Ordinal))
+        {
+            return DimensionResult.Failed<int>(new DimensionError(
+                DimensionRule.Cycle,
+                recordId,
+                S["A record cannot be its own parent."]));
+        }
+
+        if (newParentId is not null)
+        {
+            // Across every date, not only today. A move that creates a cycle at any point in
+            // time is refused, because a cycle anywhere in the history makes ancestor
+            // resolution non-terminating for that date — and the date it breaks on is one
+            // nobody will be looking at when they make the change.
+            var wouldCycle = await _session
+                .QueryIndex<DimensionClosureIndex>(index =>
+                    index.StructureId == structureId &&
+                    index.AncestorId == recordId &&
+                    index.DescendantId == newParentId)
+                .CountAsync(cancellationToken) > 0;
+
+            if (wouldCycle)
+            {
+                return DimensionResult.Failed<int>(new DimensionError(
+                    DimensionRule.Cycle,
+                    newParentId,
+                    S["'{0}' is at or below '{1}' at some point in time, so moving '{1}' under it would create a cycle.",
+                        newParentId,
+                        recordId]));
+            }
+        }
+
+        var selfRange = await SelfRangeAsync(recordId, cancellationToken);
+        var link = await LoadLinkAsync(structureId, recordId, cancellationToken)
+            ?? new DimensionLinkDocument { StructureId = structureId, RecordId = recordId };
+
+        link.Parents = [.. InsertLink(link.Parents, newParentId, effectiveFrom)];
+
+        await _session.SaveCheckedAsync(link, cancellationToken);
+
+        var touched = await RecomputeSubtreeAsync(structureId, recordId, selfRange, cancellationToken);
+
+        return DimensionResult.Success(touched);
+    }
+
+    public async Task RemoveAsync(string recordId, CancellationToken cancellationToken = default)
+    {
+        foreach (var structure in await _structureService.ListAsync(cancellationToken))
+        {
+            var link = await LoadLinkAsync(structure.StructureId, recordId, cancellationToken);
+            var closure = await LoadClosureAsync(structure.StructureId, recordId, cancellationToken);
+
+            if (link is null && closure is null)
+            {
+                continue;
+            }
+
+            // The children first, while the node's own rows still describe where they were.
+            var children = await ChildIdsAsync(structure.StructureId, recordId, cancellationToken);
+
+            if (link is not null)
+            {
+                _session.Delete(link);
+            }
+
+            if (closure is not null)
+            {
+                _session.Delete(closure);
+            }
+
+            foreach (var child in children)
+            {
+                var childLink = await LoadLinkAsync(structure.StructureId, child, cancellationToken);
+
+                if (childLink is not null)
+                {
+                    childLink.Parents =
+                    [
+                        .. childLink.Parents.Where(parent =>
+                            !string.Equals(parent.ParentRecordId, recordId, StringComparison.Ordinal)),
+                    ];
+
+                    await _session.SaveCheckedAsync(childLink, cancellationToken);
+                }
+
+                await RecomputeSubtreeAsync(
+                    structure.StructureId,
+                    child,
+                    await SelfRangeAsync(child, cancellationToken),
+                    cancellationToken);
+            }
+        }
+    }
+
+    public async Task<int> RebuildAsync(string structureId, CancellationToken cancellationToken = default)
+    {
+        var nodes = await NodesOnAsync(structureId, cancellationToken);
+
+        var cache = new Dictionary<string, IReadOnlyList<ClosureAncestor>>(StringComparer.Ordinal);
+        var written = 0;
+
+        foreach (var node in nodes)
+        {
+            var ancestors = await ComputeAncestorsAsync(
+                structureId,
+                node.RecordId,
+                cache,
+                new HashSet<string>(StringComparer.Ordinal),
+                cancellationToken);
+
+            await WriteClosureAsync(structureId, node.RecordId, ancestors, cancellationToken);
+            written++;
+        }
+
+        return written;
+    }
+
+    public async Task<ClosureVerificationReport> VerifyAsync(
+        string structureId,
+        IReadOnlyList<DateOnly>? asAtDates = null,
+        CancellationToken cancellationToken = default)
+    {
+        var dates = asAtDates is { Count: > 0 }
+            ? [.. asAtDates.Distinct().OrderBy(date => date)]
+            : await InterestingDatesAsync(structureId, cancellationToken);
+
+        var links = await AllLinksAsync(structureId, cancellationToken);
+        var closures = await AllClosuresAsync(structureId, cancellationToken);
+        var nodes = await NodesOnAsync(structureId, cancellationToken);
+        var divergences = new List<ClosureDivergence>();
+
+        foreach (var date in dates)
+        {
+            // What the links say, walked from scratch. This is the slow, obviously-correct
+            // computation that the index exists to avoid — which is exactly why it is the right
+            // thing to check the index against.
+            var expected = ExpectedPairsOn(nodes, links, date);
+
+            var actual = closures
+                .SelectMany(closure => closure.Ancestors
+                    .Where(ancestor => ancestor.Range.Contains(date))
+                    .Select(ancestor => (Pair: (ancestor.AncestorId, closure.DescendantId), ancestor.Depth)))
+                .ToDictionary(entry => entry.Pair, entry => entry.Depth);
+
+            foreach (var (pair, depth) in actual)
+            {
+                if (!expected.TryGetValue(pair, out var expectedDepth))
+                {
+                    divergences.Add(new ClosureDivergence(
+                        date, pair.Item1, pair.Item2, ClosureDivergenceKind.InClosureButNotInLinks, depth));
+                }
+                else if (expectedDepth != depth)
+                {
+                    divergences.Add(new ClosureDivergence(
+                        date, pair.Item1, pair.Item2, ClosureDivergenceKind.DepthDiffers, depth, expectedDepth));
+                }
+            }
+
+            foreach (var (pair, depth) in expected)
+            {
+                if (!actual.ContainsKey(pair))
+                {
+                    divergences.Add(new ClosureDivergence(
+                        date, pair.Item1, pair.Item2, ClosureDivergenceKind.InLinksButNotInClosure, null, depth));
+                }
+            }
+        }
+
+        return new ClosureVerificationReport(structureId, dates, divergences);
+    }
+
+    // ---- closure computation ----------------------------------------------------------
+
+    /// <summary>
+    /// Recomputes the closure for a node and everything below it, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Architecture section 4: a move touches "only the subtree, not the whole structure". The
+    /// walk is down child links from the moved node, which reaches exactly the nodes whose
+    /// ancestor chain can have changed — a node outside the subtree has the same parents it had
+    /// and the same ancestors above them.
+    /// </remarks>
+    /// <returns>How many closure documents were written.</returns>
+    private async Task<int> RecomputeSubtreeAsync(
+        string structureId,
+        string rootId,
+        EffectiveRange rootSelfRange,
+        CancellationToken cancellationToken)
+    {
+        var cache = new Dictionary<string, IReadOnlyList<ClosureAncestor>>(StringComparer.Ordinal);
+        var done = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<(string RecordId, EffectiveRange SelfRange)>();
+
+        queue.Enqueue((rootId, rootSelfRange));
+
+        var written = 0;
+
+        while (queue.Count > 0)
+        {
+            var (recordId, selfRange) = queue.Dequeue();
+
+            if (!done.Add(recordId))
+            {
+                continue;
+            }
+
+            cache.Remove(recordId);
+
+            var ancestors = await ComputeAncestorsAsync(
+                structureId,
+                recordId,
+                cache,
+                new HashSet<string>(StringComparer.Ordinal),
+                cancellationToken,
+                selfRange);
+
+            await WriteClosureAsync(structureId, recordId, ancestors, cancellationToken);
+            written++;
+
+            foreach (var child in await ChildIdsAsync(structureId, recordId, cancellationToken))
+            {
+                if (!done.Contains(child))
+                {
+                    queue.Enqueue((child, await SelfRangeAsync(child, cancellationToken)));
+                }
+            }
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// A node's ancestors, as the intersection of the link ranges along each path.
+    /// </summary>
+    /// <param name="visiting">
+    /// Guards against a cycle in the stored links. Moves are refused if they would create one,
+    /// so reaching this means the data is already corrupt — but a rebuild that never terminates
+    /// is a worse way to find out than a rebuild that stops.
+    /// </param>
+    private async Task<IReadOnlyList<ClosureAncestor>> ComputeAncestorsAsync(
+        string structureId,
+        string recordId,
+        Dictionary<string, IReadOnlyList<ClosureAncestor>> cache,
+        HashSet<string> visiting,
+        CancellationToken cancellationToken,
+        EffectiveRange? knownSelfRange = null)
+    {
+        if (cache.TryGetValue(recordId, out var cached))
+        {
+            return cached;
+        }
+
+        if (!visiting.Add(recordId))
+        {
+            return [];
+        }
+
+        var selfRange = knownSelfRange ?? await SelfRangeAsync(recordId, cancellationToken);
+        var link = await LoadLinkAsync(structureId, recordId, cancellationToken);
+
+        // A node whose type has been dropped from this axis is only on it up to that day.
+        if (link?.OnAxisUntil is { } until)
+        {
+            var capped = selfRange.Intersect(new EffectiveRange(DateOnly.MinValue, until));
+
+            if (capped is null)
+            {
+                visiting.Remove(recordId);
+                cache[recordId] = [];
+
+                return [];
+            }
+
+            selfRange = capped.Value;
+        }
+
+        var ancestors = new List<ClosureAncestor> { new(recordId, 0, selfRange) };
+
+        foreach (var parent in link?.Parents ?? [])
+        {
+            // The edge only exists while both the node and the link do.
+            var edge = selfRange.Intersect(parent.Range);
+
+            if (edge is null)
+            {
+                continue;
+            }
+
+            var above = await ComputeAncestorsAsync(
+                structureId, parent.ParentRecordId, cache, visiting, cancellationToken);
+
+            foreach (var ancestor in above)
+            {
+                // ... and the ancestor is only an ancestor while its own chain held.
+                var range = edge.Value.Intersect(ancestor.Range);
+
+                if (range is not null)
+                {
+                    ancestors.Add(new ClosureAncestor(ancestor.AncestorId, ancestor.Depth + 1, range.Value));
+                }
+            }
+        }
+
+        visiting.Remove(recordId);
+
+        var normalised = Normalise(ancestors);
+        cache[recordId] = normalised;
+
+        return normalised;
+    }
+
+    /// <summary>
+    /// Merges rows for the same ancestor at the same depth whose ranges touch or overlap, so
+    /// that two consecutive links to the same parent produce one row rather than two abutting
+    /// ones.
+    /// </summary>
+    /// <remarks>
+    /// Not cosmetic. Verification compares the index against a walk of the links, and a walk
+    /// produces one pair per date; leaving the index fragmented would make the two disagree in
+    /// shape while agreeing in meaning, and every such difference is noise a real divergence
+    /// could hide in.
+    /// </remarks>
+    private static IReadOnlyList<ClosureAncestor> Normalise(IEnumerable<ClosureAncestor> ancestors)
+    {
+        var merged = new List<ClosureAncestor>();
+
+        foreach (var group in ancestors
+            .Where(ancestor => !ancestor.Range.IsEmpty)
+            .GroupBy(ancestor => (ancestor.AncestorId, ancestor.Depth)))
+        {
+            ClosureAncestor? open = null;
+
+            foreach (var ancestor in group.OrderBy(entry => entry.Range.From))
+            {
+                if (open is null)
+                {
+                    open = ancestor;
+                    continue;
+                }
+
+                var touches = open.Range.To is null ||
+                    ancestor.Range.From <= open.Range.To.Value.AddDays(1);
+
+                if (!touches)
+                {
+                    merged.Add(open);
+                    open = ancestor;
+
+                    continue;
+                }
+
+                var to = open.Range.To is null || ancestor.Range.To is null
+                    ? (DateOnly?)null
+                    : (ancestor.Range.To > open.Range.To ? ancestor.Range.To : open.Range.To);
+
+                open = open with { Range = new EffectiveRange(open.Range.From, to) };
+            }
+
+            if (open is not null)
+            {
+                merged.Add(open);
+            }
+        }
+
+        return [.. merged.OrderBy(ancestor => ancestor.Depth).ThenBy(ancestor => ancestor.Range.From)];
+    }
+
+    /// <summary>
+    /// Places a new parent link from <paramref name="effectiveFrom"/>, closing whatever it
+    /// displaces and leaving later links alone.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as a substantive rename, and for the same reason: a backdated move
+    /// corrects one period of the history, it does not erase the periods after it. A move to
+    /// 1 March on a node that was already moved on 1 June leaves the June move standing and
+    /// occupies only March to May.
+    /// </remarks>
+    private static IEnumerable<ParentLink> InsertLink(
+        IReadOnlyList<ParentLink> existing,
+        string? newParentId,
+        DateOnly effectiveFrom)
+    {
+        var covering = existing.FirstOrDefault(link => link.Range.Contains(effectiveFrom));
+        var result = new List<ParentLink>();
+
+        foreach (var link in existing.OrderBy(link => link.Range.From))
+        {
+            if (link == covering)
+            {
+                // Keep the part of it that is before the move. Nothing is left of it when the
+                // move starts on the day the link did.
+                if (link.Range.From < effectiveFrom)
+                {
+                    result.Add(link with { Range = link.Range.EndingOn(effectiveFrom.AddDays(-1)) });
+                }
+
+                continue;
+            }
+
+            // Links wholly after the move are untouched; links wholly before it likewise.
+            result.Add(link);
+        }
+
+        if (newParentId is not null)
+        {
+            // The new link runs to wherever the one it displaced ran to, so it cannot swallow a
+            // later move. With nothing displaced, it runs until the next link starts.
+            var to = covering?.Range.To
+                ?? existing
+                    .Where(link => link.Range.From > effectiveFrom)
+                    .OrderBy(link => link.Range.From)
+                    .Select(link => (DateOnly?)link.Range.From.AddDays(-1))
+                    .FirstOrDefault();
+
+            result.Add(new ParentLink(newParentId, new EffectiveRange(effectiveFrom, to)));
+        }
+
+        return result.OrderBy(link => link.Range.From);
+    }
+
+    private static IEnumerable<ParentLink> CloseAt(IReadOnlyList<ParentLink> links, DateOnly lastDay) =>
+        links
+            .Where(link => link.Range.From <= lastDay)
+            .Select(link => link.Range.To is null || link.Range.To > lastDay
+                ? link with { Range = link.Range.EndingOn(lastDay) }
+                : link);
+
+    // ---- verification helpers ---------------------------------------------------------
+
+    /// <summary>
+    /// Every ancestor-descendant pair the links imply on one date, computed by walking up from
+    /// each node.
+    /// </summary>
+    /// <param name="nodes">
+    /// Every record whose dimension type is a level of this structure, with its effective
+    /// range. The node set comes from the records rather than from the link documents, because
+    /// a root that has never been moved has no link document at all and would otherwise be
+    /// reported as a divergence on every run — the index would be right and the check wrong.
+    /// </param>
+    private static Dictionary<(string, string), int> ExpectedPairsOn(
+        IReadOnlyList<DimensionNodeRef> nodes,
+        IReadOnlyList<DimensionLinkDocument> links,
+        DateOnly date)
+    {
+        var linkOf = links.ToDictionary(link => link.RecordId, link => link, StringComparer.Ordinal);
+
+        // A node is on the axis on this date if its record is effective then and its type has
+        // not been dropped from the structure.
+        var onAxis = nodes
+            .Where(node =>
+                node.EffectiveRange.Contains(date) &&
+                !(linkOf.TryGetValue(node.RecordId, out var link) &&
+                    link.OnAxisUntil is { } until &&
+                    date > until))
+            .Select(node => node.RecordId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var node in onAxis)
+        {
+            if (linkOf.TryGetValue(node, out var link) && link.ParentOn(date) is { } parent && onAxis.Contains(parent))
+            {
+                parentOf[node] = parent;
+            }
+        }
+
+        var pairs = new Dictionary<(string, string), int>();
+
+        foreach (var node in onAxis)
+        {
+            pairs[(node, node)] = 0;
+
+            var current = node;
+            var depth = 0;
+            var guard = new HashSet<string>(StringComparer.Ordinal) { node };
+
+            while (parentOf.TryGetValue(current, out var parent) && guard.Add(parent))
+            {
+                depth++;
+                pairs[(parent, node)] = depth;
+                current = parent;
+            }
+        }
+
+        return pairs;
+    }
+
+    /// <summary>
+    /// The dates worth comparing on: every day a link starts or ends, the day either side of
+    /// each, and today.
+    /// </summary>
+    /// <remarks>
+    /// Boundaries are where dated logic goes wrong, and an index is correct today far more
+    /// often than it is correct for last March. Checking only today would miss exactly the
+    /// drift that matters.
+    /// </remarks>
+    private async Task<IReadOnlyList<DateOnly>> InterestingDatesAsync(
+        string structureId,
+        CancellationToken cancellationToken)
+    {
+        var dates = new SortedSet<DateOnly> { await _authorisation.TodayAsync() };
+
+        foreach (var link in await AllLinksAsync(structureId, cancellationToken))
+        {
+            foreach (var parent in link.Parents)
+            {
+                Add(parent.Range.From);
+
+                if (parent.Range.To is { } to)
+                {
+                    Add(to);
+                }
+            }
+
+            if (link.OnAxisUntil is { } until)
+            {
+                Add(until);
+            }
+        }
+
+        return [.. dates];
+
+        void Add(DateOnly date)
+        {
+            dates.Add(date);
+
+            if (date > DateOnly.MinValue)
+            {
+                dates.Add(date.AddDays(-1));
+            }
+
+            if (date < EffectiveDates.OpenEndedDate)
+            {
+                dates.Add(date.AddDays(1));
+            }
+        }
+    }
+
+    // ---- storage ----------------------------------------------------------------------
+
+    private Task<DimensionLinkDocument?> LoadLinkAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken) =>
+        LoadOneAsync<DimensionLinkDocument, DimensionLinkIndex>(
+            index => index.StructureId == structureId && index.ChildId == recordId,
+            document => document.StructureId == structureId && document.RecordId == recordId,
+            cancellationToken);
+
+    private Task<DimensionClosureDocument?> LoadClosureAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken) =>
+        LoadOneAsync<DimensionClosureDocument, DimensionClosureIndex>(
+            index => index.StructureId == structureId && index.DescendantId == recordId,
+            document => document.StructureId == structureId && document.DescendantId == recordId,
+            cancellationToken);
+
+    /// <summary>
+    /// Loads the one document behind a set of index rows.
+    /// </summary>
+    /// <remarks>
+    /// A document maps to many index rows, so a query through the index returns the document
+    /// once per matching row. The in-memory predicate is belt and braces for that: it also
+    /// catches a document whose index rows are stale, which is the failure this whole layer
+    /// exists to make visible rather than silent.
+    /// </remarks>
+    private async Task<TDocument?> LoadOneAsync<TDocument, TIndex>(
+        System.Linq.Expressions.Expression<Func<TIndex, bool>> indexPredicate,
+        Func<TDocument, bool> documentPredicate,
+        CancellationToken cancellationToken)
+        where TDocument : class
+        where TIndex : class, YesSql.Indexes.IIndex
+    {
+        var documents = await _session
+            .Query<TDocument, TIndex>(indexPredicate)
+            .ListAsync(cancellationToken);
+
+        return documents.FirstOrDefault(documentPredicate);
+    }
+
+    private async Task WriteClosureAsync(
+        string structureId,
+        string recordId,
+        IReadOnlyList<ClosureAncestor> ancestors,
+        CancellationToken cancellationToken)
+    {
+        var document = await LoadClosureAsync(structureId, recordId, cancellationToken)
+            ?? new DimensionClosureDocument { StructureId = structureId, DescendantId = recordId };
+
+        document.Ancestors = ancestors;
+
+        await _session.SaveCheckedAsync(document, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<DimensionLinkDocument>> AllLinksAsync(
+        string structureId,
+        CancellationToken cancellationToken)
+    {
+        var documents = await _session
+            .Query<DimensionLinkDocument, DimensionLinkIndex>(index => index.StructureId == structureId)
+            .ListAsync(cancellationToken);
+
+        return [.. documents.Where(document => document.StructureId == structureId).DistinctBy(document => document.Id)];
+    }
+
+    private async Task<IReadOnlyList<DimensionClosureDocument>> AllClosuresAsync(
+        string structureId,
+        CancellationToken cancellationToken)
+    {
+        var documents = await _session
+            .Query<DimensionClosureDocument, DimensionClosureIndex>(index => index.StructureId == structureId)
+            .ListAsync(cancellationToken);
+
+        return [.. documents.Where(document => document.StructureId == structureId).DistinctBy(document => document.Id)];
+    }
+
+    private async Task<IReadOnlyList<string>> ChildIdsAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken)
+    {
+        // Every child the node has ever had on this axis, not only today's: a move changes the
+        // ancestor chain of every one of them, on the dates they were there.
+        var rows = await _session
+            .QueryIndex<DimensionLinkIndex>(index =>
+                index.StructureId == structureId && index.ParentId == recordId)
+            .ListAsync(cancellationToken);
+
+        return [.. rows.Select(row => row.ChildId).Distinct(StringComparer.Ordinal)];
+    }
+
+    private async Task<EffectiveRange> SelfRangeAsync(string recordId, CancellationToken cancellationToken)
+    {
+        var row = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId == recordId && index.Latest)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return row is null
+            // Defensive: a node with no record row should not exist. Treating it as always
+            // effective keeps a rebuild from silently dropping it, so verification reports the
+            // problem rather than the index quietly agreeing with its own gap.
+            ? new EffectiveRange(DateOnly.MinValue, null)
+            : new EffectiveRange(
+                EffectiveDates.FromColumn(row.EffectiveFrom),
+                EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive));
+    }
+
+    /// <summary>
+    /// Every record that belongs on this axis, now or in the past.
+    /// </summary>
+    /// <remarks>
+    /// Both the rebuild and the verification need the same set, and they must agree on it. A
+    /// rebuild that worked from one definition of "on this axis" and a verification that worked
+    /// from another would report divergences that are only disagreements between the two
+    /// commands.
+    ///
+    /// The set is the records of the current levels <em>plus</em> any record with a link
+    /// document on this structure. The second half is what covers a record whose dimension type
+    /// has since been dropped as a level: it is no longer on the axis today, but it was, and
+    /// its capped rows are correct history rather than drift.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionNodeRef>> NodesOnAsync(
+        string structureId,
+        CancellationToken cancellationToken)
+    {
+        var structure = await _structureService.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var nodes = new Dictionary<string, DimensionNodeRef>(StringComparer.Ordinal);
+
+        foreach (var level in structure.Levels)
+        {
+            foreach (var node in await RecordsOfTypeAsync(level.DimensionTypeId, cancellationToken))
+            {
+                nodes[node.RecordId] = node;
+            }
+        }
+
+        var departed = (await AllLinksAsync(structureId, cancellationToken))
+            .Select(link => link.RecordId)
+            .Where(recordId => !nodes.ContainsKey(recordId))
+            .ToArray();
+
+        if (departed.Length > 0)
+        {
+            var rows = await _session
+                .QueryIndex<DimensionRecordPartIndex>(index =>
+                    index.ContentItemId.IsIn(departed) && index.Latest)
+                .ListAsync(cancellationToken);
+
+            foreach (var row in rows)
+            {
+                nodes[row.ContentItemId] = ToNodeRef(row);
+            }
+        }
+
+        return [.. nodes.Values];
+    }
+
+    private async Task<IReadOnlyList<DimensionNodeRef>> RecordsOfTypeAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index =>
+                index.DimensionTypeId == dimensionTypeId && index.Latest)
+            .ListAsync(cancellationToken);
+
+        return [.. rows.Select(ToNodeRef)];
+    }
+
+    private async Task<IReadOnlyList<Models.StructureDocument>> StructuresWithLevelAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken)
+    {
+        var structures = await _structureService.ListAsync(cancellationToken);
+
+        return [.. structures.Where(structure => structure.OrdinalOf(dimensionTypeId) is not null)];
+    }
+
+    private async Task<IReadOnlyList<DimensionNodeRef>> HydrateAsync(
+        IEnumerable<(string RecordId, int Depth)> pairs,
+        CancellationToken cancellationToken)
+    {
+        var depths = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var (recordId, depth) in pairs)
+        {
+            // A node can appear at two depths on one date only if the data is inconsistent;
+            // showing the nearest is the least misleading answer.
+            if (!depths.TryGetValue(recordId, out var existing) || depth < existing)
+            {
+                depths[recordId] = depth;
+            }
+        }
+
+        if (depths.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = depths.Keys.ToArray();
+
+        var rows = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId.IsIn(ids) && index.Latest)
+            .ListAsync(cancellationToken);
+
+        return
+        [
+            .. rows
+                .Select(row => ToNodeRef(row) with { Depth = depths[row.ContentItemId] })
+                .OrderBy(node => node.Depth)
+                .ThenBy(node => node.SortOrder)
+                .ThenBy(node => node.NameEn, StringComparer.Ordinal),
+        ];
+    }
+
+    private static DimensionNodeRef ToNodeRef(DimensionRecordPartIndex row) => new(
+        row.ContentItemId,
+        row.Code,
+        row.NameEn,
+        row.NameAr,
+        row.DimensionTypeId,
+        new EffectiveRange(
+            EffectiveDates.FromColumn(row.EffectiveFrom),
+            EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
+        row.IsActive,
+        row.SortOrder);
+
+    private async Task<DateOnly> ResolveDateAsync(DateOnly? asAt) =>
+        asAt ?? await _authorisation.TodayAsync();
+}

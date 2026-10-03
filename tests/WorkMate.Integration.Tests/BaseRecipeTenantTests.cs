@@ -81,6 +81,26 @@ public sealed class BaseRecipeTenantTests
     }
 
     [Fact]
+    public async Task OnlyThePlatformAdministratorMayImportARecipe()
+    {
+        // The effective-permissions half of the same assertion in PermissionNameTests. A recipe
+        // step runs on the platform's own authority through ISystemOperation, which outranks the
+        // signed-in user, so Import is in practice a grant of everything a recipe step can do.
+        // It stays with the delivery team, and this checks what the tenant actually holds rather
+        // than what the recipe file says.
+        var import = OrchardCore.Deployment.DeploymentPermissions.Import.Name;
+
+        (await PermissionsHeldByAsync(PlatformRoles.PlatformAdministrator)).Should().Contain(import);
+
+        foreach (var role in PlatformRoles.All.Except([PlatformRoles.PlatformAdministrator]))
+        {
+            (await PermissionsHeldByAsync(role)).Should().NotContain(
+                import,
+                "{0} must not be able to import a recipe: the steps would run as the platform", role);
+        }
+    }
+
+    [Fact]
     public async Task TheTenantAdministratorCanStillPutPeopleIntoRoles() =>
         (await PermissionsHeldByAsync(PlatformRoles.TenantAdministrator))
             .Should().Contain(OrchardCore.Users.UsersPermissions.AssignRoleToUsers.Name);

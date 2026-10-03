@@ -59,30 +59,62 @@ flag — unplaced is derivable as *no link on a structure whose levels include
 its type, and its type is not at ordinal zero*. The organisation designer lists
 those in prompt 3.
 
-### Graph layer — not yet built
-`DimensionLinkIndex`, `DimensionClosureIndex`, `EmployeeAssignmentIndex` and the
-services over them: `IDimensionService`, `IDimensionGraphService`,
-`IEmployeeAssignmentService`. Storage is decided in ADR-0005.
+### Graph layer — built
+The three tables live in the internal namespace `Internal.Graph`, so nothing
+outside this module can reach them: the services are the only entry, which is
+what makes the storage replaceable and the tenant boundary testable in one
+place. Storage is decided in ADR-0005.
 
-Two obligations are already known and belong here rather than where they were
-raised, both agreed in review on 2 October 2026:
+- **`DimensionLinkDocument` / `DimensionLinkIndex`** — one dated parent edge per
+  row, one document per structure and record.
+- **`DimensionClosureDocument` / `DimensionClosureIndex`** — one dated
+  ancestor-descendant pair per row, including the self pair at depth zero. A
+  row's effective range is the **intersection** of the ranges of every link
+  along the path, which is what makes a historical descendant query one indexed
+  read rather than a walk of the link table.
+- **`EmployeeAssignmentDocument` / `EmployeeAssignmentIndex`** — dated
+  placements with allocation and primary flag, one document per employee and
+  structure, which is exactly the boundary the assignment rules are about.
+- **`IDimensionGraphService`** — ancestors, descendants, children, is-under,
+  depth; link and closure maintenance; rebuild; verify with a divergence
+  report. Cycles are refused across **every** date, not only today.
+- **`IDimensionService`** — create, update, retire, move, merge; the two
+  renames; resolve by id and by code. Merge computes its plan once and
+  `apply` only decides whether the writes follow, so the dry run cannot drift
+  from what happens.
+- **`IEmployeeAssignmentService`** — place, end, reallocate; effective
+  assignment on a date; employees under a node, paged.
 
-- **Self-closure rows follow the structure, not just the record.** They are
-  added when a record is created, and also when a structure gains a level whose
-  dimension type already has records — those records become part of that axis
-  retrospectively and need their self pairs. A level being removed is the
-  mirror case: the closure rows for records of that type on that structure have
-  to be closed, and any links through them resolved, not orphaned.
-- **The two rename operations** sit on `IDimensionService` over the record
-  layer's name history. A corrective rename may target **any** name row, not
-  only the open one: a typo can sit in a closed period and fixing it must
-  correct history rather than fork it. A substantive rename closes the current
-  row and opens a new one from the effective date.
+Two things worth knowing before changing any of it:
+
+- **Self pairs follow the structure, not only the record.** They are written
+  when a record is created, when a structure is created whose levels already
+  have records, and when a level is added. Removing a level **closes** the rows
+  rather than deleting them, so prior-period reporting still resolves.
+- **The subtree query uses a correlated sub-select**, not a list of descendant
+  ids. At the 5,000-record scale the acceptance criterion names, an id list
+  exceeds SQL Server's 2,100-parameter limit — it would pass on SQLite and
+  throw on a customer's database. `EmployeeAssignmentTenantTests` holds that
+  with more than 2,100 employees.
 
 ### Validation and caching — not yet built
-`IDimensionValidator` as the single validation service. The rule vocabulary it
-will grow into already exists as `DimensionRule` and `DimensionError`, and the
-configuration rules are enforced in the two services above until it lands.
+`IDimensionValidator` as the single validation service, and the per-tenant
+cache. The rule vocabulary it will grow into already exists as `DimensionRule`
+and `DimensionError`, and the rules implemented so far are enforced in the
+services that own them until it lands.
+
+**Record code uniqueness is the known gap, and it is deliberate.** It cannot be
+done reliably from a content validation handler: by the time validation runs,
+the content manager has already saved the item under validation, so its own
+index row is hard to tell apart from a real clash — and a record saved earlier
+in the same unit of work is not in the index at all, so an import creating five
+hundred rows in one batch would miss duplicates *within* the batch, which is
+where they actually happen. Several approaches were tried and none was sound
+enough to keep. The rule therefore moves to `IDimensionValidator`, which has to
+track codes seen within a batch regardless, because architecture section 6
+requires an import to validate row by row and report every failure. Until then
+uniqueness is enforced on **dimension types and structures**, where it works
+and is tested, but **not on records**.
 
 ## Depends on
 - WorkMate.Platform — the bilingual field, the platform roles, the settings
