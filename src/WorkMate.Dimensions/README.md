@@ -39,12 +39,19 @@ contracted in section 4 of `/docs/technical-specification.md`.
   that no such field appears.
 - **`DimensionRecordPartIndex`** — code lookup, type filtering and dated
   resolution without loading the content item.
-- **`DimensionRecordPartHandler`** — the chokepoint. The generated types are
-  creatable, so the admin screens, the API, GraphQL, a recipe and an import can
-  all produce a record; the handler is the only point all five share. It stamps
-  the dimension type on from the content type, and rejects a record with a
-  missing or malformed code, a code another record holds, a name in only one
+- **`DimensionRecordPartHandler` / `DimensionRecordHandler`** — the chokepoint.
+  The generated types are creatable, so the admin screens, the API, GraphQL, a
+  recipe and an import can all produce a record; these two are the only point
+  all five share. They stamp the dimension type on from the content type, and
+  reject a record with a missing or malformed code, a name in only one
   language, a missing effective date, or an end before its start.
+
+  The split between them is not arbitrary and is explained in full on
+  `DimensionRecordHandler`: a *part* handler's validation context carries its
+  own result object that the caller never sees, so a rule written there
+  compiles, runs and silently rejects nothing. The rules live on the part
+  handler; the item handler supplies the context that works, and repairs the
+  parts Orchard could not weld (ADR-0006).
 - **`DimensionRecordPartDisplayDriver`** and its views — edit and display. The
   editor offers no parent picker, for the reason above; placement is an
   explicit dated operation needing `MoveDimensionRecords`.
@@ -116,6 +123,29 @@ requires an import to validate row by row and report every failure. Until then
 uniqueness is enforced on **dimension types and structures**, where it works
 and is tested, but **not on records**.
 
+## Known limitation: simultaneous creation of the same code
+
+Even once `IDimensionValidator` enforces code uniqueness, two requests creating
+the same code at the same instant can both pass validation and both commit.
+Validation is a read followed by a write, and nothing in between stops a second
+writer.
+
+A unique database index would close it, and **there is no way to declare one**:
+YesSql 5.4.7's schema builder offers only `CreateIndex(name, columns)` with no
+unique variant, and no unique-constraint API anywhere. Raw DDL in a migration
+is permitted by rule 2, but the obvious target is wrong — `DimensionRecordPartIndex`
+has one row per content item *version*, which is why it carries `Latest` and
+`Published`, so a unique index on `Code` would reject the second version of
+every record. A unique constraint cannot express "unique among latest versions
+only".
+
+**The future option, if this ever needs closing:** a dedicated code reservation
+table — one document per code, naturally unique — with a unique index created
+by raw DDL in a migration. That is a schema decision with its own trade-offs
+and needs its own proposal; it was reviewed and deliberately not taken on
+3 October 2026, because the window is narrow and the consequence is a duplicate
+code rather than lost or corrupted data.
+
 ## Depends on
 - WorkMate.Platform — the bilingual field, the platform roles, the settings
 - WorkMate.Core — `BilingualText`, `EffectiveRange`, `Page<T>`
@@ -140,6 +170,11 @@ _None yet._ `dimension-types`, `structures`, `dimension-records` and
 - **ADR-0002** — the dimension engine rather than taxonomies.
 - **ADR-0005** — graph storage: documents behind the index tables, dated
   closure rows, and why every calendar date is stored as a midnight `DateTime`.
+  Its addendum settles what a backdated move does to the moves after it.
+- **ADR-0006** — write paths read content definitions with `Load…`, never
+  `Get…`, and why a record created in the same scope as its type needs its
+  parts welded by hand. **Read this before writing prompt 4's form designer**,
+  which creates content types at runtime the same way.
 
 ## Open questions this module is waiting on
 
