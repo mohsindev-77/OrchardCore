@@ -43,6 +43,14 @@ msgstr "تم تغيير تعريف المحتوى"
 msgid "A content type was created or altered on behalf of a dimension type."
 msgstr "تم إنشاء نوع محتوى أو تعديله نيابةً عن نوع بعد."
 
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "Move cancelled"
+msgstr "تم إلغاء النقل"
+
+#: WorkMate.Dimensions.Services.DimensionAuditTrailOptionsConfiguration
+msgid "A move was cancelled and the placement it displaced was restored."
+msgstr "تم إلغاء نقل، وأُعيد التعيين الذي حلّ محله."
+
 #: WorkMate.Dimensions.Services.DimensionTypeService
 msgid "A dimension type code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."
 msgstr "يجب أن يبدأ رمز نوع البعد بحرف، ويمكن أن يحتوي على حروف وأرقام وشرطات وشرطات سفلية، بحد أقصى خمسين حرفًا."
@@ -310,3 +318,7 @@ msgstr "يشير {0} تعيين موظف سابق إلى هذا السجل."
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 msgid "{0} record(s) sit under this one. Move or merge them first."
 msgstr "يوجد {0} سجل تحت هذا السجل. انقلها أو ادمجها أولًا."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionGraphService
+msgid "There is no move recorded for '{0}' effective on {1}."
+msgstr "لا يوجد نقل مسجَّل لـ '{0}' ساري من {1}."

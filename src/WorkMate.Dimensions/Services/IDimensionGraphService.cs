@@ -101,6 +101,37 @@ public interface IDimensionGraphService
         DateOnly effectiveFrom,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// What cancelling the move effective on <paramref name="effectiveFrom"/> would restore,
+    /// without doing it.
+    /// </summary>
+    /// <remarks>
+    /// Runs the same validation <see cref="CancelMoveAsync"/> does, against today's rules, so a
+    /// caller can show a refusal before anyone asks to apply it.
+    /// </remarks>
+    Task<DimensionResult<CancelledMoveRestoration>> PreviewCancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes the move effective on <paramref name="effectiveFrom"/> and restores the placement
+    /// it displaced to cover its period again, as if the move had never been recorded.
+    /// </summary>
+    /// <remarks>
+    /// Refused through the validator, against today's rules, if the restored placement would
+    /// break one — the old parent is no longer a permitted level, most often. Carries no audit
+    /// or reason: those belong to <c>IDimensionService.CancelMoveAsync</c>, the aggregate root's
+    /// wrapper, in the same way <c>IDimensionService.MoveAsync</c> wraps this layer's
+    /// <see cref="MoveAsync"/> without auditing it either.
+    /// </remarks>
+    Task<DimensionResult<CancelledMoveRestoration>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Removes a node's links and closure rows on every structure. Used by deletion.</summary>
     Task RemoveAsync(string recordId, CancellationToken cancellationToken = default);
 

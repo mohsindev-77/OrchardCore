@@ -32,4 +32,12 @@ public static class DimensionAuditTrail
     /// for schema drift should not have to read every dimension type edit to find it.
     /// </summary>
     public const string ContentDefinitionChanged = "ContentDefinitionChanged";
+
+    /// <summary>
+    /// A move was cancelled: the link it created was removed and the placement it displaced was
+    /// restored. Its own event, not folded into a general "record changed" entry, because a
+    /// cancellation is the one record-level operation this module requires a reason for and must
+    /// never perform silently.
+    /// </summary>
+    public const string MoveCancelled = "MoveCancelled";
 }

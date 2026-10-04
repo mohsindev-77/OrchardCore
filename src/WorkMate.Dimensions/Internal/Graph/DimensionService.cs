@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Localization;
+using OrchardCore.AuditTrail.Services;
+using OrchardCore.AuditTrail.Services.Models;
 using OrchardCore.ContentManagement;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
@@ -18,6 +20,7 @@ internal sealed class DimensionService : IDimensionService
     private readonly IEmployeeAssignmentService _assignments;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IDimensionValidator _validator;
+    private readonly IAuditTrailManager _auditTrailManager;
 
     /// <summary>
     /// The read side of this aggregate. <see cref="GetAsync"/> and <see cref="GetByCodeAsync"/>
@@ -36,6 +39,7 @@ internal sealed class DimensionService : IDimensionService
         IEmployeeAssignmentService assignments,
         IDimensionAuthorisation authorisation,
         IDimensionValidator validator,
+        IAuditTrailManager auditTrailManager,
         IDimensionRecordLookup recordLookup,
         IStringLocalizer<DimensionService> stringLocalizer)
     {
@@ -46,6 +50,7 @@ internal sealed class DimensionService : IDimensionService
         _assignments = assignments;
         _authorisation = authorisation;
         _validator = validator;
+        _auditTrailManager = auditTrailManager;
         _recordLookup = recordLookup;
         S = stringLocalizer;
     }
@@ -262,6 +267,103 @@ internal sealed class DimensionService : IDimensionService
 
         return DimensionResult.Success((await GetAsync(recordId, effectiveFrom, cancellationToken))!);
     }
+
+    public Task<DimensionResult<CancelMovePlan>> PlanCancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default) =>
+        CancelMoveAsync(structureId, recordId, effectiveFrom, reason: null, apply: false, cancellationToken);
+
+    public Task<DimensionResult<CancelMovePlan>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+
+        return CancelMoveAsync(structureId, recordId, effectiveFrom, reason, apply: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// The one implementation behind both the dry run and the cancellation, for the same reason
+    /// the private merge implementation below is one method with an <paramref name="apply"/>
+    /// flag rather than two that look alike: the plan is computed once, so the report a human
+    /// sees cannot drift from what applying it does.
+    /// </summary>
+    private async Task<DimensionResult<CancelMovePlan>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        string? reason,
+        bool apply,
+        CancellationToken cancellationToken)
+    {
+        var restoration = apply
+            ? await _graph.CancelMoveAsync(structureId, recordId, effectiveFrom, cancellationToken)
+            : await _graph.PreviewCancelMoveAsync(structureId, recordId, effectiveFrom, cancellationToken);
+
+        if (!restoration.IsAuthorised)
+        {
+            return DimensionResult.NotAuthorised<CancelMovePlan>();
+        }
+
+        if (!restoration.Succeeded)
+        {
+            return DimensionResult.Failed<CancelMovePlan>(restoration.Errors);
+        }
+
+        // Everyone under the node on the day the restored placement takes hold: their ancestor
+        // chain for this window is what changes, whether they sit at this node or below it.
+        var employees = await _assignments.GetEmployeesUnderAsync(
+            structureId,
+            recordId,
+            effectiveFrom,
+            includeDescendants: true,
+            skip: 0,
+            take: int.MaxValue,
+            cancellationToken);
+
+        var plan = new CancelMovePlan(
+            structureId,
+            recordId,
+            effectiveFrom,
+            restoration.Value!.CancelledParentId,
+            restoration.Value.RestoredParentId,
+            restoration.Value.RestoredUntil,
+            [.. employees.Items.Select(row => row.EmployeeId).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal)]);
+
+        if (apply)
+        {
+            await RecordMoveCancelledAsync(structureId, recordId, plan, reason!);
+        }
+
+        return DimensionResult.Success(plan, [.. restoration.Errors]);
+    }
+
+    private Task RecordMoveCancelledAsync(
+        string structureId,
+        string recordId,
+        CancelMovePlan plan,
+        string reason) =>
+        _auditTrailManager.RecordEventAsync(new AuditTrailContext<MoveCancelledAuditEvent>(
+            DimensionAuditTrail.MoveCancelled,
+            DimensionAuditTrail.Category,
+            recordId,
+            userId: null,
+            userName: null,
+            new MoveCancelledAuditEvent
+            {
+                StructureId = structureId,
+                RecordId = recordId,
+                EffectiveFrom = plan.EffectiveFrom,
+                CancelledParentId = plan.CancelledParentId,
+                RestoredParentId = plan.RestoredParentId,
+                RestoredUntil = plan.RestoredUntil,
+                Reason = reason,
+            }));
 
     public Task<DimensionResult<MergePlan>> PlanMergeAsync(
         string structureId,

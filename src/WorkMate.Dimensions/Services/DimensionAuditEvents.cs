@@ -46,6 +46,35 @@ public sealed class ContentDefinitionAuditEvent
     public ContentTypeDefinitionDiff? Diff { get; set; }
 }
 
+/// <summary>
+/// What a <see cref="DimensionAuditTrail.MoveCancelled"/> event carries.
+/// </summary>
+/// <remarks>
+/// Carries <see cref="Reason"/>, which no other event in this module does: cancelling a move is
+/// the one record-level operation the caller is required to justify, never a silent delete.
+/// </remarks>
+public sealed class MoveCancelledAuditEvent
+{
+    public string StructureId { get; set; } = string.Empty;
+
+    public string RecordId { get; set; } = string.Empty;
+
+    /// <summary>The date the cancelled move was effective from.</summary>
+    public DateOnly EffectiveFrom { get; set; }
+
+    /// <summary>The parent the cancelled move had placed the record under.</summary>
+    public string? CancelledParentId { get; set; }
+
+    /// <summary>The parent the record is restored to, or null when it is restored to being a root.</summary>
+    public string? RestoredParentId { get; set; }
+
+    /// <summary>How far the restored placement now runs, or null when it is open-ended.</summary>
+    public DateOnly? RestoredUntil { get; set; }
+
+    /// <summary>The mandatory, free-text justification the acting user gave for the cancellation.</summary>
+    public string Reason { get; set; } = string.Empty;
+}
+
 /// <summary>A dimension type's auditable state, flattened so the trail stays readable.</summary>
 public sealed class DimensionTypeState
 {

@@ -133,3 +133,42 @@ public sealed record MergePlan(
     /// </summary>
     public bool IsEmpty => ChildrenReparented.Count == 0 && EmployeesReassigned.Count == 0;
 }
+
+/// <summary>
+/// What cancelling a move would restore: the low-level link-document fact, before anything is
+/// written and before the record aggregate's richer <see cref="CancelMovePlan"/> is built around
+/// it.
+/// </summary>
+/// <param name="CancelledParentId">The parent the move being cancelled had placed the record under.</param>
+/// <param name="RestoredParentId">
+/// What the record reverts to: the parent of the placement the move displaced, or null when it
+/// reverts to being a root of this axis.
+/// </param>
+/// <param name="RestoredFrom">The date the cancelled move was effective from.</param>
+/// <param name="RestoredUntil">How far the restored placement now runs, or null when open-ended.</param>
+public sealed record CancelledMoveRestoration(
+    string? CancelledParentId,
+    string? RestoredParentId,
+    DateOnly RestoredFrom,
+    DateOnly? RestoredUntil);
+
+/// <summary>
+/// What cancelling a move would do, or what it did.
+/// </summary>
+/// <remarks>
+/// Built on the same dry-run-then-apply shape as <see cref="MergePlan"/>, for the same reason:
+/// cancelling a move is never a silent delete, and the report a human signs off and the reason
+/// they gave for it must describe exactly what happened, not an approximation of it.
+/// </remarks>
+public sealed record CancelMovePlan(
+    string StructureId,
+    string RecordId,
+    DateOnly EffectiveFrom,
+    string? CancelledParentId,
+    string? RestoredParentId,
+    DateOnly? RestoredUntil,
+    IReadOnlyList<string> EmployeesAffected)
+{
+    /// <summary>Whether anyone's assignment resolution would change as a result.</summary>
+    public bool IsEmpty => EmployeesAffected.Count == 0;
+}

@@ -88,10 +88,10 @@ place. Storage is decided in ADR-0005.
 - **`IDimensionGraphService`** — ancestors, descendants, children, is-under,
   depth; link and closure maintenance; rebuild; verify with a divergence
   report. Cycles are refused across **every** date, not only today.
-- **`IDimensionService`** — create, update, retire, move, merge; the two
-  renames; resolve by id and by code. Merge computes its plan once and
-  `apply` only decides whether the writes follow, so the dry run cannot drift
-  from what happens.
+- **`IDimensionService`** — create, update, retire, move, merge, cancel a move;
+  the two renames; resolve by id and by code. Merge and cancelling a move both
+  compute their plan once and `apply` only decides whether the writes follow,
+  so the dry run cannot drift from what happens.
 - **`IEmployeeAssignmentService`** — place, end, reallocate; effective
   assignment on a date; employees under a node, paged.
 
@@ -106,6 +106,25 @@ Two things worth knowing before changing any of it:
   exceeds SQL Server's 2,100-parameter limit — it would pass on SQLite and
   throw on a customer's database. `EmployeeAssignmentTenantTests` holds that
   with more than 2,100 employees.
+
+**Cancelling a move is not a delete.** A move is identified by the structure,
+the record and the date it was effective from — `DimensionLinkDocument.Parents`
+holds exactly one `ParentLink` starting then. Cancelling removes that link and
+extends whatever link it had displaced back to the date it used to end at,
+which `InsertLink` recorded on the displaced link's replacement the moment the
+move was made — so the previous placement needs no history kept elsewhere to
+be restored exactly. A move with nothing before it (the record's first-ever
+placement on that axis) restores to no parent at all: a root, exactly as it
+was. The restored placement is checked against **today's** rules through
+`IDimensionValidator.ValidatePlacementAsync`, not the rules as they stood on
+the original date, because a dimension type's or a structure's configuration
+carries no history of its own past state — the type may have stopped allowing
+self-nesting since, or the structure's levels may have changed. A blocking
+violation refuses the cancellation and leaves the timeline untouched.
+`IDimensionService.CancelMoveAsync` requires a reason and records it, with the
+acting user, against `MoveCancelled` in the audit trail — this operation is
+never a silent delete — and `PlanCancelMoveAsync` previews it exactly, the same
+dry-run-then-apply shape as merge.
 
 ### Validation — built
 **`IDimensionValidator` is the single validation service.** Every write path
@@ -218,9 +237,11 @@ code rather than lost or corrupted data.
   is recorded, which section 4 requires rather than suggests
 
 ## What it records in the audit trail
-Category `Dimension`, three mandatory events: `DimensionTypeChanged`,
+Category `Dimension`, four mandatory events: `DimensionTypeChanged`,
 `StructureChanged`, and `ContentDefinitionChanged` — the last carrying a diff of
-the generated content type, as section 4 requires.
+the generated content type, as section 4 requires — and `MoveCancelled`, the
+only one of the four that carries a free-text reason, because cancelling a
+move is the one record-level operation this module requires one for.
 
 ## Recipe steps
 _None yet._ `dimension-types`, `structures`, `dimension-records` and

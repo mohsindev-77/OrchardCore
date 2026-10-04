@@ -265,6 +265,93 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return DimensionResult.Success(touched, [.. errors]);
     }
 
+    public Task<DimensionResult<CancelledMoveRestoration>> PreviewCancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default) =>
+        CancelMoveAsync(structureId, recordId, effectiveFrom, apply: false, cancellationToken);
+
+    public Task<DimensionResult<CancelledMoveRestoration>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default) =>
+        CancelMoveAsync(structureId, recordId, effectiveFrom, apply: true, cancellationToken);
+
+    /// <summary>
+    /// The one implementation behind both the preview and the cancellation, for the same reason
+    /// <see cref="DimensionService"/>'s merge has one implementation behind its dry run and its
+    /// apply: the two must never be able to drift apart.
+    /// </summary>
+    private async Task<DimensionResult<CancelledMoveRestoration>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        bool apply,
+        CancellationToken cancellationToken)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.MoveDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<CancelledMoveRestoration>();
+        }
+
+        var link = await LoadLinkAsync(structureId, recordId, cancellationToken);
+        var cancelled = link?.Parents.FirstOrDefault(parent => parent.Range.From == effectiveFrom);
+
+        if (link is null || cancelled is null)
+        {
+            return DimensionResult.Failed<CancelledMoveRestoration>(new DimensionError(
+                DimensionRule.MoveNotFound,
+                recordId,
+                S["There is no move recorded for '{0}' effective on {1}.", recordId, effectiveFrom]));
+        }
+
+        // Whatever the move displaced: the link that ran up to the day before it, if any. Its
+        // range ending there — rather than wherever it used to run to — is exactly what the move
+        // being cancelled recorded when it was made, per InsertLink.
+        var previous = link.Parents.FirstOrDefault(parent =>
+            parent.Range.To is { } to && to == effectiveFrom.AddDays(-1));
+
+        var restoration = new CancelledMoveRestoration(
+            cancelled.ParentRecordId, previous?.ParentRecordId, effectiveFrom, cancelled.Range.To);
+
+        // Restoring a historical fact is still, today, a placement — and dimension types and
+        // structures carry no history of their own past configuration, so the only honest check
+        // is against the rules as they stand now.
+        var today = await _authorisation.TodayAsync();
+
+        var errors = await _validator.ValidatePlacementAsync(
+            structureId, recordId, restoration.RestoredParentId, today, cancellationToken);
+
+        if (errors.Any(error => !error.IsAdvisory))
+        {
+            return DimensionResult.Failed<CancelledMoveRestoration>(errors);
+        }
+
+        if (!apply)
+        {
+            return DimensionResult.Success(restoration, [.. errors]);
+        }
+
+        var remaining = link.Parents.Where(parent => parent.Range.From != effectiveFrom).ToList();
+
+        if (previous is not null)
+        {
+            var index = remaining.IndexOf(previous);
+            remaining[index] = previous with { Range = previous.Range with { To = cancelled.Range.To } };
+        }
+
+        link.Parents = remaining;
+
+        await _session.SaveCheckedAsync(link, cancellationToken);
+
+        var selfRange = await SelfRangeAsync(recordId, cancellationToken);
+        await RecomputeSubtreeAsync(structureId, recordId, selfRange, cancellationToken);
+
+        return DimensionResult.Success(restoration, [.. errors]);
+    }
+
     public async Task RemoveAsync(string recordId, CancellationToken cancellationToken = default)
     {
         foreach (var structure in await _structureLookup.ListAsync(cancellationToken))

@@ -68,6 +68,9 @@ public enum DimensionRule
     /// <summary>A merge was asked to fold a node into itself or into one of its own descendants.</summary>
     MergeTarget,
 
+    /// <summary>There is no move recorded on the date a cancel operation named.</summary>
+    MoveNotFound,
+
     // Assignment rules. Enforced by IEmployeeAssignmentService.
 
     /// <summary>Two effective ranges overlap for one employee on one structure.</summary>

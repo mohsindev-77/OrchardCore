@@ -76,6 +76,38 @@ public interface IDimensionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// What cancelling the move effective on <paramref name="effectiveFrom"/> would do, without
+    /// doing any of it: what the record would be restored under, and which employees' assignment
+    /// resolution would change.
+    /// </summary>
+    Task<DimensionResult<CancelMovePlan>> PlanCancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels the move effective on <paramref name="effectiveFrom"/>: the link it created is
+    /// removed and the placement it displaced is restored to cover its period again, as if the
+    /// move had never been recorded.
+    /// </summary>
+    /// <remarks>
+    /// Never a silent delete: <paramref name="reason"/> is mandatory and, together with the
+    /// acting user, is recorded against <see cref="DimensionAuditTrail.MoveCancelled"/>. Refused
+    /// through the validator if the restored placement would break a rule today — the old parent
+    /// retired or no longer a permitted level, most often — in which case nothing is written and
+    /// no event is recorded.
+    /// </remarks>
+    /// <param name="reason">Why the move is being cancelled. Required; never defaulted.</param>
+    /// <returns>What was actually restored, which must equal what <see cref="PlanCancelMoveAsync"/> said.</returns>
+    Task<DimensionResult<CancelMovePlan>> CancelMoveAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveFrom,
+        string reason,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// What a merge would do, without doing any of it.
     /// </summary>
     /// <remarks>
