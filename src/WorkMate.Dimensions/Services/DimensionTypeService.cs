@@ -5,8 +5,11 @@ using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Models;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using IIdGenerator = OrchardCore.Entities.IIdGenerator;
+using OrchardCore.Environment.Cache;
+using OrchardCore.Environment.Shell;
 using OrchardCore.Title.Models;
 using WorkMate.Core;
+using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using YesSql;
 
@@ -49,8 +52,28 @@ internal sealed class DimensionTypeService : IDimensionTypeService
     /// </summary>
     private readonly IDimensionTypeLookup _typeLookup;
 
+    /// <summary>
+    /// The same read side, uncached. <see cref="UpdateAsync"/> and <see cref="RetireAsync"/> load
+    /// the document they are about to mutate through this rather than <see cref="_typeLookup"/>,
+    /// because a write must mutate and save the exact object instance YesSql's session is already
+    /// tracking for that document's id — a different instance with the same id throws on save.
+    /// A cached read can easily hand back a different instance than whatever this session last
+    /// touched, so a write path cannot safely load through the cache. See
+    /// <see cref="Internal.Lookups.CachedDimensionTypeLookup"/>.
+    /// </summary>
+    private readonly DimensionTypeLookup _rawTypeLookup;
+
     private readonly IDimensionValidator _validator;
     private readonly IIdGenerator _idGenerator;
+
+    /// <summary>
+    /// Invalidates the cached dimension-type reads after every write. See
+    /// <see cref="CachedDimensionTypeLookup"/> for the mechanism and the module README's caching
+    /// section for why this, rather than reaching into <c>IMemoryCache</c> directly.
+    /// </summary>
+    private readonly ISignal _signal;
+
+    private readonly ShellSettings _shellSettings;
     private readonly IStringLocalizer S;
 
     public DimensionTypeService(
@@ -59,8 +82,11 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
         IDimensionTypeLookup typeLookup,
+        DimensionTypeLookup rawTypeLookup,
         IDimensionValidator validator,
         IIdGenerator idGenerator,
+        ISignal signal,
+        ShellSettings shellSettings,
         IStringLocalizer<DimensionTypeService> stringLocalizer)
     {
         _session = session;
@@ -68,10 +94,16 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         _auditTrailManager = auditTrailManager;
         _authorisation = authorisation;
         _typeLookup = typeLookup;
+        _rawTypeLookup = rawTypeLookup;
         _validator = validator;
         _idGenerator = idGenerator;
+        _signal = signal;
+        _shellSettings = shellSettings;
         S = stringLocalizer;
     }
+
+    private Task InvalidateCacheAsync() =>
+        _signal.SignalTokenAsync(DimensionCacheKeys.TypesSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<DimensionResult<DimensionTypeDocument>> CreateAsync(
@@ -139,6 +171,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
 
         await RecordTypeChangeAsync(document, before: null);
         await RecordContentDefinitionChangeAsync(document, diff);
+        await InvalidateCacheAsync();
 
         return DimensionResult.Success(document);
     }
@@ -160,7 +193,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.NotAuthorised<DimensionTypeDocument>();
         }
 
-        var document = await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
+        var document = await _rawTypeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
         if (document is null)
         {
@@ -238,6 +271,8 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             await RecordContentDefinitionChangeAsync(document, diff);
         }
 
+        await InvalidateCacheAsync();
+
         return DimensionResult.Success(document);
     }
 
@@ -254,7 +289,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.NotAuthorised<DimensionTypeDocument>();
         }
 
-        var document = await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
+        var document = await _rawTypeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
         if (document is null)
         {
@@ -278,6 +313,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
 
         await _session.SaveCheckedAsync(document, cancellationToken);
         await RecordTypeChangeAsync(document, before);
+        await InvalidateCacheAsync();
 
         return DimensionResult.Success(document);
     }

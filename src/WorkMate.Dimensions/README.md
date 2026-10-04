@@ -199,8 +199,68 @@ worth following in later modules rather than reaching for `Lazy<T>` again:
   .NET's container throws on a genuine cycle rather than silently accepting
   one.
 
-### Caching — not yet built
-The per-tenant cache keyed on tenant name plus structure id.
+### Caching — built
+
+**Dimension types and structures are cached; the graph and records are not.** Both are read
+constantly — every placement validated, every move, every screen that lists levels — and written
+rarely: a customer defines a handful of dimension types and structures once and barely touches
+them again. Dated graph queries (ancestors, descendants, employees under a node) are the opposite
+shape — one of the acceptance criteria is 5,000 records deep — and are deliberately left uncached
+until a performance test run against the seed generator shows a specific query needs it. Caching
+them speculatively now would be guessing at a cost nobody has measured yet, against a correctness
+risk (an under-invalidated dated query returning yesterday's shape) that is real and worth avoiding
+until there is a number to justify taking it on.
+
+- **`CachedDimensionTypeLookup`** and **`CachedStructureLookup`**, in `Internal/Lookups`, are the
+  only cached implementations — decorators in front of the plain, uncached `DimensionTypeLookup`
+  and `StructureLookup`, registered as `IDimensionTypeLookup` / `IStructureLookup` in their place.
+  Everything that resolves the interface — the validator, the graph service, both write services'
+  own read methods — gets caching for free, with no change at any of those call sites.
+- **Keys carry the tenant.** `IMemoryCache` in this host is a singleton shared across every tenant
+  in the process — Orchard Core does not re-register it per shell — so every key
+  `DimensionCacheKeys` builds is `WorkMate.Dimensions:{tenant}:...`. Two tenants whose dimension
+  types happen to share a code must never see each other's cached document.
+  `DimensionCacheKeysTests` pins the shape directly, with no shell involved.
+- **Invalidation is coarse and goes through `ISignal`, never `IMemoryCache.Remove`.** Every cached
+  entry for a tenant's dimension types is tagged with one change token,
+  `DimensionCacheKeys.TypesSignal(tenant)`; every entry for that tenant's structures is tagged with
+  another. `DimensionTypeService` calls `ISignal.SignalTokenAsync` on the types signal after every
+  write — create, update, retire — and `StructureService` does the same on the structures signal
+  after create and update, which is also what covers a structure's levels changing. One signal per
+  aggregate per tenant rather than one per id, because types and structures change rarely enough
+  that evicting all of a tenant's cached types on any one write to them costs nothing worth
+  avoiding, and it is far simpler to get right than tracking which cached entries one write could
+  have affected.
+- **This is also what specification section 11's open decision 6 — the distributed cache — reaches
+  this module for free, once it is taken.** `ISignal` is Orchard's own abstraction; verified
+  against the pinned version with the API probe, it resolves to `Signal` (local,
+  single-process, change-token based) today, and would resolve to
+  `OrchardCore.Caching.Distributed.DistributedSignal` instead the moment a distributed cache and
+  `IMessageBus` are configured for the host — `DistributedSignal` publishes the same
+  `SignalTokenAsync` call over the bus, so every server's cache invalidates together. Nothing in
+  this module would need to change for that to happen; it is a known limitation only in the sense
+  that, until decision 6 is taken, invalidation is single-process, which is a limitation of the
+  host's configuration, not of this module's code.
+- **Record and graph mutations do not touch either cache**, by design — nothing about a move,
+  merge, cancellation or rename changes a `DimensionTypeDocument` or a `StructureDocument`, and
+  wiring them to invalidate anyway would needlessly defeat caching the one kind of data that
+  actually benefits from it. `DimensionCachingTenantTests.RecordAndGraphMutationsDoNotDisturbTheCachedTypeOrStructureReads`
+  pins that explicitly, alongside one test per mutation that does invalidate something.
+- **A write path must never load the document it is about to mutate through the cached lookup.**
+  `DimensionTypeService.UpdateAsync` / `RetireAsync` and `StructureService.UpdateAsync` load
+  through the plain, uncached `DimensionTypeLookup` / `StructureLookup` instead, injected
+  alongside the cached interface for exactly this purpose. The reason is specific to YesSql, not a
+  general caching concern: a document already tracked by the current session's identity map must
+  be mutated through the exact object instance the session is tracking, and `ISession.SaveAsync`
+  throws "an object with the same identity is already part of this transaction" if a write hands it
+  a different instance carrying the same id — which a cached read can easily do, since the cache's
+  whole purpose is to hand the same instance to everyone who asks. This was found, not anticipated:
+  an early version cloned the cached document before returning it to avoid a different hazard (two
+  concurrent requests mutating the one shared cached instance before either saved) and broke
+  exactly this way in the integration suite. The fix keeps the cache's returned instance shared and
+  therefore read-only in practice — nothing that resolves it through `IDimensionTypeLookup` /
+  `IStructureLookup` ever mutates the result — and gives the two write services their own uncached
+  path for the one case that must.
 
 ## Known limitation: simultaneous creation of the same code
 
@@ -235,6 +295,9 @@ code rather than lost or corrupted data.
 - OrchardCore.ContentFields — the field types an attribute schema may declare
 - OrchardCore.AuditTrail — where every structure and content-definition change
   is recorded, which section 4 requires rather than suggests
+- `OrchardCore.Environment.Cache.ISignal` and `Microsoft.Extensions.Caching.Memory.IMemoryCache` —
+  the dimension-type and structure cache. Both resolve from packages already pulled in
+  transitively; neither needed adding to the `.csproj`.
 
 ## What it records in the audit trail
 Category `Dimension`, four mandatory events: `DimensionTypeChanged`,

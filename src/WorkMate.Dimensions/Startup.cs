@@ -35,8 +35,17 @@ public sealed class Startup : StartupBase
         // lets IDimensionValidator and the graph service depend on reads without depending on
         // the write services that in turn depend on the validator. See the module README for
         // the pattern.
-        services.AddScoped<IDimensionTypeLookup, DimensionTypeLookup>();
-        services.AddScoped<IStructureLookup, StructureLookup>();
+        //
+        // Dimension types and structures are read constantly and written rarely, so their
+        // lookups are registered under their concrete type as well as wrapped in a cache
+        // decorator — CachedDimensionTypeLookup / CachedStructureLookup — behind the public
+        // interface. Dated graph queries are not cached; see the module README's caching
+        // section for why.
+        services.AddMemoryCache();
+        services.AddScoped<DimensionTypeLookup>();
+        services.AddScoped<IDimensionTypeLookup, CachedDimensionTypeLookup>();
+        services.AddScoped<StructureLookup>();
+        services.AddScoped<IStructureLookup, CachedStructureLookup>();
         services.AddScoped<IDimensionRecordLookup, DimensionRecordLookup>();
 
         services.AddScoped<IDimensionTypeService, DimensionTypeService>();

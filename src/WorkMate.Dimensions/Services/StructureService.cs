@@ -2,7 +2,10 @@ using Microsoft.Extensions.Localization;
 using OrchardCore.AuditTrail.Services;
 using OrchardCore.AuditTrail.Services.Models;
 using IIdGenerator = OrchardCore.Entities.IIdGenerator;
+using OrchardCore.Environment.Cache;
+using OrchardCore.Environment.Shell;
 using WorkMate.Core;
+using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using YesSql;
 
@@ -26,6 +29,15 @@ internal sealed class StructureService : IStructureService
     private readonly IStructureLookup _structureLookup;
 
     /// <summary>
+    /// The same read side, uncached. <see cref="UpdateAsync"/> loads the document it is about to
+    /// mutate through this rather than <see cref="_structureLookup"/>, for the reason given on
+    /// <see cref="DimensionTypeService._rawTypeLookup"/>: a write must mutate and save the exact
+    /// instance YesSql's session is already tracking, and a cached read can hand back a different
+    /// one.
+    /// </summary>
+    private readonly StructureLookup _rawStructureLookup;
+
+    /// <summary>
     /// The graph service.
     /// </summary>
     /// <remarks>
@@ -46,29 +58,47 @@ internal sealed class StructureService : IStructureService
     private readonly IAuditTrailManager _auditTrailManager;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IIdGenerator _idGenerator;
+
+    /// <summary>
+    /// Invalidates the cached structure reads after every write. See
+    /// <see cref="CachedStructureLookup"/> for the mechanism and the module README's caching
+    /// section for why this, rather than reaching into <c>IMemoryCache</c> directly.
+    /// </summary>
+    private readonly ISignal _signal;
+
+    private readonly ShellSettings _shellSettings;
     private readonly IStringLocalizer S;
 
     public StructureService(
         ISession session,
         IDimensionTypeLookup typeLookup,
         IStructureLookup structureLookup,
+        StructureLookup rawStructureLookup,
         IDimensionGraphService graph,
         IDimensionValidator validator,
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
         IIdGenerator idGenerator,
+        ISignal signal,
+        ShellSettings shellSettings,
         IStringLocalizer<StructureService> stringLocalizer)
     {
         _session = session;
         _typeLookup = typeLookup;
         _structureLookup = structureLookup;
+        _rawStructureLookup = rawStructureLookup;
         _graph = graph;
         _validator = validator;
         _auditTrailManager = auditTrailManager;
         _authorisation = authorisation;
         _idGenerator = idGenerator;
+        _signal = signal;
+        _shellSettings = shellSettings;
         S = stringLocalizer;
     }
+
+    private Task InvalidateCacheAsync() =>
+        _signal.SignalTokenAsync(DimensionCacheKeys.StructuresSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<DimensionResult<StructureDocument>> CreateAsync(
@@ -129,6 +159,7 @@ internal sealed class StructureService : IStructureService
             cancellationToken);
 
         await RecordChangeAsync(document, before: null, cancellationToken);
+        await InvalidateCacheAsync();
 
         return DimensionResult.Success(document);
     }
@@ -152,7 +183,7 @@ internal sealed class StructureService : IStructureService
             return DimensionResult.NotAuthorised<StructureDocument>();
         }
 
-        var document = await GetAsync(structureId, cancellationToken);
+        var document = await _rawStructureLookup.GetAsync(structureId, cancellationToken);
 
         if (document is null)
         {
@@ -210,6 +241,7 @@ internal sealed class StructureService : IStructureService
         }
 
         await RecordChangeAsync(document, before, cancellationToken);
+        await InvalidateCacheAsync();
 
         return DimensionResult.Success(document);
     }
