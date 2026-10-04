@@ -342,6 +342,13 @@ _None yet._ `dimension-types`, `structures`, `dimension-records` and
   `Get…`, and why a record created in the same scope as its type needs its
   parts welded by hand. **Read this before writing prompt 4's form designer**,
   which creates content types at runtime the same way.
+- **ADR-0007** — a document's settable property must never default to a
+  shared static instance. `DimensionTypeDocument.Name` and
+  `StructureDocument.Name` both defaulted to `BilingualText.Empty`, so once a
+  tenant held a second dimension type every type's name resolved to
+  whichever had most recently been created. Fixed to a fresh instance each;
+  `SharedStaticDocumentDefaultTests` in the platform test suite guards every
+  module against the same mistake.
 
 ## Open questions this module is waiting on
 

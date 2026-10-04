@@ -38,7 +38,13 @@ public sealed class DimensionTypeDocument
     public string Code { get; set; } = string.Empty;
 
     /// <summary>The name shown to a user, in both platform languages.</summary>
-    public BilingualText Name { get; set; } = BilingualText.Empty;
+    /// <remarks>
+    /// Defaults to a fresh instance, never to <see cref="BilingualText.Empty"/>. That field is one
+    /// shared object; giving every new document the same reference is how two unrelated dimension
+    /// types ended up reading each other's name — see ADR-0007 and
+    /// <c>DocumentIdentityTenantTests</c> in the integration suite.
+    /// </remarks>
+    public BilingualText Name { get; set; } = new(string.Empty, string.Empty);
 
     /// <summary>
     /// True for the types WorkMate ships in a recipe and the customer may not delete. A

@@ -29,7 +29,11 @@ public sealed class StructureDocument
     public string Code { get; set; } = string.Empty;
 
     /// <summary>The name shown to a user, in both platform languages.</summary>
-    public BilingualText Name { get; set; } = BilingualText.Empty;
+    /// <remarks>
+    /// Defaults to a fresh instance, never to <see cref="BilingualText.Empty"/> — see the remark
+    /// on <c>DimensionTypeDocument.Name</c>, which had the same defect, and ADR-0007.
+    /// </remarks>
+    public BilingualText Name { get; set; } = new(string.Empty, string.Empty);
 
     /// <summary>The levels, root first. Ordinals are contiguous from zero.</summary>
     public IReadOnlyList<StructureLevel> Levels { get; set; } = [];
