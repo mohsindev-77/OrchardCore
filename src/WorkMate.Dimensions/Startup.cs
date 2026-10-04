@@ -12,6 +12,7 @@ using WorkMate.Dimensions.Drivers;
 using WorkMate.Dimensions.Handlers;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal.Graph;
+using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 
@@ -29,6 +30,15 @@ public sealed class Startup : StartupBase
         services.AddIndexProvider<StructureIndexProvider>();
 
         services.AddScoped<IDimensionAuthorisation, DimensionAuthorisation>();
+
+        // The read side of each aggregate: an ISession is their only dependency, which is what
+        // lets IDimensionValidator and the graph service depend on reads without depending on
+        // the write services that in turn depend on the validator. See the module README for
+        // the pattern.
+        services.AddScoped<IDimensionTypeLookup, DimensionTypeLookup>();
+        services.AddScoped<IStructureLookup, StructureLookup>();
+        services.AddScoped<IDimensionRecordLookup, DimensionRecordLookup>();
+
         services.AddScoped<IDimensionTypeService, DimensionTypeService>();
         services.AddScoped<IStructureService, StructureService>();
 
@@ -55,18 +65,9 @@ public sealed class Startup : StartupBase
         services.AddIndexProvider<EmployeeAssignmentIndexProvider>();
 
         services.AddScoped<IDimensionGraphService, DimensionGraphService>();
-
-        // StructureService announces a level change to the graph, and the graph reads structure
-        // configuration: a real cycle. Resolving one side on first use breaks it without
-        // letting either service reach into the other's tables. See the remark on
-        // StructureService for why the dependency genuinely runs both ways.
-        services.AddScoped(provider =>
-            new Lazy<IDimensionGraphService>(provider.GetRequiredService<IDimensionGraphService>));
         services.AddScoped<IEmployeeAssignmentService, EmployeeAssignmentService>();
         services.AddScoped<IDimensionService, DimensionService>();
         services.AddScoped<IDimensionValidator, DimensionValidator>();
-        services.AddScoped(provider =>
-            new Lazy<IDimensionValidator>(provider.GetRequiredService<IDimensionValidator>));
 
         // This module's audit trail category and its three events, so an administrator can find
         // and filter them alongside Orchard's own.

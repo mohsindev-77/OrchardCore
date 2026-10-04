@@ -11,27 +11,36 @@ namespace WorkMate.Dimensions.Internal.Graph;
 /// <remarks>
 /// Internal because it reads the graph tables to answer placement and deletion questions, and
 /// those tables are the module's own. Only the interface is public.
+///
+/// Depends on the three read-only lookups, never on <c>IDimensionTypeService</c>,
+/// <c>IStructureService</c> or <c>IDimensionService</c>. Those write services all depend on this
+/// validator; depending back on any of them would be the cycle the module README's lookup
+/// pattern exists to rule out. The lookups have no dependency on the validator or on each other,
+/// so nothing here can cycle.
 /// </remarks>
 internal sealed class DimensionValidator : IDimensionValidator
 {
     private readonly ISession _session;
-    private readonly IDimensionTypeService _dimensionTypeService;
-    private readonly IStructureService _structureService;
+    private readonly IDimensionTypeLookup _typeLookup;
+    private readonly IStructureLookup _structureLookup;
+    private readonly IDimensionRecordLookup _recordLookup;
     private readonly IEnumerable<IDimensionDeletionBlockerProvider> _blockerProviders;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IStringLocalizer S;
 
     public DimensionValidator(
         ISession session,
-        IDimensionTypeService dimensionTypeService,
-        IStructureService structureService,
+        IDimensionTypeLookup typeLookup,
+        IStructureLookup structureLookup,
+        IDimensionRecordLookup recordLookup,
         IEnumerable<IDimensionDeletionBlockerProvider> blockerProviders,
         IDimensionAuthorisation authorisation,
         IStringLocalizer<DimensionValidator> stringLocalizer)
     {
         _session = session;
-        _dimensionTypeService = dimensionTypeService;
-        _structureService = structureService;
+        _typeLookup = typeLookup;
+        _structureLookup = structureLookup;
+        _recordLookup = recordLookup;
         _blockerProviders = blockerProviders;
         _authorisation = authorisation;
         S = stringLocalizer;
@@ -70,7 +79,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             else
             {
                 var taken = batch?.TypeCodeSeen(code) == true ||
-                    await _session.QueryIndex<DimensionTypeIndex>(index => index.Code == code).CountAsync(cancellationToken) > 0;
+                    await _typeLookup.GetByCodeAsync(code, cancellationToken) is not null;
 
                 if (taken)
                 {
@@ -119,7 +128,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             else
             {
                 var taken = batch?.StructureCodeSeen(code) == true ||
-                    await _structureService.GetByCodeAsync(code, cancellationToken) is not null;
+                    await _structureLookup.GetByCodeAsync(code, cancellationToken) is not null;
 
                 if (taken)
                 {
@@ -139,7 +148,7 @@ internal sealed class DimensionValidator : IDimensionValidator
 
         if (isPrimaryOrganisation)
         {
-            var existing = await _structureService.GetPrimaryOrganisationAsync(cancellationToken);
+            var existing = await _structureLookup.GetPrimaryOrganisationAsync(cancellationToken);
 
             if (existing is not null && !string.Equals(existing.StructureId, structureId, StringComparison.Ordinal))
             {
@@ -289,13 +298,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             return true;
         }
 
-        var rows = await _session
-            .QueryIndex<DimensionRecordPartIndex>(index => index.Code == code)
-            .ListAsync(cancellationToken);
-
-        return rows.Any(row =>
-            !string.IsNullOrEmpty(row.ContentItemId) &&
-            !string.Equals(row.ContentItemId, recordId, StringComparison.Ordinal));
+        return await _recordLookup.CodeExistsAsync(code, recordId, cancellationToken);
     }
 
     // ---- placement --------------------------------------------------------------------
@@ -319,7 +322,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             return errors;
         }
 
-        var structure = await _structureService.GetAsync(structureId, cancellationToken);
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
 
         if (structure is null)
         {
@@ -436,8 +439,9 @@ internal sealed class DimensionValidator : IDimensionValidator
 
         if (string.Equals(child.DimensionTypeId, parent.DimensionTypeId, StringComparison.Ordinal))
         {
-            var type = await _dimensionTypeService.GetAsync(child.DimensionTypeId, DateOnly.MinValue, cancellationToken)
-                ?? await _dimensionTypeService.GetAsync(child.DimensionTypeId, asAt: null, cancellationToken);
+            // Undated: the lookup never filters by retirement, so there is no "as of which
+            // date" workaround needed here the way there was through IDimensionTypeService.
+            var type = await _typeLookup.GetAsync(child.DimensionTypeId, cancellationToken);
 
             if (type?.AllowsSelfNesting != true)
             {
@@ -733,28 +737,10 @@ internal sealed class DimensionValidator : IDimensionValidator
         string dimensionTypeId,
         CancellationToken cancellationToken) =>
         // Undated on purpose: a retired type still exists, and a rule about whether something
-        // was ever defined must not depend on today's date.
-        await _dimensionTypeService.GetAsync(dimensionTypeId, DateOnly.MinValue, cancellationToken)
-        ?? await _dimensionTypeService.GetAsync(dimensionTypeId, asAt: null, cancellationToken);
+        // was ever defined must not depend on today's date. The lookup is undated by design, so
+        // there is no "as of which date" workaround to write here.
+        await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
-    private async Task<DimensionNodeRef?> RecordAsync(string recordId, CancellationToken cancellationToken)
-    {
-        var row = await _session
-            .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId == recordId && index.Latest)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return row is null
-            ? null
-            : new DimensionNodeRef(
-                row.ContentItemId,
-                row.Code,
-                row.NameEn,
-                row.NameAr,
-                row.DimensionTypeId,
-                new EffectiveRange(
-                    EffectiveDates.FromColumn(row.EffectiveFrom),
-                    EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
-                row.IsActive,
-                row.SortOrder);
-    }
+    private async Task<DimensionNodeRef?> RecordAsync(string recordId, CancellationToken cancellationToken) =>
+        await _recordLookup.GetAsync(recordId, cancellationToken);
 }

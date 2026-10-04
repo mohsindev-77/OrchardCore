@@ -14,23 +14,28 @@ namespace WorkMate.Dimensions.Internal.Graph;
 internal sealed class DimensionGraphService : IDimensionGraphService
 {
     private readonly ISession _session;
-    private readonly IStructureService _structureService;
+
+    /// <summary>
+    /// The read side of the structure aggregate. This service only ever reads a structure's
+    /// levels; it never writes one, so it depends on the lookup rather than
+    /// <c>IStructureService</c>. That is also what keeps it from cycling back through
+    /// <c>StructureService</c>, which depends on this service to announce a level change.
+    /// </summary>
+    private readonly IStructureLookup _structureLookup;
+
     private readonly IDimensionAuthorisation _authorisation;
-
-    /// <summary>The validator, deferred: it reads the closure to answer the cycle rule.</summary>
-    private readonly Lazy<IDimensionValidator> _validator;
-
+    private readonly IDimensionValidator _validator;
     private readonly IStringLocalizer S;
 
     public DimensionGraphService(
         ISession session,
-        IStructureService structureService,
+        IStructureLookup structureLookup,
         IDimensionAuthorisation authorisation,
-        Lazy<IDimensionValidator> validator,
+        IDimensionValidator validator,
         IStringLocalizer<DimensionGraphService> stringLocalizer)
     {
         _session = session;
-        _structureService = structureService;
+        _structureLookup = structureLookup;
         _authorisation = authorisation;
         _validator = validator;
         S = stringLocalizer;
@@ -237,7 +242,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         // Cycles across every date, permitted level, level skipping and self-nesting all live
         // in the validator now, so a move made through the designer, the API or an import is
         // held to the same rules by the same code.
-        var errors = await _validator.Value.ValidatePlacementAsync(
+        var errors = await _validator.ValidatePlacementAsync(
             structureId, recordId, newParentId, effectiveFrom, cancellationToken);
 
         if (errors.Any(error => !error.IsAdvisory))
@@ -262,7 +267,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
     public async Task RemoveAsync(string recordId, CancellationToken cancellationToken = default)
     {
-        foreach (var structure in await _structureService.ListAsync(cancellationToken))
+        foreach (var structure in await _structureLookup.ListAsync(cancellationToken))
         {
             var link = await LoadLinkAsync(structure.StructureId, recordId, cancellationToken);
             var closure = await LoadClosureAsync(structure.StructureId, recordId, cancellationToken);
@@ -882,7 +887,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         string structureId,
         CancellationToken cancellationToken)
     {
-        var structure = await _structureService.GetAsync(structureId, cancellationToken)
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
             ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
 
         var nodes = new Dictionary<string, DimensionNodeRef>(StringComparer.Ordinal);
@@ -932,7 +937,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         string dimensionTypeId,
         CancellationToken cancellationToken)
     {
-        var structures = await _structureService.ListAsync(cancellationToken);
+        var structures = await _structureLookup.ListAsync(cancellationToken);
 
         return [.. structures.Where(structure => structure.OrdinalOf(dimensionTypeId) is not null)];
     }
@@ -974,17 +979,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         ];
     }
 
-    private static DimensionNodeRef ToNodeRef(DimensionRecordPartIndex row) => new(
-        row.ContentItemId,
-        row.Code,
-        row.NameEn,
-        row.NameAr,
-        row.DimensionTypeId,
-        new EffectiveRange(
-            EffectiveDates.FromColumn(row.EffectiveFrom),
-            EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
-        row.IsActive,
-        row.SortOrder);
+    private static DimensionNodeRef ToNodeRef(DimensionRecordPartIndex row) => DimensionNodeRef.FromIndex(row);
 
     private async Task<DateOnly> ResolveDateAsync(DateOnly? asAt) =>
         asAt ?? await _authorisation.TodayAsync();

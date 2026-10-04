@@ -7,7 +7,6 @@ using OrchardCore.ContentManagement.Metadata.Settings;
 using IIdGenerator = OrchardCore.Entities.IIdGenerator;
 using OrchardCore.Title.Models;
 using WorkMate.Core;
-using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Models;
 using YesSql;
 
@@ -42,25 +41,25 @@ public sealed class DimensionTypeService : IDimensionTypeService
     private readonly IContentDefinitionManager _contentDefinitionManager;
     private readonly IAuditTrailManager _auditTrailManager;
     private readonly IDimensionAuthorisation _authorisation;
-    private readonly IIdGenerator _idGenerator;
-    private readonly IStringLocalizer S;
 
     /// <summary>
-    /// The validator, resolved on first use. It needs to look types up to answer "does this
-    /// reference exist", so the dependency genuinely runs both ways; see the same note on
-    /// <see cref="StructureService"/> for why deferring beats letting either side read the
-    /// other's tables.
+    /// The read side of this aggregate. <see cref="GetAsync"/> and its siblings delegate to it
+    /// rather than querying the session themselves, so there is one implementation of "resolve a
+    /// dimension type" rather than two that could drift.
     /// </summary>
-    private readonly Lazy<IDimensionValidator> _validatorSource;
+    private readonly IDimensionTypeLookup _typeLookup;
 
-    private IDimensionValidator _validator => _validatorSource.Value;
+    private readonly IDimensionValidator _validator;
+    private readonly IIdGenerator _idGenerator;
+    private readonly IStringLocalizer S;
 
     public DimensionTypeService(
         ISession session,
         IContentDefinitionManager contentDefinitionManager,
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
-        Lazy<IDimensionValidator> validator,
+        IDimensionTypeLookup typeLookup,
+        IDimensionValidator validator,
         IIdGenerator idGenerator,
         IStringLocalizer<DimensionTypeService> stringLocalizer)
     {
@@ -68,7 +67,8 @@ public sealed class DimensionTypeService : IDimensionTypeService
         _contentDefinitionManager = contentDefinitionManager;
         _auditTrailManager = auditTrailManager;
         _authorisation = authorisation;
-        _validatorSource = validator;
+        _typeLookup = typeLookup;
+        _validator = validator;
         _idGenerator = idGenerator;
         S = stringLocalizer;
     }
@@ -160,7 +160,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.NotAuthorised<DimensionTypeDocument>();
         }
 
-        var document = await LoadAsync(dimensionTypeId, cancellationToken);
+        var document = await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
         if (document is null)
         {
@@ -254,7 +254,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.NotAuthorised<DimensionTypeDocument>();
         }
 
-        var document = await LoadAsync(dimensionTypeId, cancellationToken);
+        var document = await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
         if (document is null)
         {
@@ -290,7 +290,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var document = await LoadAsync(dimensionTypeId, cancellationToken);
+        var document = await _typeLookup.GetAsync(dimensionTypeId, cancellationToken);
 
         return await IsVisibleAsync(document, asAt) ? document : null;
     }
@@ -303,9 +303,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var document = await _session
-            .Query<DimensionTypeDocument, DimensionTypeIndex>(index => index.Code == code)
-            .FirstOrDefaultAsync(cancellationToken);
+        var document = await _typeLookup.GetByCodeAsync(code, cancellationToken);
 
         return await IsVisibleAsync(document, asAt) ? document : null;
     }
@@ -319,9 +317,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
 
         // Not dated. The handler that calls this needs to know whether a content item is a
         // dimension record at all, and a record of a retired type is still a dimension record.
-        return await _session
-            .Query<DimensionTypeDocument, DimensionTypeIndex>(index => index.ContentTypeName == contentTypeName)
-            .FirstOrDefaultAsync(cancellationToken);
+        return await _typeLookup.GetByContentTypeAsync(contentTypeName, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -332,14 +328,11 @@ public sealed class DimensionTypeService : IDimensionTypeService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var documents = await _session
-            .Query<DimensionTypeDocument, DimensionTypeIndex>()
-            .OrderBy(index => index.Code)
-            .ListAsync(cancellationToken);
+        var documents = await _typeLookup.ListAsync(cancellationToken);
 
         if (includeRetired)
         {
-            return [.. documents];
+            return documents;
         }
 
         var effective = asAt ?? await _authorisation.TodayAsync();
@@ -358,18 +351,6 @@ public sealed class DimensionTypeService : IDimensionTypeService
 
         return !document.IsRetiredOn(effective);
     }
-
-    private async Task<DimensionTypeDocument?> LoadAsync(
-        string dimensionTypeId,
-        CancellationToken cancellationToken) =>
-        await _session
-            .Query<DimensionTypeDocument, DimensionTypeIndex>(index => index.DimensionTypeId == dimensionTypeId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-    private async Task<bool> RetiredTypeWithCodeExistsAsync(string code, CancellationToken cancellationToken) =>
-        await _session
-            .QueryIndex<DimensionTypeIndex>(index => index.Code == code && index.RetiredOn != null)
-            .CountAsync(cancellationToken) > 0;
 
     /// <summary>
     /// Creates or brings into line the content type behind <paramref name="document"/>, and

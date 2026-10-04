@@ -18,6 +18,14 @@ internal sealed class DimensionService : IDimensionService
     private readonly IEmployeeAssignmentService _assignments;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IDimensionValidator _validator;
+
+    /// <summary>
+    /// The read side of this aggregate. <see cref="GetAsync"/> and <see cref="GetByCodeAsync"/>
+    /// delegate to it, so there is one implementation of "resolve a record" rather than two that
+    /// could drift from the one <see cref="IDimensionValidator"/> uses.
+    /// </summary>
+    private readonly IDimensionRecordLookup _recordLookup;
+
     private readonly IStringLocalizer S;
 
     public DimensionService(
@@ -28,6 +36,7 @@ internal sealed class DimensionService : IDimensionService
         IEmployeeAssignmentService assignments,
         IDimensionAuthorisation authorisation,
         IDimensionValidator validator,
+        IDimensionRecordLookup recordLookup,
         IStringLocalizer<DimensionService> stringLocalizer)
     {
         _session = session;
@@ -37,6 +46,7 @@ internal sealed class DimensionService : IDimensionService
         _assignments = assignments;
         _authorisation = authorisation;
         _validator = validator;
+        _recordLookup = recordLookup;
         S = stringLocalizer;
     }
 
@@ -363,11 +373,9 @@ internal sealed class DimensionService : IDimensionService
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default)
     {
-        var row = await _session
-            .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId == recordId && index.Latest)
-            .FirstOrDefaultAsync(cancellationToken);
+        var node = await _recordLookup.GetAsync(recordId, cancellationToken);
 
-        return await VisibleAsync(row, asAt);
+        return await VisibleAsync(node, asAt);
     }
 
     public async Task<DimensionNodeRef?> GetByCodeAsync(
@@ -375,11 +383,9 @@ internal sealed class DimensionService : IDimensionService
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default)
     {
-        var row = await _session
-            .QueryIndex<DimensionRecordPartIndex>(index => index.Code == code && index.Latest)
-            .FirstOrDefaultAsync(cancellationToken);
+        var node = await _recordLookup.GetByCodeAsync(code, cancellationToken);
 
-        return await VisibleAsync(row, asAt);
+        return await VisibleAsync(node, asAt);
     }
 
     public async Task<BilingualText?> GetNameAsync(
@@ -487,24 +493,16 @@ internal sealed class DimensionService : IDimensionService
 
     // ---- helpers ----------------------------------------------------------------------
 
-    private async Task<DimensionNodeRef?> VisibleAsync(DimensionRecordPartIndex? row, DateOnly? asAt)
+    private async Task<DimensionNodeRef?> VisibleAsync(DimensionNodeRef? node, DateOnly? asAt)
     {
-        if (row is null)
+        if (node is null)
         {
             return null;
         }
 
-        var range = new EffectiveRange(
-            EffectiveDates.FromColumn(row.EffectiveFrom),
-            EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive));
-
         var date = asAt ?? await _authorisation.TodayAsync();
 
-        return range.Contains(date)
-            ? new DimensionNodeRef(
-                row.ContentItemId, row.Code, row.NameEn, row.NameAr, row.DimensionTypeId,
-                range, row.IsActive, row.SortOrder)
-            : null;
+        return node.EffectiveRange.Contains(date) ? node : null;
     }
 
     private static DimensionNodeRef ToNodeRef(

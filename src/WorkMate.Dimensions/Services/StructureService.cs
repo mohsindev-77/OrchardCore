@@ -3,7 +3,6 @@ using OrchardCore.AuditTrail.Services;
 using OrchardCore.AuditTrail.Services.Models;
 using IIdGenerator = OrchardCore.Entities.IIdGenerator;
 using WorkMate.Core;
-using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Models;
 using YesSql;
 
@@ -13,32 +12,37 @@ namespace WorkMate.Dimensions.Services;
 public sealed class StructureService : IStructureService
 {
     private readonly ISession _session;
-    private readonly IDimensionTypeService _dimensionTypeService;
 
     /// <summary>
-    /// The graph service, resolved on first use rather than on construction.
+    /// The read side of the dimension-type aggregate. All this service ever needed from
+    /// dimension types was reads — resolving codes for the audit trail — so it depends on the
+    /// lookup rather than the full <c>IDimensionTypeService</c>.
+    /// </summary>
+    private readonly IDimensionTypeLookup _typeLookup;
+
+    /// <summary>
+    /// The read side of this aggregate. <see cref="GetAsync"/> and its siblings delegate to it.
+    /// </summary>
+    private readonly IStructureLookup _structureLookup;
+
+    /// <summary>
+    /// The graph service.
     /// </summary>
     /// <remarks>
-    /// There is a real dependency cycle here, and the laziness is how it is broken rather than
-    /// hidden. The graph service needs structure configuration — which dimension types are
-    /// levels of which axis — so it depends on this service. This service needs to tell the
-    /// graph when those levels change, because a level gained or lost changes the closure for
-    /// every record of that type.
+    /// This dependency used to be a real cycle — the graph needed structure configuration, which
+    /// it read through <c>IStructureService</c>, and this service needed to tell the graph when
+    /// levels changed — broken with <c>Lazy&lt;T&gt;</c> because resolving either side meant
+    /// resolving the other.
     ///
-    /// The alternative was to have the graph read the structure tables directly, which rule 9
-    /// forbids: one aggregate, one service, and a service that needs another aggregate injects
-    /// that aggregate's service. Deferring the resolution keeps the rule and costs one
-    /// indirection, and both services are scoped to the same shell scope so the instance is the
-    /// same one either way.
+    /// It no longer cycles. <see cref="IDimensionGraphService"/> now depends on
+    /// <see cref="IStructureLookup"/> for its reads, not on this service, so there is nothing for
+    /// this dependency to come back around through. See the module README for the pattern: a
+    /// write service that another aggregate only ever read from depends on that aggregate's
+    /// lookup, never the other way round.
     /// </remarks>
-    private readonly Lazy<IDimensionGraphService> _graph;
+    private readonly IDimensionGraphService _graph;
 
-    /// <summary>
-    /// The validator, deferred for the same reason as the graph: it looks structures up to
-    /// answer "does this reference exist", so the dependency runs both ways.
-    /// </summary>
-    private readonly Lazy<IDimensionValidator> _validator;
-
+    private readonly IDimensionValidator _validator;
     private readonly IAuditTrailManager _auditTrailManager;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IIdGenerator _idGenerator;
@@ -46,16 +50,18 @@ public sealed class StructureService : IStructureService
 
     public StructureService(
         ISession session,
-        IDimensionTypeService dimensionTypeService,
-        Lazy<IDimensionGraphService> graph,
-        Lazy<IDimensionValidator> validator,
+        IDimensionTypeLookup typeLookup,
+        IStructureLookup structureLookup,
+        IDimensionGraphService graph,
+        IDimensionValidator validator,
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
         IIdGenerator idGenerator,
         IStringLocalizer<StructureService> stringLocalizer)
     {
         _session = session;
-        _dimensionTypeService = dimensionTypeService;
+        _typeLookup = typeLookup;
+        _structureLookup = structureLookup;
         _graph = graph;
         _validator = validator;
         _auditTrailManager = auditTrailManager;
@@ -84,7 +90,7 @@ public sealed class StructureService : IStructureService
             return DimensionResult.NotAuthorised<StructureDocument>();
         }
 
-        var errors = await _validator.Value.ValidateStructureAsync(
+        var errors = await _validator.ValidateStructureAsync(
             structureId: null,
             code,
             name,
@@ -115,7 +121,7 @@ public sealed class StructureService : IStructureService
         // level types already exist, and they are on the axis the moment it is declared. A
         // customer adding a Location axis to a tenant that already has five hundred branches
         // expects to see five hundred branches on it, not an empty tree.
-        await _graph.Value.OnStructureLevelsChangedAsync(
+        await _graph.OnStructureLevelsChangedAsync(
             document.StructureId,
             levelDimensionTypeIds,
             [],
@@ -156,7 +162,7 @@ public sealed class StructureService : IStructureService
                 S["There is no structure with the id '{0}' in this tenant.", structureId]));
         }
 
-        var errors = await _validator.Value.ValidateStructureAsync(
+        var errors = await _validator.ValidateStructureAsync(
             structureId,
             document.Code,
             name,
@@ -195,7 +201,7 @@ public sealed class StructureService : IStructureService
 
         if (added.Count > 0 || removed.Count > 0)
         {
-            await _graph.Value.OnStructureLevelsChangedAsync(
+            await _graph.OnStructureLevelsChangedAsync(
                 structureId,
                 added,
                 removed,
@@ -215,9 +221,7 @@ public sealed class StructureService : IStructureService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await _session
-            .Query<StructureDocument, StructureIndex>(index => index.StructureId == structureId)
-            .FirstOrDefaultAsync(cancellationToken);
+        return await _structureLookup.GetAsync(structureId, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -225,9 +229,7 @@ public sealed class StructureService : IStructureService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await _session
-            .Query<StructureDocument, StructureIndex>(index => index.Code == code)
-            .FirstOrDefaultAsync(cancellationToken);
+        return await _structureLookup.GetByCodeAsync(code, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -235,9 +237,7 @@ public sealed class StructureService : IStructureService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await _session
-            .Query<StructureDocument, StructureIndex>(index => index.IsPrimaryOrganisation)
-            .FirstOrDefaultAsync(cancellationToken);
+        return await _structureLookup.GetPrimaryOrganisationAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -245,13 +245,7 @@ public sealed class StructureService : IStructureService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        return
-        [
-            .. await _session
-                .Query<StructureDocument, StructureIndex>()
-                .OrderBy(index => index.Code)
-                .ListAsync(cancellationToken),
-        ];
+        return await _structureLookup.ListAsync(cancellationToken);
     }
 
     /// <summary>
@@ -266,13 +260,9 @@ public sealed class StructureService : IStructureService
     private static IReadOnlyList<StructureLevel> ToLevels(IReadOnlyList<string> dimensionTypeIds) =>
         [.. dimensionTypeIds.Select((dimensionTypeId, ordinal) => new StructureLevel(ordinal, dimensionTypeId))];
 
-
     private async Task<IReadOnlyDictionary<string, string>> TypeCodesByIdAsync(CancellationToken cancellationToken)
     {
-        var types = await _dimensionTypeService.ListAsync(
-            asAt: null,
-            includeRetired: true,
-            cancellationToken);
+        var types = await _typeLookup.ListAsync(cancellationToken);
 
         return types.ToDictionary(type => type.DimensionTypeId, type => type.Code, StringComparer.Ordinal);
     }

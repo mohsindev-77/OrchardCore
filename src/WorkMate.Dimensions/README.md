@@ -19,6 +19,9 @@ contracted in section 4 of `/docs/technical-specification.md`.
   from the English name, the attribute schema's fields on a part named for the
   type, and the type creatable, listable, securable and not draftable.
 - **`IStructureService`** — defines axes, their ordered levels and their rules.
+- **`IDimensionTypeLookup` / `IStructureLookup` / `IDimensionRecordLookup`** —
+  the read side of each aggregate: does this reference exist, and what does it
+  look like. See **"The lookup pattern"** below.
 - **`EffectiveDates`** — the one place a calendar date crosses into an index
   column and back. See ADR-0005.
 - **`Permissions`** — the seven in specification section 4, checked in the
@@ -132,21 +135,53 @@ workflows and approval scopes are modules that do not exist yet; each will
 implement **`IDimensionDeletionBlockerProvider`** and register it, rather than
 this check quietly claiming to cover more than it does.
 
+### The lookup pattern
+
+Three services are, deliberately, nothing but reads: **`IDimensionTypeLookup`**,
+**`IStructureLookup`** and **`IDimensionRecordLookup`**. Each answers only "does
+this reference exist, and what does it look like" for its aggregate, each is
+implemented by a small internal class in `Internal/Lookups` whose only
+dependency is `ISession`, and each full write service (`DimensionTypeService`,
+`StructureService`, `DimensionService`) delegates its own read methods to the
+matching lookup rather than querying the session a second time.
+
+This is what keeps the module free of dependency cycles as it grows, and it is
+worth following in later modules rather than reaching for `Lazy<T>` again:
+
+- **The problem the pattern solves.** `IDimensionValidator` has to check that a
+  reference is real — a dimension type exists, a structure exists, a record
+  exists — so every write service depends on the validator to validate a write.
+  If the validator depended on those same write services to check references,
+  resolving any one of them would mean resolving the validator, which would
+  mean resolving it again: a cycle. The same shape appeared between
+  `StructureService` (which tells the graph when an axis's levels change) and
+  `DimensionGraphService` (which used to read structure configuration through
+  `IStructureService`, the very thing that depends on it).
+- **Why `Lazy<T>` was tried first, and why it was replaced.** Wrapping one side
+  of a cycle in `Lazy<T>` defers resolution past the moment the circular
+  constructor chain would fail, and it worked — but it is a workaround for the
+  cycle, not a removal of it, and every one of the four `Lazy<T>` injections
+  this module briefly carried existed only because something depended on a
+  full write service for reads it never needed.
+- **The fix.** Each aggregate's write service keeps its lookup interface
+  separate from its own full interface, and the implementation of that lookup
+  has no dependency on anything that could depend on it — not the validator,
+  not another aggregate's service, not even its own write service. A consumer
+  that only needs to ask "does this exist" takes the lookup; a consumer that
+  needs to create, change or retire takes the full service. `IDimensionValidator`
+  and `IDimensionGraphService` both take lookups exclusively. No `Lazy<T>`
+  remains anywhere in this module.
+- **When to reach for this.** If a new service needs to read another
+  aggregate's data and that aggregate's write service depends — even
+  indirectly — on something the new service will itself be depended on by,
+  give it a lookup rather than the full service. If you are not sure whether
+  that applies, resolving every service from a real DI container (as the
+  integration suite already does for this module) settles it immediately:
+  .NET's container throws on a genuine cycle rather than silently accepting
+  one.
+
 ### Caching — not yet built
 The per-tenant cache keyed on tenant name plus structure id.
-
-**Record code uniqueness is the known gap, and it is deliberate.** It cannot be
-done reliably from a content validation handler: by the time validation runs,
-the content manager has already saved the item under validation, so its own
-index row is hard to tell apart from a real clash — and a record saved earlier
-in the same unit of work is not in the index at all, so an import creating five
-hundred rows in one batch would miss duplicates *within* the batch, which is
-where they actually happen. Several approaches were tried and none was sound
-enough to keep. The rule therefore moves to `IDimensionValidator`, which has to
-track codes seen within a batch regardless, because architecture section 6
-requires an import to validate row by row and report every failure. Until then
-uniqueness is enforced on **dimension types and structures**, where it works
-and is tested, but **not on records**.
 
 ## Known limitation: simultaneous creation of the same code
 

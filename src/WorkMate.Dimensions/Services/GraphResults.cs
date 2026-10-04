@@ -1,4 +1,5 @@
 using WorkMate.Core;
+using WorkMate.Dimensions.Indexes;
 
 namespace WorkMate.Dimensions.Services;
 
@@ -33,6 +34,27 @@ public sealed record DimensionNodeRef(
         var preferred = wantsArabic ? NameAr : NameEn;
 
         return string.IsNullOrWhiteSpace(preferred) ? (wantsArabic ? NameEn : NameAr) : preferred;
+    }
+
+    /// <summary>
+    /// Builds one from its index row. The one place this mapping is written, so the graph
+    /// service's batch hydration and the record lookup's single-row reads cannot drift apart.
+    /// </summary>
+    public static DimensionNodeRef FromIndex(DimensionRecordPartIndex row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        return new DimensionNodeRef(
+            row.ContentItemId,
+            row.Code,
+            row.NameEn,
+            row.NameAr,
+            row.DimensionTypeId,
+            new EffectiveRange(
+                EffectiveDates.FromColumn(row.EffectiveFrom),
+                EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
+            row.IsActive,
+            row.SortOrder);
     }
 }
 
