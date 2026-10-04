@@ -258,6 +258,17 @@ _None yet._ `dimension-types`, `structures`, `dimension-records` and
   and records can be created in one scope — but with a real step in hand the
   answer is one assertion away, and `RecipeDescriptor.RequireNewScope` is the
   flag that controls it.
+- **This one is for the designer screen, not the recipe steps: warn, don't
+  silently accept, when a backdated move meets a later one.** The engine
+  records it correctly either way — `DimensionGraphService.InsertLink` splits
+  the period rather than overwriting the later move, per the addendum to
+  ADR-0005 — but a human entering a date months in the past, on a node moved
+  again since, is usually trying to correct history, not to partially replace
+  a decision they may not know exists. Show what the move will actually do
+  (the computed split) before it is committed, the same way merge and
+  cancelling a move already show a dry run; a designer that applies it with
+  no warning will look correct in every test and still surprise someone in
+  production.
 
 ## Decisions recorded
 - **ADR-0002** — the dimension engine rather than taxonomies.

@@ -115,3 +115,90 @@ index class whether a date column was converted correctly. `EffectiveDates`
 is therefore covered by a round-trip test over the boundary values — the
 sentinel, an early date, and the day either side of each — on every database
 provider the test suite can reach.
+
+## Addendum: backdated moves and the moves after them
+
+**Status:** accepted, decided by the project lead in Umair's absence —
+**pending Umair's review on his return**
+**Date:** 2026-10-04
+**Deciders:** Project lead (acting for Head of Technology)
+
+### Context
+
+Neither the specification nor the original decision above says what a move
+should do when its effective date falls inside a period a *later* move has
+already claimed — a transfer entered today, dated to take effect three months
+ago, on a node that was also moved forward of that date by something recorded
+since. This is not a hypothetical: HR corrections arrive late routinely, and
+the whole point of an effective-dated engine is that a late correction can
+still be dated correctly rather than from today.
+
+`DimensionGraphService.InsertLink`, written in prompt 2 session 1 before this
+question had a name, already had to pick a behaviour to exist at all. Three
+were on the table:
+
+1. **Split.** The backdated move claims only the period from its own date up
+   to the day before the next move already on record; the later move, and
+   everything after it, stands exactly as it was. This is what `InsertLink`
+   does today: `to` is computed as `covering?.Range.To ?? (next link's start
+   minus one day)`, which is precisely "stop at whatever was already there".
+2. **Overwrite.** The backdated move claims the parent from its date forward,
+   replacing every later move on the same node. The timeline afterwards shows
+   one placement, not the sequence that was actually recorded.
+3. **Refuse.** A move dated earlier than the node's latest recorded move is
+   rejected outright; the caller must cancel the later move first if the
+   backdated one is meant to supersede it.
+
+### Decision
+
+**Split, as already implemented, is confirmed as the intended behaviour.**
+
+Overwrite was rejected because it destroys a recorded fact without going
+through the one mechanism this module now has for destroying a recorded fact
+on purpose: cancelling a move, which is audited, requires a reason, and shows
+a dry run first. A backdated move that silently swallowed every later move
+would be a second, undocumented way to undo those moves — exactly the kind of
+side door rule 9's "never a silent delete" standard for cancellation exists to
+close, reached through an ordinary move rather than through cancel at all.
+
+Refuse was rejected because it conflates two questions that are independent in
+practice: whether the *date* being entered now is correct, and whether a
+*later, unrelated* decision about the same node should stand. An HR
+administrator entering March's transfer in June, on a node that was also
+moved again in May for a different reason, has done nothing wrong in either
+decision; refusing the March entry until the May one is cancelled would make
+every late correction depend on first discovering and touching a decision it
+has no quarrel with.
+
+Split is the only one of the three that lets both facts be true
+simultaneously: the node really was under one parent from March, and really
+was moved to another in May, and neither entry has to know about the other to
+be recorded correctly. It is also the one case where "undo this specific
+decision" already has a correct, narrow answer if the later move genuinely
+was the mistake: cancel it (this session's addition), which removes exactly
+that move and restores whatever it displaced — the same mechanics in reverse.
+
+### Consequences
+
+No code changes as a result of this addendum: `InsertLink` already implements
+split, and cancelling a move, added this session, is built on the same
+`ParentLink` range arithmetic and gives split the safety net it would
+otherwise lack — a documented, audited way to remove a later move if it turns
+out to have been the error, rather than letting a backdated entry do it
+silently.
+
+**Prompt 3's organisation designer must warn, not silently accept, when a
+backdated move meets a later one.** The engine will record it correctly
+either way, but a human entering a date three months in the past, on a node
+that has moved since, is the one case most likely to be a documented
+correction mistaken for a simple replacement — the screen that shows what the
+move will do (`InsertLink`'s computed range, in effect) is where that gets
+caught, not after the fact in a report. See the module README.
+
+This decision was taken by the project lead with Umair unavailable to weigh
+in, per the standing arrangement that a backdated-move question could not
+wait for his return. **Umair is to review this addendum when he is back**;
+until then it stands as accepted, not merely proposed, because `InsertLink`
+has been live since prompt 2 session 1 and treating the behaviour as
+undecided in the meantime would be worse than documenting the decision that
+was actually made.
