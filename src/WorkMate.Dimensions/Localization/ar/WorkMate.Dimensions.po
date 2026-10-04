@@ -308,6 +308,10 @@ msgid "'{0}' is not effective on {1}. The placement is allowed, but check the da
 msgstr "'{0}' غير ساري في {1}. التعيين مسموح به، لكن تحقق من التواريخ."
 
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' was retired on {1} and cannot take on a new placement from {2}."
+msgstr "تم إيقاف '{0}' في {1} ولا يمكنه قبول تعيين جديد اعتبارًا من {2}."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 msgid "{0} employee placement(s) are live at this record today."
 msgstr "يوجد {0} تعيين موظف نشط في هذا السجل اليوم."
 

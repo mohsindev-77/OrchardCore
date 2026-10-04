@@ -11,8 +11,11 @@ namespace WorkMate.Dimensions.Services;
 /// <see cref="IDimensionGraphService"/> depend on instead of <see cref="IStructureService"/>,
 /// so that neither of them cycles back through the write service that depends on them. See the
 /// module README for the pattern.
+///
+/// Internal: it bypasses permissions by design, which is what a validator or the graph service
+/// checking whether an axis exists needs. <see cref="IStructureService"/> is the public read path.
 /// </remarks>
-public interface IStructureLookup
+internal interface IStructureLookup
 {
     /// <summary>The axis with this id, or null.</summary>
     Task<StructureDocument?> GetAsync(string structureId, CancellationToken cancellationToken = default);

@@ -13,7 +13,7 @@ using YesSql;
 namespace WorkMate.Dimensions.Services;
 
 /// <inheritdoc />
-public sealed class DimensionTypeService : IDimensionTypeService
+internal sealed class DimensionTypeService : IDimensionTypeService
 {
     /// <summary>
     /// The part every generated dimension content type carries. Its definition is created by

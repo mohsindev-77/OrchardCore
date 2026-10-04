@@ -249,6 +249,28 @@ public sealed class DimensionValidatorTenantTests
             moved.Errors.Should().AllSatisfy(error => error.IsAdvisory.Should().BeTrue());
         });
 
+    [Fact]
+    public async Task ARetiredParentRefusesANewPlacementRatherThanWarn() =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            // Unlike a parent that has not started yet, a parent that has already closed is not
+            // a dating mistake a customer might mean: placing a child under it from here on would
+            // leave a live unit under a closed one with no end date.
+            var (structure, types) = await StrictAxisAsync(services, "val-retired", allowSkipLevel: true);
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+            var records = services.GetRequiredService<IDimensionService>();
+
+            var parent = await DimensionGraphScenario.RecordAsync(services, types.Division, "vr-parent", Opened);
+            var child = await DimensionGraphScenario.RecordAsync(services, types.Department, "vr-child", Opened);
+
+            (await records.RetireAsync(parent, new DateOnly(2025, 1, 1))).Succeeded.Should().BeTrue();
+
+            var refused = await graph.MoveAsync(structure, child, parent, new DateOnly(2025, 6, 1));
+
+            refused.Succeeded.Should().BeFalse();
+            refused.Errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.ParentRetired);
+        });
+
     // ---- deletion ---------------------------------------------------------------------
 
     [Fact]

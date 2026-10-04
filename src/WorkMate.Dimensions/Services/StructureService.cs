@@ -9,7 +9,7 @@ using YesSql;
 namespace WorkMate.Dimensions.Services;
 
 /// <inheritdoc />
-public sealed class StructureService : IStructureService
+internal sealed class StructureService : IStructureService
 {
     private readonly ISession _session;
 

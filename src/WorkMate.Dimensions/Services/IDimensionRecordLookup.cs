@@ -10,8 +10,12 @@ namespace WorkMate.Dimensions.Services;
 /// <see cref="IDimensionService"/>, and <see cref="IDimensionService"/>'s own read methods are
 /// built on it too, so there is one implementation of "resolve a record" rather than two that
 /// could drift. See the module README for the pattern.
+///
+/// Internal: it bypasses both permissions and effective-dating by design — every method here is
+/// undated, where <see cref="IDimensionService"/>'s public read path defaults to today and filters
+/// accordingly.
 /// </remarks>
-public interface IDimensionRecordLookup
+internal interface IDimensionRecordLookup
 {
     /// <summary>The record with this id, or null. Undated: present regardless of its effective range.</summary>
     Task<DimensionNodeRef?> GetAsync(string recordId, CancellationToken cancellationToken = default);

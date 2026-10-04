@@ -388,9 +388,22 @@ internal sealed class DimensionValidator : IDimensionValidator
 
         errors.AddRange(await ValidateLevelRulesAsync(structure, child, parent, cancellationToken));
 
-        // Advisory, never blocking: customers legitimately pre-build next year's structure, and
-        // refusing that would make the engine unusable for the one case it was designed for.
-        if (!parent.EffectiveRange.Contains(effectiveFrom))
+        // Not effective splits into two cases that look alike and are not. A parent that has not
+        // started yet is usually a customer pre-building next year's structure, which is legitimate
+        // and only worth a warning. A parent that has already been retired is different in kind:
+        // placing a child under it from here on would leave a live unit under a closed one with no
+        // end date, which is blocked rather than merely flagged.
+        if (parent.EffectiveRange.To is { } parentRetiredOn && effectiveFrom > parentRetiredOn)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.ParentRetired,
+                parent.Code,
+                S["'{0}' was retired on {1} and cannot take on a new placement from {2}.",
+                    parent.Code,
+                    parentRetiredOn,
+                    effectiveFrom]));
+        }
+        else if (effectiveFrom < parent.EffectiveRange.From)
         {
             errors.Add(new DimensionError(
                 DimensionRule.ParentNotEffectiveWhenChildIs,

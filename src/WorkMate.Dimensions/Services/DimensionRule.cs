@@ -71,6 +71,13 @@ public enum DimensionRule
     /// <summary>There is no move recorded on the date a cancel operation named.</summary>
     MoveNotFound,
 
+    /// <summary>
+    /// The parent was retired before the date a child is to be placed under it. Unlike
+    /// <see cref="ParentNotEffectiveWhenChildIs"/>, this is never a dating mistake worth only a
+    /// warning: it would leave a live unit under a closed one with no end date.
+    /// </summary>
+    ParentRetired,
+
     // Assignment rules. Enforced by IEmployeeAssignmentService.
 
     /// <summary>Two effective ranges overlap for one employee on one structure.</summary>

@@ -189,6 +189,30 @@ public sealed class DimensionCancelMoveTenantTests
         });
 
     [Fact]
+    public async Task ARestorationOntoANowRetiredParentIsRefused() =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var scenario = await BuildAsync(services, "cnl-retired");
+            var records = services.GetRequiredService<IDimensionService>();
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            // The old parent closes after the move but before the cancellation is attempted.
+            // Restoring the record under it would leave a live unit under a closed one with no
+            // end date, which is not a dating mistake worth only a warning.
+            (await records.RetireAsync(scenario.OldParent, new DateOnly(2025, 6, 1))).Succeeded.Should().BeTrue();
+
+            var refused = await records.CancelMoveAsync(
+                scenario.Structure, scenario.Record, MoveDay, "testing a restoration onto a retired parent");
+
+            refused.Succeeded.Should().BeFalse();
+            refused.Errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.ParentRetired);
+
+            // Refused means untouched: the record still resolves under the new parent today.
+            (await graph.IsUnderAsync(scenario.Structure, scenario.Record, scenario.NewParent, MoveDay))
+                .Should().BeTrue("a refused cancellation must not alter the timeline");
+        });
+
+    [Fact]
     public async Task ARestorationThatWouldBreakARuleTodayIsRefused() =>
         await _tenant.InTenantAsSystemAsync(async services =>
         {

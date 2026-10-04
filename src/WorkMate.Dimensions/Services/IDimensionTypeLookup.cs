@@ -22,8 +22,13 @@ namespace WorkMate.Dimensions.Services;
 /// type. A caller wanting "is it currently offered" applies that filter itself using
 /// <see cref="DimensionTypeDocument.RetiredOn"/> — <see cref="IDimensionTypeService"/>'s own
 /// read methods do exactly that on top of this lookup.
+///
+/// Internal: it bypasses both permissions and retirement by design, which is exactly what a
+/// validator checking whether a reference exists at all needs and exactly what nothing outside
+/// this module should be able to reach for. <see cref="IDimensionTypeService"/> is the public
+/// read path.
 /// </remarks>
-public interface IDimensionTypeLookup
+internal interface IDimensionTypeLookup
 {
     /// <summary>The type with this id, or null. Regardless of retirement.</summary>
     Task<DimensionTypeDocument?> GetAsync(string dimensionTypeId, CancellationToken cancellationToken = default);
