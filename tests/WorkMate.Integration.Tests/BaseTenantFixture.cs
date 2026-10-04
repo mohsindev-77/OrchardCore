@@ -147,10 +147,12 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
                 throw new InvalidOperationException($"Creating test user '{userName}' failed: {key}: {message}"));
         });
 
-        // A fresh client for sign-in, with auto-redirect on regardless of what the caller wants
-        // for the request that follows, so the login POST's own redirect to /Admin is followed
-        // and the cookie is confirmed working before this method hands the client back.
-        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        // Built with whatever redirect behaviour the caller asked for, because the same client
+        // signs in here and then makes the request the test actually wants to observe: a test
+        // checking for a 403/redirect on a forbidden screen needs AllowAutoRedirect: false for
+        // that request too, or it never sees the status code it is asserting on. A successful
+        // sign-in POST still redirects (302) either way; this client just does not follow it.
+        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = allowAutoRedirect });
         var page = await GetPageAsync(client, "/Login");
 
         var response = await client.PostAsync(
@@ -162,6 +164,7 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
                 ["LoginForm.Password"] = password,
             }));
 
+        // Found when this client does not follow redirects, OK when it does and landed on /Admin.
         if (response.StatusCode is not (HttpStatusCode.Found or HttpStatusCode.OK))
         {
             throw new InvalidOperationException(

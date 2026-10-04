@@ -26,6 +26,9 @@ public sealed class DimensionTypesAdminController : Controller
     private readonly IStringLocalizer S;
     private readonly IHtmlLocalizer H;
 
+    /// <summary>The view both Create and Edit render, named for the action whose file it is.</summary>
+    private const string EditorViewName = "Edit";
+
     public DimensionTypesAdminController(
         IDimensionTypeService dimensionTypeService,
         IDimensionAuthorisation authorisation,
@@ -64,7 +67,9 @@ public sealed class DimensionTypesAdminController : Controller
             return Forbid();
         }
 
-        return View(new DimensionTypeEditViewModel());
+        // Create and Edit share one view, EditorViewName: the editor looks identical either way
+        // bar the code field's editability, which the view itself decides from IsNew.
+        return View(EditorViewName, new DimensionTypeEditViewModel());
     }
 
     [HttpPost]
@@ -81,7 +86,7 @@ public sealed class DimensionTypesAdminController : Controller
 
         if (!ModelState.IsValid)
         {
-            return View(model);
+            return View(EditorViewName, model);
         }
 
         var result = await _dimensionTypeService.CreateAsync(
@@ -99,7 +104,7 @@ public sealed class DimensionTypesAdminController : Controller
         if (!result.Succeeded)
         {
             AddErrors(result.Errors);
-            return View(model);
+            return View(EditorViewName, model);
         }
 
         await _notifier.SuccessAsync(H[
