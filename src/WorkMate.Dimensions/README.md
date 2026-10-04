@@ -104,11 +104,36 @@ Two things worth knowing before changing any of it:
   throw on a customer's database. `EmployeeAssignmentTenantTests` holds that
   with more than 2,100 employees.
 
-### Validation and caching — not yet built
-`IDimensionValidator` as the single validation service, and the per-tenant
-cache. The rule vocabulary it will grow into already exists as `DimensionRule`
-and `DimensionError`, and the rules implemented so far are enforced in the
-services that own them until it lands.
+### Validation — built
+**`IDimensionValidator` is the single validation service.** Every write path
+calls it, so the designer, the API and every import path get the same answer
+from the same code. Architecture section 6: the designer may show a violation
+before the user commits, but the service is the authority and re-checks on
+write.
+
+Every rule in architecture section 6 is now enforced. Five were not enforced
+anywhere before this session: **record code uniqueness** (including against
+retired records), **permitted level**, **level skipping**, **self-nesting**,
+and the advisory **parent not yet effective** — advisory because pre-building
+next year's structure is legitimate and refusing it would make the engine
+unusable for a case it was designed for.
+
+**`BeginBatch()` is what makes an import correct.** Two rows of one file
+sharing a code are each individually fine and together are not, and nothing in
+the database can see the clash because neither row is committed. The batch
+remembers what it has already seen. Architecture section 6 requires an import
+to validate row by row and report every failure rather than stopping at the
+first; this is the same bookkeeping.
+
+**Deletion** returns one of three outcomes with its blockers named —
+`Clean`, `RetireOnly`, `Blocked` — never a generic failure. Today it can see
+employee assignments (live and historical) and child records. Payroll,
+workflows and approval scopes are modules that do not exist yet; each will
+implement **`IDimensionDeletionBlockerProvider`** and register it, rather than
+this check quietly claiming to cover more than it does.
+
+### Caching — not yet built
+The per-tenant cache keyed on tenant name plus structure id.
 
 **Record code uniqueness is the known gap, and it is deliberate.** It cannot be
 done reliably from a content validation handler: by the time validation runs,
@@ -165,6 +190,18 @@ the generated content type, as section 4 requires.
 ## Recipe steps
 _None yet._ `dimension-types`, `structures`, `dimension-records` and
 `employee-assignments` arrive with prompt 3.
+
+### For whoever writes them
+
+- **Open a validation batch** with `IDimensionValidator.BeginBatch()` and pass
+  it to every create in the step, or duplicates within one import file go
+  undetected. Every `CreateAsync` takes one.
+- **Settle the open question in ADR-0006**: whether Orchard 3.0.1's recipe
+  executor runs each step in its own shell scope. It was deferred because the
+  module is correct either way — `SameScopeCreationTenantTests` proves types
+  and records can be created in one scope — but with a real step in hand the
+  answer is one assertion away, and `RecipeDescriptor.RequireNewScope` is the
+  flag that controls it.
 
 ## Decisions recorded
 - **ADR-0002** — the dimension engine rather than taxonomies.

@@ -17,6 +17,7 @@ internal sealed class DimensionService : IDimensionService
     private readonly IDimensionGraphService _graph;
     private readonly IEmployeeAssignmentService _assignments;
     private readonly IDimensionAuthorisation _authorisation;
+    private readonly IDimensionValidator _validator;
     private readonly IStringLocalizer S;
 
     public DimensionService(
@@ -26,6 +27,7 @@ internal sealed class DimensionService : IDimensionService
         IDimensionGraphService graph,
         IEmployeeAssignmentService assignments,
         IDimensionAuthorisation authorisation,
+        IDimensionValidator validator,
         IStringLocalizer<DimensionService> stringLocalizer)
     {
         _session = session;
@@ -34,6 +36,7 @@ internal sealed class DimensionService : IDimensionService
         _graph = graph;
         _assignments = assignments;
         _authorisation = authorisation;
+        _validator = validator;
         S = stringLocalizer;
     }
 
@@ -42,6 +45,7 @@ internal sealed class DimensionService : IDimensionService
         string code,
         BilingualText name,
         EffectiveRange effectiveRange,
+        DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -49,6 +53,23 @@ internal sealed class DimensionService : IDimensionService
         if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
         {
             return DimensionResult.NotAuthorised<DimensionNodeRef>();
+        }
+
+        // The validator first, because it is the authority and because it is the only thing
+        // that can see duplicates within an import batch — two rows of one file sharing a code
+        // are each individually fine and together are not, and neither is committed yet.
+        var errors = await _validator.ValidateRecordAsync(
+            recordId: null,
+            dimensionTypeId,
+            code,
+            name,
+            effectiveRange,
+            batch,
+            cancellationToken);
+
+        if (errors.Count > 0)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(errors);
         }
 
         var type = await _dimensionTypeService.GetAsync(dimensionTypeId, asAt: null, cancellationToken);
@@ -272,24 +293,12 @@ internal sealed class DimensionService : IDimensionService
             return DimensionResult.NotAuthorised<MergePlan>();
         }
 
-        if (string.Equals(sourceRecordId, targetRecordId, StringComparison.Ordinal))
-        {
-            return DimensionResult.Failed<MergePlan>(new DimensionError(
-                DimensionRule.MergeTarget,
-                sourceRecordId,
-                S["A record cannot be merged into itself."]));
-        }
+        var mergeErrors = await _validator.ValidateMergeAsync(
+            structureId, sourceRecordId, targetRecordId, effectiveFrom, cancellationToken);
 
-        if (await _graph.IsUnderAsync(structureId, targetRecordId, sourceRecordId, effectiveFrom, cancellationToken))
+        if (mergeErrors.Count > 0)
         {
-            // Folding a unit into something inside it would leave the target with no parent
-            // chain once the source retires.
-            return DimensionResult.Failed<MergePlan>(new DimensionError(
-                DimensionRule.MergeTarget,
-                targetRecordId,
-                S["'{0}' is inside '{1}', so it cannot be the target of merging '{1}' into it.",
-                    targetRecordId,
-                    sourceRecordId]));
+            return DimensionResult.Failed<MergePlan>(mergeErrors);
         }
 
         var children = await _graph.GetChildrenAsync(structureId, sourceRecordId, effectiveFrom, cancellationToken);

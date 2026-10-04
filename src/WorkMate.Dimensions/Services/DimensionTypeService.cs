@@ -45,11 +45,22 @@ public sealed class DimensionTypeService : IDimensionTypeService
     private readonly IIdGenerator _idGenerator;
     private readonly IStringLocalizer S;
 
+    /// <summary>
+    /// The validator, resolved on first use. It needs to look types up to answer "does this
+    /// reference exist", so the dependency genuinely runs both ways; see the same note on
+    /// <see cref="StructureService"/> for why deferring beats letting either side read the
+    /// other's tables.
+    /// </summary>
+    private readonly Lazy<IDimensionValidator> _validatorSource;
+
+    private IDimensionValidator _validator => _validatorSource.Value;
+
     public DimensionTypeService(
         ISession session,
         IContentDefinitionManager contentDefinitionManager,
         IAuditTrailManager auditTrailManager,
         IDimensionAuthorisation authorisation,
+        Lazy<IDimensionValidator> validator,
         IIdGenerator idGenerator,
         IStringLocalizer<DimensionTypeService> stringLocalizer)
     {
@@ -57,6 +68,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
         _contentDefinitionManager = contentDefinitionManager;
         _auditTrailManager = auditTrailManager;
         _authorisation = authorisation;
+        _validatorSource = validator;
         _idGenerator = idGenerator;
         S = stringLocalizer;
     }
@@ -68,6 +80,7 @@ public sealed class DimensionTypeService : IDimensionTypeService
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
         bool isSystemDefined = false,
+        DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -79,26 +92,20 @@ public sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.NotAuthorised<DimensionTypeDocument>();
         }
 
-        var errors = new List<DimensionError>();
-
-        errors.AddRange(ValidateCode(code));
-        errors.AddRange(ValidateName(name, code));
-        errors.AddRange(ValidateAttributeSchema(attributeSchema));
+        // Every rule lives in IDimensionValidator so the designer, the API and every import
+        // path get the same answer from the same code. Architecture section 6: the service is
+        // the authority and re-checks on write.
+        var errors = await _validator.ValidateDimensionTypeAsync(
+            dimensionTypeId: null,
+            code,
+            name,
+            attributeSchema,
+            batch,
+            cancellationToken);
 
         if (errors.Count > 0)
         {
             return DimensionResult.Failed<DimensionTypeDocument>(errors);
-        }
-
-        if (await GetByCodeAsync(code, asAt: null, cancellationToken) is not null ||
-            await RetiredTypeWithCodeExistsAsync(code, cancellationToken))
-        {
-            // Including retired types, per architecture section 6: reusing the code of a retired
-            // unit makes every historical report ambiguous about which one it means.
-            return DimensionResult.Failed<DimensionTypeDocument>(new DimensionError(
-                DimensionRule.CodeUniqueness,
-                code,
-                S["A dimension type with the code '{0}' already exists in this tenant, or did and was retired.", code]));
         }
 
         var contentTypeName = DimensionCodes.ToContentTypeName(code);
@@ -160,10 +167,13 @@ public sealed class DimensionTypeService : IDimensionTypeService
             return DimensionResult.Failed<DimensionTypeDocument>(UnknownType(dimensionTypeId));
         }
 
-        var errors = new List<DimensionError>();
-
-        errors.AddRange(ValidateName(name, document.Code));
-        errors.AddRange(ValidateAttributeSchema(attributeSchema));
+        var errors = new List<DimensionError>(await _validator.ValidateDimensionTypeAsync(
+            dimensionTypeId,
+            document.Code,
+            name,
+            attributeSchema,
+            batch: null,
+            cancellationToken));
 
         // Removing a field from a live content definition destroys the data in it, and open
         // question 3 of the dimension engine architecture — how much runtime definition churn is
@@ -475,74 +485,6 @@ public sealed class DimensionTypeService : IDimensionTypeService
                 ContentTypeName = document.ContentTypeName,
                 Diff = diff,
             }));
-
-    private IEnumerable<DimensionError> ValidateCode(string code)
-    {
-        if (!DimensionCodes.IsValidCode(code))
-        {
-            yield return new DimensionError(
-                DimensionRule.CodeFormat,
-                code ?? string.Empty,
-                S["A dimension type code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."]);
-        }
-    }
-
-    private IEnumerable<DimensionError> ValidateName(BilingualText name, string subject)
-    {
-        if (string.IsNullOrWhiteSpace(name.En) || string.IsNullOrWhiteSpace(name.Ar))
-        {
-            yield return new DimensionError(
-                DimensionRule.NameRequired,
-                subject,
-                S["A name is required in both English and Arabic."]);
-        }
-    }
-
-    private IEnumerable<DimensionError> ValidateAttributeSchema(IReadOnlyList<DimensionAttributeDefinition> attributeSchema)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var attribute in attributeSchema)
-        {
-            if (!DimensionCodes.IsValidAttributeName(attribute.Name))
-            {
-                yield return new DimensionError(
-                    DimensionRule.AttributeSchema,
-                    attribute.Name,
-                    S["An attribute name must start with a letter and may contain letters and digits only, up to fifty characters."]);
-
-                continue;
-            }
-
-            if (!seen.Add(attribute.Name))
-            {
-                yield return new DimensionError(
-                    DimensionRule.AttributeSchema,
-                    attribute.Name,
-                    S["The attribute '{0}' is declared more than once.", attribute.Name]);
-            }
-
-            if (string.IsNullOrWhiteSpace(attribute.Label.En) || string.IsNullOrWhiteSpace(attribute.Label.Ar))
-            {
-                yield return new DimensionError(
-                    DimensionRule.AttributeSchema,
-                    attribute.Name,
-                    S["The attribute '{0}' needs a label in both English and Arabic.", attribute.Name]);
-            }
-        }
-
-        // The standard fields are on DimensionRecordPart. An attribute with the same name would
-        // put two fields called Code on one record, and the editor would show both.
-        foreach (var attribute in attributeSchema.Where(attribute =>
-            StandardFieldNames.Contains(attribute.Name)))
-        {
-            yield return new DimensionError(
-                DimensionRule.AttributeSchema,
-                attribute.Name,
-                S["'{0}' is a standard field that every dimension record already carries. Choose another attribute name.",
-                    attribute.Name]);
-        }
-    }
 
     /// <summary>
     /// The names <c>DimensionRecordPart</c> occupies on every generated type. Kept as a list

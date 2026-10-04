@@ -25,6 +25,7 @@ public interface IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

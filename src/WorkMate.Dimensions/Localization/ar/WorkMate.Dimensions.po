@@ -272,3 +272,41 @@ msgstr "يجب أن يكون تعيين واحد فقط أساسيًا، حتى 
 #: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
 msgid "An employee cannot be placed at the same node twice on the same date."
 msgstr "لا يمكن تعيين الموظف في الوحدة نفسها مرتين في التاريخ نفسه."
+
+# ---- The validator: the rules of architecture section 6 in one place ----
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "The code '{0}' is already used by another dimension record in this tenant."
+msgstr "الرمز '{0}' مستخدم بالفعل في سجل بعد آخر في هذا المستأجر."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' is not one of the levels of the structure '{1}', which is strict."
+msgstr "'{0}' ليس من مستويات الهيكل '{1}'، وهو هيكل صارم."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' sits at or below '{1}' in the structure '{2}', so it cannot be its parent."
+msgstr "'{0}' يقع عند مستوى '{1}' أو تحته في الهيكل '{2}'، لذا لا يمكن أن يكون أبًا له."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "Placing '{0}' under '{1}' skips a level, and the structure '{2}' does not allow that."
+msgstr "وضع '{0}' تحت '{1}' يتخطى مستوى، والهيكل '{2}' لا يسمح بذلك."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' and '{1}' are the same kind of unit, and that kind does not allow nesting inside itself."
+msgstr "'{0}' و'{1}' من النوع نفسه، وهذا النوع لا يسمح بالتداخل داخل نفسه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' is not effective on {1}. The placement is allowed, but check the dates."
+msgstr "'{0}' غير ساري في {1}. التعيين مسموح به، لكن تحقق من التواريخ."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "{0} employee placement(s) are live at this record today."
+msgstr "يوجد {0} تعيين موظف نشط في هذا السجل اليوم."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "{0} past employee placement(s) refer to this record."
+msgstr "يشير {0} تعيين موظف سابق إلى هذا السجل."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "{0} record(s) sit under this one. Move or merge them first."
+msgstr "يوجد {0} سجل تحت هذا السجل. انقلها أو ادمجها أولًا."

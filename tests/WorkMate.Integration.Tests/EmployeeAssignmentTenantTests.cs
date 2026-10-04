@@ -68,19 +68,19 @@ public sealed class EmployeeAssignmentTenantTests
             const string employee = "employee-split";
 
             var short60 = await assignments.ReallocateAsync(
-                employee, structure, [(one, 60m, true), (two, 30m, false)], Opened);
+                employee, structure, [new AssignmentSplitEntry(one, 60m, true), new AssignmentSplitEntry(two, 30m, false)], Opened);
 
             short60.Succeeded.Should().BeFalse();
             short60.Errors.Should().Contain(error => error.Rule == DimensionRule.AllocationTotal);
 
             var twoPrimaries = await assignments.ReallocateAsync(
-                employee, structure, [(one, 60m, true), (two, 40m, true)], Opened);
+                employee, structure, [new AssignmentSplitEntry(one, 60m, true), new AssignmentSplitEntry(two, 40m, true)], Opened);
 
             twoPrimaries.Succeeded.Should().BeFalse();
             twoPrimaries.Errors.Should().Contain(error => error.Rule == DimensionRule.SinglePrimaryAssignment);
 
             var valid = await assignments.ReallocateAsync(
-                employee, structure, [(one, 60m, true), (two, 40m, false)], Opened);
+                employee, structure, [new AssignmentSplitEntry(one, 60m, true), new AssignmentSplitEntry(two, 40m, false)], Opened);
 
             valid.Succeeded.Should().BeTrue(
                 string.Join("; ", valid.Errors.Select(error => error.Message.Value)));

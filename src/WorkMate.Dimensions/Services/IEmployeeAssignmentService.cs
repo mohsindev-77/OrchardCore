@@ -54,7 +54,7 @@ public interface IEmployeeAssignmentService
     Task<DimensionResult<IReadOnlyList<EmployeeAssignment>>> ReallocateAsync(
         string employeeId,
         string structureId,
-        IReadOnlyList<(string RecordId, decimal AllocationPercent, bool IsPrimary)> split,
+        IReadOnlyList<AssignmentSplitEntry> split,
         DateOnly effectiveFrom,
         CancellationToken cancellationToken = default);
 

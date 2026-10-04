@@ -12,15 +12,18 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
 {
     private readonly ISession _session;
     private readonly IDimensionAuthorisation _authorisation;
+    private readonly IDimensionValidator _validator;
     private readonly IStringLocalizer S;
 
     public EmployeeAssignmentService(
         ISession session,
         IDimensionAuthorisation authorisation,
+        IDimensionValidator validator,
         IStringLocalizer<EmployeeAssignmentService> stringLocalizer)
     {
         _session = session;
         _authorisation = authorisation;
+        _validator = validator;
         S = stringLocalizer;
     }
 
@@ -36,7 +39,7 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
         var result = await ReallocateAsync(
             employeeId,
             structureId,
-            [(recordId, allocationPercent, isPrimary)],
+            [new AssignmentSplitEntry(recordId, allocationPercent, isPrimary)],
             effectiveFrom,
             cancellationToken);
 
@@ -92,7 +95,7 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
     public async Task<DimensionResult<IReadOnlyList<EmployeeAssignment>>> ReallocateAsync(
         string employeeId,
         string structureId,
-        IReadOnlyList<(string RecordId, decimal AllocationPercent, bool IsPrimary)> split,
+        IReadOnlyList<AssignmentSplitEntry> split,
         DateOnly effectiveFrom,
         CancellationToken cancellationToken = default)
     {
@@ -103,7 +106,8 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
             return DimensionResult.NotAuthorised<IReadOnlyList<EmployeeAssignment>>();
         }
 
-        var errors = ValidateSplit(split, employeeId).ToList();
+        var errors = await _validator.ValidateAssignmentAsync(
+            employeeId, structureId, split, effectiveFrom, cancellationToken);
 
         if (errors.Count > 0)
         {
@@ -237,71 +241,6 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
             .ListAsync(cancellationToken);
 
         return [.. rows.Select(ToAssignment)];
-    }
-
-    /// <summary>
-    /// The rules architecture section 6 states about a set of concurrent placements.
-    /// </summary>
-    /// <remarks>
-    /// Checked here rather than at each row because they are rules about the set: a split is
-    /// invalid at every intermediate step and valid only once complete. They move behind
-    /// <c>IDimensionValidator</c> when it lands, which is why each one carries its rule.
-    /// </remarks>
-    private IEnumerable<DimensionError> ValidateSplit(
-        IReadOnlyList<(string RecordId, decimal AllocationPercent, bool IsPrimary)> split,
-        string employeeId)
-    {
-        if (split.Count == 0)
-        {
-            yield return new DimensionError(
-                DimensionRule.AllocationTotal,
-                employeeId,
-                S["A placement needs at least one node. Use the end operation to remove an employee from an axis."]);
-
-            yield break;
-        }
-
-        var total = split.Sum(entry => entry.AllocationPercent);
-
-        if (total != 100m)
-        {
-            yield return new DimensionError(
-                DimensionRule.AllocationTotal,
-                employeeId,
-                S["Allocations must total 100 percent on any one date. These total {0}.", total]);
-        }
-
-        if (split.Any(entry => entry.AllocationPercent <= 0m))
-        {
-            yield return new DimensionError(
-                DimensionRule.AllocationTotal,
-                employeeId,
-                S["An allocation must be greater than zero. Remove the placement instead."]);
-        }
-
-        var primaries = split.Count(entry => entry.IsPrimary);
-
-        if (primaries != 1)
-        {
-            yield return new DimensionError(
-                DimensionRule.SinglePrimaryAssignment,
-                employeeId,
-                S["Exactly one placement must be primary, so that matrix cases stay unambiguous. {0} are marked primary.",
-                    primaries]);
-        }
-
-        var duplicated = split
-            .GroupBy(entry => entry.RecordId, StringComparer.Ordinal)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key);
-
-        foreach (var recordId in duplicated)
-        {
-            yield return new DimensionError(
-                DimensionRule.OverlappingAssignment,
-                recordId,
-                S["An employee cannot be placed at the same node twice on the same date."]);
-        }
     }
 
     private async Task<EmployeeAssignmentDocument?> LoadAsync(

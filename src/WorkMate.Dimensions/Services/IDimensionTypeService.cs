@@ -27,6 +27,7 @@ public interface IDimensionTypeService
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
         bool isSystemDefined = false,
+        DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

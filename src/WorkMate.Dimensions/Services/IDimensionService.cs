@@ -23,6 +23,7 @@ public interface IDimensionService
         string code,
         BilingualText name,
         EffectiveRange effectiveRange,
+        DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Changes the fields that are not the name and not the placement.</summary>

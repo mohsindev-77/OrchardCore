@@ -27,6 +27,12 @@ public enum DimensionRule
     /// <summary>A name is missing in a language the platform requires.</summary>
     NameRequired,
 
+    /// <summary>A dated write arrived with no effective date. Nothing is ever defaulted.</summary>
+    EffectiveDateRequired,
+
+    /// <summary>An effective range ends before it starts.</summary>
+    EffectiveRangeInvalid,
+
     /// <summary>An attribute name is missing, malformed, or declared twice on one type.</summary>
     AttributeSchema,
 

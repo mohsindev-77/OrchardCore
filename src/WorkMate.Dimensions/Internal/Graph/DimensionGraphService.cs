@@ -16,17 +16,23 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     private readonly ISession _session;
     private readonly IStructureService _structureService;
     private readonly IDimensionAuthorisation _authorisation;
+
+    /// <summary>The validator, deferred: it reads the closure to answer the cycle rule.</summary>
+    private readonly Lazy<IDimensionValidator> _validator;
+
     private readonly IStringLocalizer S;
 
     public DimensionGraphService(
         ISession session,
         IStructureService structureService,
         IDimensionAuthorisation authorisation,
+        Lazy<IDimensionValidator> validator,
         IStringLocalizer<DimensionGraphService> stringLocalizer)
     {
         _session = session;
         _structureService = structureService;
         _authorisation = authorisation;
+        _validator = validator;
         S = stringLocalizer;
     }
 
@@ -228,36 +234,15 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             return DimensionResult.NotAuthorised<int>();
         }
 
-        if (string.Equals(recordId, newParentId, StringComparison.Ordinal))
-        {
-            return DimensionResult.Failed<int>(new DimensionError(
-                DimensionRule.Cycle,
-                recordId,
-                S["A record cannot be its own parent."]));
-        }
+        // Cycles across every date, permitted level, level skipping and self-nesting all live
+        // in the validator now, so a move made through the designer, the API or an import is
+        // held to the same rules by the same code.
+        var errors = await _validator.Value.ValidatePlacementAsync(
+            structureId, recordId, newParentId, effectiveFrom, cancellationToken);
 
-        if (newParentId is not null)
+        if (errors.Any(error => !error.IsAdvisory))
         {
-            // Across every date, not only today. A move that creates a cycle at any point in
-            // time is refused, because a cycle anywhere in the history makes ancestor
-            // resolution non-terminating for that date — and the date it breaks on is one
-            // nobody will be looking at when they make the change.
-            var wouldCycle = await _session
-                .QueryIndex<DimensionClosureIndex>(index =>
-                    index.StructureId == structureId &&
-                    index.AncestorId == recordId &&
-                    index.DescendantId == newParentId)
-                .CountAsync(cancellationToken) > 0;
-
-            if (wouldCycle)
-            {
-                return DimensionResult.Failed<int>(new DimensionError(
-                    DimensionRule.Cycle,
-                    newParentId,
-                    S["'{0}' is at or below '{1}' at some point in time, so moving '{1}' under it would create a cycle.",
-                        newParentId,
-                        recordId]));
-            }
+            return DimensionResult.Failed<int>(errors);
         }
 
         var selfRange = await SelfRangeAsync(recordId, cancellationToken);
@@ -270,7 +255,9 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
         var touched = await RecomputeSubtreeAsync(structureId, recordId, selfRange, cancellationToken);
 
-        return DimensionResult.Success(touched);
+        // Advisories ride along with a successful result: a parent that is not yet effective
+        // is a warning the caller should surface, not a reason to refuse.
+        return DimensionResult.Success(touched, [.. errors]);
     }
 
     public async Task RemoveAsync(string recordId, CancellationToken cancellationToken = default)

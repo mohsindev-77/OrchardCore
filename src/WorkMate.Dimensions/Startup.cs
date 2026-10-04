@@ -64,6 +64,9 @@ public sealed class Startup : StartupBase
             new Lazy<IDimensionGraphService>(provider.GetRequiredService<IDimensionGraphService>));
         services.AddScoped<IEmployeeAssignmentService, EmployeeAssignmentService>();
         services.AddScoped<IDimensionService, DimensionService>();
+        services.AddScoped<IDimensionValidator, DimensionValidator>();
+        services.AddScoped(provider =>
+            new Lazy<IDimensionValidator>(provider.GetRequiredService<IDimensionValidator>));
 
         // This module's audit trail category and its three events, so an administrator can find
         // and filter them alongside Orchard's own.
