@@ -1,0 +1,77 @@
+@model List<DimensionTypeListItemViewModel>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@T["Dimension types"]</h1>
+    <a asp-action="Create" class="btn btn-primary">@T["Create dimension type"]</a>
+</div>
+
+<p class="text-muted">
+    @T["A dimension type is a kind of unit — Business Unit, Department, Cost Centre, or anything this tenant invents. Creating one also creates the content type its records are stored as."]
+</p>
+
+@if (Model.Count == 0)
+{
+    <p>@T["No dimension types have been created yet."]</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>@T["Code"]</th>
+                <th>@T["Name"]</th>
+                <th>@T["Self-nesting"]</th>
+                <th>@T["Attributes"]</th>
+                <th>@T["Content type"]</th>
+                <th>@T["Status"]</th>
+                <th class="text-end">@T["Actions"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var type in Model)
+            {
+                <tr>
+                    <td><code>@type.Code</code></td>
+                    <td>
+                        <div dir="ltr" lang="en">@type.NameEn</div>
+                        <div dir="rtl" lang="ar" class="text-muted small">@type.NameAr</div>
+                    </td>
+                    <td>@(type.AllowsSelfNesting ? T["Yes"] : T["No"])</td>
+                    <td>@type.AttributeCount</td>
+                    <td><code>@type.ContentTypeName</code></td>
+                    <td>
+                        @if (type.RetiredOn is not null)
+                        {
+                            <span class="badge text-bg-secondary">@T["Retired from {0:d}", type.RetiredOn.Value]</span>
+                        }
+                        else if (type.IsSystemDefined)
+                        {
+                            <span class="badge text-bg-info">@T["System-defined"]</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-success">@T["Active"]</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        <a asp-action="Edit" asp-route-id="@type.DimensionTypeId" class="btn btn-sm btn-outline-secondary">@T["Edit"]</a>
+                        @if (type.RetiredOn is null)
+                        {
+                            @if (type.IsSystemDefined)
+                            {
+                                <span class="btn btn-sm btn-outline-secondary disabled" aria-disabled="true"
+                                      title="@T["Defined by WorkMate; cannot be retired."]">
+                                    @T["Retire"]
+                                </span>
+                            }
+                            else
+                            {
+                                <a asp-action="Retire" asp-route-id="@type.DimensionTypeId" class="btn btn-sm btn-outline-danger">@T["Retire"]</a>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

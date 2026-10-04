@@ -42,6 +42,8 @@
     <PackageVersion Include="OrchardCore.Settings" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Roles.Core" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Users.Core" Version="$(OrchardCoreVersion)" />
+    <!-- IUserService, for the integration suite's second, deliberately under-permissioned test user. -->
+    <PackageVersion Include="OrchardCore.Users.Abstractions" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Deployment.Core" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.AuditTrail.Abstractions" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Features" Version="$(OrchardCoreVersion)" />

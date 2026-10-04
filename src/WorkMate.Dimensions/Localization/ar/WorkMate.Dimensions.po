@@ -326,3 +326,189 @@ msgstr "يوجد {0} سجل تحت هذا السجل. انقلها أو ادمج
 #: WorkMate.Dimensions.Internal.Graph.DimensionGraphService
 msgid "There is no move recorded for '{0}' effective on {1}."
 msgstr "لا يوجد نقل مسجَّل لـ '{0}' ساري من {1}."
+
+# ---- Admin: the dimension types screen ----
+
+#: Controllers/DimensionTypesAdminController.cs
+msgid "Dimension type '{0}' was created. Its content type is '{1}'."
+msgstr "تم إنشاء نوع البعد '{0}'. نوع محتواه هو '{1}'."
+
+#: Controllers/DimensionTypesAdminController.cs
+msgid "'{0}' is defined by WorkMate and cannot be retired."
+msgstr "'{0}' معرَّف من قِبل WorkMate ولا يمكن إيقافه."
+
+#: Controllers/DimensionTypesAdminController.cs
+msgid "Dimension type '{0}' was updated."
+msgstr "تم تحديث نوع البعد '{0}'."
+
+#: Controllers/DimensionTypesAdminController.cs
+msgid "Dimension type '{0}' was retired from {1:d}."
+msgstr "تم إيقاف نوع البعد '{0}' اعتبارًا من {1:d}."
+
+#: Navigation/AdminMenu.cs
+msgid "Organisation"
+msgstr "الهيكل التنظيمي"
+
+#: Navigation/AdminMenu.cs
+#: Views/DimensionTypes/Index.cshtml
+msgid "Dimension types"
+msgstr "أنواع الأبعاد"
+
+#: Views/DimensionTypes/Index.cshtml
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Create dimension type"
+msgstr "إنشاء نوع بعد"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "A dimension type is a kind of unit — Business Unit, Department, Cost Centre, or anything this tenant invents. Creating one also creates the content type its records are stored as."
+msgstr "نوع البعد هو نوع من الوحدات — وحدة أعمال، أو قسم، أو مركز تكلفة، أو أي شيء يبتكره هذا المستأجر. إنشاء نوع بعد ينشئ أيضًا نوع المحتوى الذي تُخزَّن فيه سجلاته."
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "No dimension types have been created yet."
+msgstr "لم يتم إنشاء أي أنواع أبعاد بعد."
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Self-nesting"
+msgstr "التداخل الذاتي"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Attributes"
+msgstr "السمات"
+
+#: Views/DimensionTypes/Index.cshtml
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Content type"
+msgstr "نوع المحتوى"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Actions"
+msgstr "الإجراءات"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Yes"
+msgstr "نعم"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "No"
+msgstr "لا"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Retired from {0:d}"
+msgstr "أُوقف اعتبارًا من {0:d}"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "System-defined"
+msgstr "معرَّف من النظام"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Active"
+msgstr "نشط"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Edit"
+msgstr "تعديل"
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Defined by WorkMate; cannot be retired."
+msgstr "معرَّف من قِبل WorkMate؛ لا يمكن إيقافه."
+
+#: Views/DimensionTypes/Index.cshtml
+msgid "Retire"
+msgstr "إيقاف"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Edit dimension type"
+msgstr "تعديل نوع البعد"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Letters, digits, hyphens and underscores. Names the content type this dimension type creates, so it cannot be changed afterwards."
+msgstr "حروف وأرقام وشرطات وشرطات سفلية. يُسمّى به نوع المحتوى الذي ينشئه نوع البعد هذا، لذا لا يمكن تغييره لاحقًا."
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "The code cannot be changed once the dimension type exists."
+msgstr "لا يمكن تغيير الرمز بعد وجود نوع البعد."
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Allow a record of this type to sit under another record of the same type"
+msgstr "السماح لسجل من هذا النوع بأن يقع تحت سجل آخر من النوع نفسه"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "This type is defined by WorkMate. Its name and attribute schema may still be extended; it cannot be retired."
+msgstr "هذا النوع معرَّف من قِبل WorkMate. لا يزال بالإمكان توسيع اسمه ومخطط سماته؛ ولا يمكن إيقافه."
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Attribute schema"
+msgstr "مخطط السمات"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "The fields this type's records carry beyond the standard ones. Once a field has been saved it cannot be removed or have its type changed, because either would destroy data already held in it; a field can still be added."
+msgstr "الحقول التي تحملها سجلات هذا النوع بالإضافة إلى الحقول القياسية. بعد حفظ حقل لا يمكن إزالته أو تغيير نوعه، لأن كلا الأمرين سيُتلف البيانات المخزَّنة فيه بالفعل؛ ولا يزال بالإمكان إضافة حقل جديد."
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Field name"
+msgstr "اسم الحقل"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Type"
+msgstr "النوع"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Label (English)"
+msgstr "التسمية (بالإنجليزية)"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Label (Arabic)"
+msgstr "التسمية (بالعربية)"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Required"
+msgstr "إلزامي"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Text"
+msgstr "نص"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Bilingual text"
+msgstr "نص ثنائي اللغة"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Number"
+msgstr "رقم"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Yes / No"
+msgstr "نعم / لا"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Date"
+msgstr "تاريخ"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Remove"
+msgstr "إزالة"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Add attribute"
+msgstr "إضافة سمة"
+
+#: Views/DimensionTypes/Edit.cshtml
+msgid "Save"
+msgstr "حفظ"
+
+#: Views/DimensionTypes/Edit.cshtml
+#: Views/DimensionTypes/Retire.cshtml
+msgid "Cancel"
+msgstr "إلغاء"
+
+#: Views/DimensionTypes/Retire.cshtml
+msgid "Retire dimension type"
+msgstr "إيقاف نوع البعد"
+
+#: Views/DimensionTypes/Retire.cshtml
+msgid "'{0}' will stop being offered for new records from the date below. Existing records of this type, and every historical report that refers to it, keep resolving as before."
+msgstr "سيتوقف عرض '{0}' للسجلات الجديدة اعتبارًا من التاريخ أدناه. السجلات الحالية من هذا النوع، وكل تقرير تاريخي يشير إليه، تستمر في التحليل كما كانت."
+
+#: Views/DimensionTypes/Retire.cshtml
+msgid "Effective date"
+msgstr "تاريخ السريان"

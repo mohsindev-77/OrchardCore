@@ -7,6 +7,7 @@ using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Display.ContentDisplay;
 using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.Modules;
+using OrchardCore.Navigation;
 using OrchardCore.Security.Permissions;
 using WorkMate.Dimensions.Drivers;
 using WorkMate.Dimensions.Handlers;
@@ -14,6 +15,7 @@ using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal.Graph;
 using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
+using WorkMate.Dimensions.Navigation;
 using WorkMate.Dimensions.Services;
 
 namespace WorkMate.Dimensions;
@@ -24,6 +26,7 @@ public sealed class Startup : StartupBase
     {
         services.AddDataMigration<Migrations>();
         services.AddPermissionProvider<Permissions>();
+        services.AddNavigationProvider<AdminMenu>();
 
         // Configuration layer: the dimension types and the structures they are levels of.
         services.AddIndexProvider<DimensionTypeIndexProvider>();

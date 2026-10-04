@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OrchardCore.Environment.Shell;
 using OrchardCore.Environment.Shell.Scope;
+using OrchardCore.Users.Models;
+using OrchardCore.Users.Services;
 using Xunit;
 
 namespace WorkMate.Integration.Tests;
@@ -103,6 +105,70 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
         {
             await work(shellScope.ServiceProvider);
         });
+    }
+
+    /// <summary>
+    /// Creates a user with exactly one role and signs in as them, so a test can assert what a
+    /// screen or an API forbids to someone who is authenticated but lacks the permission it needs
+    /// — a different question from what <see cref="Anonymous"/> answers.
+    /// </summary>
+    /// <remarks>
+    /// The user is created directly through <see cref="IUserService"/> inside the tenant's shell
+    /// scope rather than by scraping the admin "create user" form, because this fixture already
+    /// has a reliable way into that scope (<see cref="InTenantAsync"/>) and the admin form's field
+    /// names are not part of the contract this suite is pinning. Creation failures surface by
+    /// throwing from the reportError callback: if that never fires but the subsequent sign-in
+    /// still fails, the failure is in sign-in, not creation, and the exception says so.
+    /// </remarks>
+    public async Task<HttpClient> CreateSignedInClientAsync(
+        string userName,
+        string password,
+        string roleName,
+        bool allowAutoRedirect = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(password);
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+
+        await InTenantAsync(async services =>
+        {
+            var userService = services.GetRequiredService<IUserService>();
+
+            var user = new User
+            {
+                UserName = userName,
+                Email = $"{userName}@example.invalid",
+                EmailConfirmed = true,
+                IsEnabled = true,
+                RoleNames = [roleName],
+            };
+
+            await userService.CreateUserAsync(user, password, (key, message) =>
+                throw new InvalidOperationException($"Creating test user '{userName}' failed: {key}: {message}"));
+        });
+
+        // A fresh client for sign-in, with auto-redirect on regardless of what the caller wants
+        // for the request that follows, so the login POST's own redirect to /Admin is followed
+        // and the cookie is confirmed working before this method hands the client back.
+        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = true });
+        var page = await GetPageAsync(client, "/Login");
+
+        var response = await client.PostAsync(
+            "/Login?ReturnUrl=%2FAdmin",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = AntiforgeryTokenIn(page),
+                ["LoginForm.UserName"] = userName,
+                ["LoginForm.Password"] = password,
+            }));
+
+        if (response.StatusCode is not (HttpStatusCode.Found or HttpStatusCode.OK))
+        {
+            throw new InvalidOperationException(
+                $"Signing in test user '{userName}' returned {(int)response.StatusCode}, expected a redirect.");
+        }
+
+        return client;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -210,7 +276,8 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     /// Fetches a page and, when it fails, says what the server said. A fixture that cannot start
     /// should explain itself; "500 Internal Server Error" on nine tests at once explains nothing.
     /// </summary>
-    private static async Task<string> GetPageAsync(HttpClient client, string path)
+    /// <summary>Public so other tests in this project get the same explanatory failure on a non-2xx GET.</summary>
+    public static async Task<string> GetPageAsync(HttpClient client, string path)
     {
         var response = await client.GetAsync(path);
         var body = await response.Content.ReadAsStringAsync();
@@ -286,7 +353,8 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
             "the tenant Orchard created should be the one under the temp content root, "
             + "not the host project's App_Data");
 
-    private static string AntiforgeryTokenIn(string html)
+    /// <summary>Public so other tests in this project can POST to a screen beyond setup and login.</summary>
+    public static string AntiforgeryTokenIn(string html)
     {
         var match = Regex.Match(
             html,

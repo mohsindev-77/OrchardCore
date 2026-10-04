@@ -1,0 +1,263 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Localization;
+using Microsoft.Extensions.Localization;
+using OrchardCore.Admin;
+using OrchardCore.DisplayManagement.Notify;
+using WorkMate.Dimensions.Models;
+using WorkMate.Dimensions.Services;
+using WorkMate.Dimensions.ViewModels;
+
+namespace WorkMate.Dimensions.Controllers;
+
+/// <summary>
+/// The dimension type list and editor. Every action calls <see cref="IDimensionTypeService"/> —
+/// the same service the recipe step and any future API use — so nothing here decides a rule the
+/// service does not also enforce; the permission check below is for the screen's own sake (what to
+/// show, what to forbid before a POST), not a second source of authority.
+/// </summary>
+[Admin("Dimensions/Types/{action}/{id?}", "DimensionTypes{action}")]
+public sealed class DimensionTypesAdminController : Controller
+{
+    private readonly IDimensionTypeService _dimensionTypeService;
+    private readonly IDimensionAuthorisation _authorisation;
+    private readonly IAuthorizationService _authorizationService;
+    private readonly INotifier _notifier;
+    private readonly IStringLocalizer S;
+    private readonly IHtmlLocalizer H;
+
+    public DimensionTypesAdminController(
+        IDimensionTypeService dimensionTypeService,
+        IDimensionAuthorisation authorisation,
+        IAuthorizationService authorizationService,
+        INotifier notifier,
+        IStringLocalizer<DimensionTypesAdminController> stringLocalizer,
+        IHtmlLocalizer<DimensionTypesAdminController> htmlLocalizer)
+    {
+        _dimensionTypeService = dimensionTypeService;
+        _authorisation = authorisation;
+        _authorizationService = authorizationService;
+        _notifier = notifier;
+        S = stringLocalizer;
+        H = htmlLocalizer;
+    }
+
+    public async Task<IActionResult> Index(CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var types = await _dimensionTypeService.ListAsync(includeRetired: true, cancellationToken: cancellationToken);
+
+        return View(types
+            .OrderBy(type => type.Code, StringComparer.Ordinal)
+            .Select(DimensionTypeListItemViewModel.Of)
+            .ToList());
+    }
+
+    public async Task<IActionResult> Create()
+    {
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        return View(new DimensionTypeEditViewModel());
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Create))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreatePost(DimensionTypeEditViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var result = await _dimensionTypeService.CreateAsync(
+            model.Code.Trim(),
+            model.Name,
+            model.ToAttributeSchema(),
+            model.AllowsSelfNesting,
+            cancellationToken: cancellationToken);
+
+        if (!result.IsAuthorised)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result.Errors);
+            return View(model);
+        }
+
+        await _notifier.SuccessAsync(H[
+            "Dimension type '{0}' was created. Its content type is '{1}'.",
+            result.Value!.Code,
+            result.Value.ContentTypeName]);
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    public async Task<IActionResult> Edit(string id, CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var document = await _dimensionTypeService.GetAsync(id, cancellationToken: cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        return View(DimensionTypeEditViewModel.Of(document));
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Edit))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditPost(string id, DimensionTypeEditViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var document = await _dimensionTypeService.GetAsync(id, cancellationToken: cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        // The code names the backing content type and is immutable once created; the posted
+        // value is never trusted for an update, only shown.
+        model.DimensionTypeId = document.DimensionTypeId;
+        model.Code = document.Code;
+        model.IsSystemDefined = document.IsSystemDefined;
+        model.ContentTypeName = document.ContentTypeName;
+
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var result = await _dimensionTypeService.UpdateAsync(
+            document.DimensionTypeId,
+            model.Name,
+            model.ToAttributeSchema(),
+            model.AllowsSelfNesting,
+            cancellationToken);
+
+        if (!result.IsAuthorised)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result.Errors);
+            return View(model);
+        }
+
+        await _notifier.SuccessAsync(H["Dimension type '{0}' was updated.", result.Value!.Code]);
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    public async Task<IActionResult> Retire(string id, CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var document = await _dimensionTypeService.GetAsync(id, cancellationToken: cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        if (document.IsSystemDefined)
+        {
+            await _notifier.WarningAsync(H[
+                "'{0}' is defined by WorkMate and cannot be retired.", document.Code]);
+
+            return RedirectToAction(nameof(Index));
+        }
+
+        return View(new DimensionTypeRetireViewModel
+        {
+            DimensionTypeId = document.DimensionTypeId,
+            Code = document.Code,
+            NameEn = document.Name.En,
+            EffectiveDate = await _authorisation.TodayAsync(),
+        });
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Retire))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetirePost(DimensionTypeRetireViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var result = await _dimensionTypeService.RetireAsync(
+            model.DimensionTypeId,
+            model.EffectiveDate,
+            cancellationToken);
+
+        if (!result.IsAuthorised)
+        {
+            return Forbid();
+        }
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result.Errors);
+            return View(model);
+        }
+
+        await _notifier.SuccessAsync(H["Dimension type '{0}' was retired from {1:d}.", result.Value!.Code, model.EffectiveDate]);
+
+        return RedirectToAction(nameof(Index));
+    }
+
+    private Task<bool> IsAuthorisedAsync() =>
+        _authorizationService.AuthorizeAsync(User, Permissions.ManageDimensionTypes);
+
+    private void AddErrors(IReadOnlyList<DimensionError> errors)
+    {
+        foreach (var error in errors)
+        {
+            ModelState.AddModelError(string.Empty, error.Message.Value);
+        }
+    }
+}

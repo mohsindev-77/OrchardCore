@@ -1,0 +1,118 @@
+@model DimensionTypeEditViewModel
+
+<h1>@(Model.IsNew ? T["Create dimension type"] : T["Edit dimension type"])</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form asp-action="@(Model.IsNew ? "Create" : "Edit")" asp-route-id="@Model.DimensionTypeId" method="post">
+    <input type="hidden" asp-for="DimensionTypeId" />
+    <input type="hidden" asp-for="IsSystemDefined" />
+    <input type="hidden" asp-for="ContentTypeName" />
+
+    <div class="mb-3">
+        <label asp-for="Code" class="form-label">@T["Code"]</label>
+        @if (Model.IsNew)
+        {
+            <input asp-for="Code" class="form-control w-auto" required maxlength="50" autofocus="autofocus" />
+            <div class="form-text">@T["Letters, digits, hyphens and underscores. Names the content type this dimension type creates, so it cannot be changed afterwards."]</div>
+        }
+        else
+        {
+            <input asp-for="Code" class="form-control w-auto" readonly="readonly" />
+            <div class="form-text">@T["The code cannot be changed once the dimension type exists."]</div>
+        }
+    </div>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"].Value" required="true" max-length="200" />
+
+    <div class="form-check mb-3">
+        <input asp-for="AllowsSelfNesting" class="form-check-input" />
+        <label asp-for="AllowsSelfNesting" class="form-check-label">@T["Allow a record of this type to sit under another record of the same type"]</label>
+    </div>
+
+    @if (!Model.IsNew)
+    {
+        <div class="mb-3">
+            <span class="form-label d-block">@T["Content type"]</span>
+            <code>@Model.ContentTypeName</code>
+        </div>
+
+        @if (Model.IsSystemDefined)
+        {
+            <p class="text-muted">@T["This type is defined by WorkMate. Its name and attribute schema may still be extended; it cannot be retired."]</p>
+        }
+    }
+
+    <fieldset class="mb-3">
+        <legend class="fs-5">@T["Attribute schema"]</legend>
+        <p class="text-muted">
+            @T["The fields this type's records carry beyond the standard ones. Once a field has been saved it cannot be removed or have its type changed, because either would destroy data already held in it; a field can still be added."]
+        </p>
+
+        <table class="table" id="attribute-schema-table">
+            <thead>
+                <tr>
+                    <th>@T["Field name"]</th>
+                    <th>@T["Type"]</th>
+                    <th>@T["Label (English)"]</th>
+                    <th>@T["Label (Arabic)"]</th>
+                    <th>@T["Required"]</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Model.AttributeSchema.Count; i++)
+                {
+                    <tr class="attribute-row">
+                        <td><input asp-for="AttributeSchema[i].Name" class="form-control form-control-sm" maxlength="50" /></td>
+                        <td>
+                            <select asp-for="AttributeSchema[i].Kind" class="form-select form-select-sm">
+                                <option value="@DimensionAttributeKind.Text">@T["Text"]</option>
+                                <option value="@DimensionAttributeKind.BilingualText">@T["Bilingual text"]</option>
+                                <option value="@DimensionAttributeKind.Number">@T["Number"]</option>
+                                <option value="@DimensionAttributeKind.Boolean">@T["Yes / No"]</option>
+                                <option value="@DimensionAttributeKind.Date">@T["Date"]</option>
+                            </select>
+                        </td>
+                        <td><input asp-for="AttributeSchema[i].LabelEn" class="form-control form-control-sm" dir="ltr" lang="en" /></td>
+                        <td><input asp-for="AttributeSchema[i].LabelAr" class="form-control form-control-sm" dir="rtl" lang="ar" /></td>
+                        <td class="text-center"><input asp-for="AttributeSchema[i].IsRequired" class="form-check-input" /></td>
+                        <td><button type="button" class="btn btn-sm btn-outline-danger remove-attribute-row">@T["Remove"]</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-attribute-row">@T["Add attribute"]</button>
+    </fieldset>
+
+    <!-- A row of raw markup, never bound to a model, that the script below clones and reindexes.
+         __index__ is a placeholder the script replaces with the next free index; this row itself
+         is inert and is removed from the DOM before the form can be submitted. -->
+    <template id="attribute-row-template">
+        <tr class="attribute-row">
+            <td><input name="AttributeSchema[__index__].Name" class="form-control form-control-sm" maxlength="50" /></td>
+            <td>
+                <select name="AttributeSchema[__index__].Kind" class="form-select form-select-sm">
+                    <option value="@DimensionAttributeKind.Text">@T["Text"]</option>
+                    <option value="@DimensionAttributeKind.BilingualText">@T["Bilingual text"]</option>
+                    <option value="@DimensionAttributeKind.Number">@T["Number"]</option>
+                    <option value="@DimensionAttributeKind.Boolean">@T["Yes / No"]</option>
+                    <option value="@DimensionAttributeKind.Date">@T["Date"]</option>
+                </select>
+            </td>
+            <td><input name="AttributeSchema[__index__].LabelEn" class="form-control form-control-sm" dir="ltr" lang="en" /></td>
+            <td><input name="AttributeSchema[__index__].LabelAr" class="form-control form-control-sm" dir="rtl" lang="ar" /></td>
+            <td class="text-center">
+                <input type="checkbox" class="form-check-input" name="AttributeSchema[__index__].IsRequired" value="true" />
+                <input type="hidden" name="AttributeSchema[__index__].IsRequired" value="false" />
+            </td>
+            <td><button type="button" class="btn btn-sm btn-outline-danger remove-attribute-row">@T["Remove"]</button></td>
+        </tr>
+    </template>
+
+    <button type="submit" class="btn btn-primary">@T["Save"]</button>
+    <a asp-action="Index" class="btn btn-link">@T["Cancel"]</a>
+</form>
+
+<script src="~/WorkMate.Dimensions/js/dimension-types.js"></script>

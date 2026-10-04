@@ -95,6 +95,51 @@ public sealed class UserVisibleStringDetectorTests
             .Should().BeEmpty();
 
     [Fact]
+    public void AnIfElseChainWithLocalisedMarkupInEveryBranchIsNotCaught()
+    {
+        const string Razor = """
+            @if (type.RetiredOn is not null)
+            {
+                <span>@T["Retired"]</span>
+            }
+            else if (type.IsSystemDefined)
+            {
+                <span>@T["System-defined"]</span>
+            }
+            else
+            {
+                <span>@T["Active"]</span>
+            }
+            """;
+
+        UserVisibleStringTests.LiteralsRenderedBy(Razor).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ALiteralLeftInAnElseBranchIsStillCaught()
+    {
+        const string Razor = """
+            @if (type.RetiredOn is not null)
+            {
+                <span>@T["Retired"]</span>
+            }
+            else
+            {
+                <span>Active</span>
+            }
+            """;
+
+        UserVisibleStringTests.LiteralsRenderedBy(Razor).Should().Contain("Active");
+    }
+
+    [Fact]
+    public void TheWordElseOrCatchInOrdinaryProseIsStillCaught()
+    {
+        UserVisibleStringTests.LiteralsRenderedBy("<p>Approve, or catch the error and try again</p>")
+            .Should().Contain("Approve, or catch the error and try again");
+    }
+
+    [Fact]
     public void ALiteralGivenToAUserVisibleSinkIsCaught()
     {
         const string CSharp = """

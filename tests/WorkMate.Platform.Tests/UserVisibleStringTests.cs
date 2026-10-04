@@ -145,6 +145,23 @@ public sealed class UserVisibleStringTests
     /// <summary>C# fragments that legitimately appear as bare text between Razor blocks.</summary>
     private static readonly string[] BareCodeLines = ["else", "do", "try", "catch", "finally"];
 
+    /// <summary>
+    /// A bare <c>else</c>, <c>else if (…)</c>, <c>catch (…)</c>, <c>catch</c> or <c>finally</c>
+    /// sitting between the closing brace of one Razor block and the opening brace of the next.
+    ///
+    /// Razor requires these continuations to be written without their own <c>@</c> — writing
+    /// <c>@else</c> is a parse error — so <see cref="BlankRazorExpressions"/>'s keyword handling,
+    /// which only triggers on a keyword immediately after <c>@</c>, never sees them. When the
+    /// branch bodies on both sides are markup, the text node the tokeniser produces is the whole
+    /// span from one <c>}</c> to the next <c>{</c>, newlines and indentation included, which is
+    /// not the clean, already-trimmed "else" that <see cref="BareCodeLines"/> was written to
+    /// allow through. Anchored on the braces either side, not on the keyword alone, so an ordinary
+    /// English sentence that happens to contain the word "else" or "catch" is left untouched.
+    /// </summary>
+    private static readonly Regex BareBlockContinuation = new(
+        @"(?<=\})\s*(else\s+if\s*\((?:[^()]|\([^()]*\))*\)|else|catch\s*\((?:[^()]|\([^()]*\))*\)|catch|finally)\s*(?=\{)",
+        RegexOptions.Compiled);
+
     internal static IEnumerable<string> LiteralsRenderedBy(string razor)
     {
         var text = razor;
@@ -156,6 +173,7 @@ public sealed class UserVisibleStringTests
         text = RazorDirective.Replace(text, string.Empty);
         text = BlankCodeBlocks(text);
         text = BlankRazorExpressions(text);
+        text = BlankBareBlockContinuations(text);
         text = BlankBareCSharpStatements(text);
 
         foreach (Match attribute in UserVisibleAttribute.Matches(text))
@@ -215,6 +233,11 @@ public sealed class UserVisibleStringTests
 
         return string.Join('\n', lines);
     }
+
+    /// <summary>Blanks the bare keywords <see cref="BareBlockContinuation"/> matches.</summary>
+    private static string BlankBareBlockContinuations(string text) =>
+        BareBlockContinuation.Replace(text, match =>
+            new string([.. match.Value.Select(character => character == '\n' ? '\n' : ' ')]));
 
     /// <summary>Blanks <c>@{ … }</c> blocks, which are C# rather than markup.</summary>
     private static string BlankCodeBlocks(string text)
