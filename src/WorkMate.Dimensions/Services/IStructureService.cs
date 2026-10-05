@@ -32,6 +32,12 @@ public interface IStructureService
     /// Changes an axis's name, levels and rules. The code is not changeable: links, closure rows
     /// and assignments are scoped by the structure's id, and recipes reference it by code.
     /// </summary>
+    /// <remarks>
+    /// Refused, with nothing saved, if the new levels would leave an existing placement invalid —
+    /// see <see cref="PlanLevelChangeAsync"/>, which this calls before writing anything. Adding or
+    /// removing a level never refuses: the graph service closes rather than deletes, so that half
+    /// of a level change is always safe.
+    /// </remarks>
     Task<DimensionResult<StructureDocument>> UpdateAsync(
         string structureId,
         BilingualText name,
@@ -39,6 +45,18 @@ public interface IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What changing this structure's levels to <paramref name="levelDimensionTypeIds"/> would do
+    /// to the records already placed on it, without changing anything. The dry run a screen shows
+    /// before a human confirms a level change, the same way <c>IDimensionService</c> shows one
+    /// before a move or a merge.
+    /// </summary>
+    Task<DimensionResult<StructureLevelChangePlan>> PlanLevelChangeAsync(
+        string structureId,
+        IReadOnlyList<string> levelDimensionTypeIds,
+        bool allowSkipLevel,
         CancellationToken cancellationToken = default);
 
     /// <summary>The axis with this id, or null.</summary>

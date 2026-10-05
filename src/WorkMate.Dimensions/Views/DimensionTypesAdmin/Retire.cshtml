@@ -5,13 +5,11 @@
 <div asp-validation-summary="All" class="text-danger mb-3"></div>
 
 <p>
-    @T["'{0}' will stop being offered for new records from the date below. Existing records of this type, and every historical report that refers to it, keep resolving as before.", Model.NameEn]
+    @T["'{0}' will stop being offered for new records from the date below. Existing records of this type, and every historical report that refers to it, keep resolving as before.", Model.NameEn!]
 </p>
 
 <form asp-action="Retire" method="post">
     <input type="hidden" asp-for="DimensionTypeId" />
-    <input type="hidden" asp-for="Code" />
-    <input type="hidden" asp-for="NameEn" />
 
     <div class="mb-3">
         <label asp-for="EffectiveDate" class="form-label">@T["Effective date"]</label>

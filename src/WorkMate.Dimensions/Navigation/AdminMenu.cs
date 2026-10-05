@@ -25,6 +25,14 @@ public sealed class AdminMenu : INavigationProvider
             .Add(S["Dimension types"], S["Dimension types"].PrefixPosition(), types => types
                 .Action("Index", "DimensionTypesAdmin", new { area = "WorkMate.Dimensions" })
                 .Permission(Permissions.ManageDimensionTypes)
+                .LocalNav())
+            .Add(S["Structures"], S["Structures"].PrefixPosition(), structures => structures
+                .Action("Index", "StructuresAdmin", new { area = "WorkMate.Dimensions" })
+                .Permission(Permissions.ManageStructures)
+                .LocalNav())
+            .Add(S["Organisation designer"], S["Organisation designer"].PrefixPosition(), designer => designer
+                .Action("Index", "OrganisationDesignerAdmin", new { area = "WorkMate.Dimensions" })
+                .Permission(Permissions.ManageDimensionRecords)
                 .LocalNav()));
 
         return ValueTask.CompletedTask;

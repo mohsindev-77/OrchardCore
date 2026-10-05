@@ -77,7 +77,20 @@ Indexes, Models, Services, ViewModels, Views, Recipes.
    id as a parameter; the shell scope supplies it.
 5. Permissions AND entitlement are declared in the module and checked in the
    service, not only in the controller.
-6. Migrations are additive. A migration never destroys data.
+6. Migrations are additive and append-only. A migration never destroys data,
+   and the body of `CreateAsync` or any shipped `UpdateFromNAsync` is never
+   edited once it has shipped — a tenant that already ran it is recorded at
+   that version and will never run it again, so an edit to it is invisible to
+   every tenant that upgraded before the edit landed. A schema change,
+   including one that only adds a column or an index, always goes in a new
+   `UpdateFromNAsync` step; `CreateAsync` is updated only to keep producing
+   the current schema for a brand-new tenant, never to carry the migration
+   for an existing one. Every schema change needs an upgrade test: create the
+   tables as the earlier version left them, run the migration, and assert the
+   result matches a fresh install. See
+   `src/WorkMate.Dimensions/Migrations.cs`'s `UpdateFrom3Async` and
+   `tests/WorkMate.Integration.Tests/DimensionsMigrationUpgradeTenantTests.cs`
+   for the pattern and the defect it was written to stop recurring.
 7. Every user-visible string goes through the localiser. No literal English in
    views or services. Every name field is bilingual (en/ar).
 8. Async throughout; cancellation tokens on every public method.

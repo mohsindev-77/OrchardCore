@@ -243,6 +243,41 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
         return [.. rows.Select(ToAssignment)];
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> CountEmployeesAtAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        if (recordIds.Count == 0)
+        {
+            return new Dictionary<string, int>(StringComparer.Ordinal);
+        }
+
+        var date = EffectiveDates.ToColumn(asAt ?? await _authorisation.TodayAsync());
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        var rows = await _session
+            .QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.NodeId.IsIn(ids) &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        // Counted by distinct employee, not by row: a split allocation is several rows for one
+        // person at one node, and a card saying "3 employees" for one person in three slices
+        // would be wrong in the way nobody checks.
+        return rows
+            .GroupBy(row => row.NodeId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.EmployeeId).Distinct(StringComparer.Ordinal).Count(),
+                StringComparer.Ordinal);
+    }
+
     private async Task<EmployeeAssignmentDocument?> LoadAsync(
         string employeeId,
         string structureId,

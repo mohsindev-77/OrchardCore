@@ -1,0 +1,33 @@
+@model DesignerNodeViewModel
+@*
+    One unit, in whichever view is showing: the chart draws this as a card, the list as a row, from
+    the same markup. Index.cshtml renders it twice over — once per root for the server-rendered
+    tree, and once with an empty model inside the <template> the script clones for lazily loaded
+    children — so there is one definition of a unit's markup rather than a Razor copy and a
+    JavaScript copy that drift apart.
+*@
+<li class="designer-node" data-record-id="@Model.RecordId" data-expanded="false">
+    <div class="designer-card">
+        <button type="button" class="designer-toggle" aria-label="@T["Expand or collapse this unit"]" aria-expanded="false">
+            <span class="designer-toggle-icon" aria-hidden="true">▸</span>
+        </button>
+        <div class="designer-card-body">
+            <div class="designer-card-name" dir="ltr" lang="en">@Model.NameEn</div>
+            <div class="designer-card-name-ar" dir="rtl" lang="ar">@Model.NameAr</div>
+            <div class="designer-card-meta">
+                <span class="designer-card-type">@Model.DimensionTypeNameEn</span>
+                <code class="designer-card-code">@Model.Code</code>
+            </div>
+            <div class="designer-card-head">
+                @* A dash, not "Vacant": nothing can be a unit's head until employees exist, so the
+                   card cannot yet tell an unfilled post from an unbuilt feature. See the backlog
+                   note in the module README and in prompt 4 of the prompt library. *@
+                @(Model.HeadDisplayName is null ? T["Head: —"] : T["Head: {0}", Model.HeadDisplayName])
+            </div>
+            @* One expression rather than an @if block, so a unit with nobody at it renders an
+               element with no whitespace in it at all — which is what :empty needs to hide it. *@
+            <div class="designer-card-employees">@(Model.EmployeeCount is { } employees ? T["{0} employees", employees].Value : string.Empty)</div>
+        </div>
+    </div>
+    <ul class="designer-children" hidden></ul>
+</li>

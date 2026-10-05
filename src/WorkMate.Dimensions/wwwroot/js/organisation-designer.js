@@ -1,0 +1,363 @@
+// Progressive enhancement for the organisation designer: lazily loaded children, switching
+// between the chart and the list without a reload, zoom and pan on the chart, and search that
+// expands the branch holding a match.
+//
+// Plain JavaScript, no framework, matching structures.js. Everything here is an enhancement:
+// with the script absent the server still renders the chosen view, the roots, the unplaced panel
+// and the structure, date and view controls, all of which are plain links and a GET form.
+(function () {
+    "use strict";
+
+    var surface = document.querySelector(".designer-surface");
+    var tree = document.getElementById("designer-tree");
+    var nodeTemplate = document.getElementById("designer-node-template");
+
+    if (!surface || !tree || !nodeTemplate) {
+        return;
+    }
+
+    var structureId = surface.getAttribute("data-structure-id");
+    var asAt = surface.getAttribute("data-as-at");
+    var childrenUrl = surface.getAttribute("data-children-url");
+    var searchUrl = surface.getAttribute("data-search-url");
+    var viewCookie = surface.getAttribute("data-view-cookie");
+    var employeesLabel = surface.getAttribute("data-employees-label") || "";
+
+    var viewport = surface.querySelector(".designer-chart-viewport");
+    var canvas = surface.querySelector(".designer-chart-canvas");
+    var zoomControls = document.getElementById("designer-zoom-controls");
+
+    function query(parameters) {
+        var parts = [];
+
+        Object.keys(parameters).forEach(function (key) {
+            if (parameters[key] !== null && parameters[key] !== undefined && parameters[key] !== "") {
+                parts.push(encodeURIComponent(key) + "=" + encodeURIComponent(parameters[key]));
+            }
+        });
+
+        return parts.join("&");
+    }
+
+    // ---- the tree, shared by both views -----------------------------------------------
+
+    function findNode(recordId) {
+        return tree.querySelector('.designer-node[data-record-id="' + recordId + '"]');
+    }
+
+    function buildNode(node) {
+        var fragment = nodeTemplate.content.cloneNode(true);
+        var li = fragment.querySelector(".designer-node");
+
+        li.setAttribute("data-record-id", node.recordId);
+        li.querySelector(".designer-card-name").textContent = node.nameEn;
+        li.querySelector(".designer-card-name-ar").textContent = node.nameAr;
+        li.querySelector(".designer-card-type").textContent = node.dimensionTypeNameEn;
+        li.querySelector(".designer-card-code").textContent = node.code;
+
+        var employees = li.querySelector(".designer-card-employees");
+        employees.textContent = node.employeeCount
+            ? employeesLabel.replace("{0}", node.employeeCount)
+            : "";
+
+        return li;
+    }
+
+    function setExpanded(li, expanded) {
+        var children = li.querySelector(".designer-children");
+        var toggle = li.querySelector(".designer-toggle");
+
+        children.hidden = !expanded;
+        li.setAttribute("data-expanded", expanded ? "true" : "false");
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+
+    // Resolves once the node's children are in the DOM, fetching them on the first call only:
+    // expanding a second time just shows what is already there.
+    function ensureLoaded(li) {
+        if (li.getAttribute("data-loaded") === "true") {
+            return Promise.resolve();
+        }
+
+        var url = childrenUrl + "?" + query({
+            structureId: structureId,
+            recordId: li.getAttribute("data-record-id"),
+            asAt: asAt
+        });
+
+        return fetch(url, { headers: { Accept: "application/json" } })
+            .then(function (response) { return response.json(); })
+            .then(function (children) {
+                var list = li.querySelector(".designer-children");
+
+                children.forEach(function (child) {
+                    list.appendChild(buildNode(child));
+                });
+
+                li.setAttribute("data-loaded", "true");
+
+                if (children.length === 0) {
+                    var toggle = li.querySelector(".designer-toggle");
+                    toggle.disabled = true;
+                    toggle.querySelector(".designer-toggle-icon").textContent = "·";
+                }
+            });
+    }
+
+    tree.addEventListener("click", function (event) {
+        var button = event.target.closest(".designer-toggle");
+
+        if (!button || button.disabled) {
+            return;
+        }
+
+        var li = button.closest(".designer-node");
+
+        if (!li) {
+            return;
+        }
+
+        var expanded = li.getAttribute("data-expanded") === "true";
+
+        ensureLoaded(li).then(function () {
+            setExpanded(li, !expanded);
+        });
+    });
+
+    // ---- view switching ---------------------------------------------------------------
+
+    // The view class lives on the viewport, not on the tree inside it, so that the chart's own
+    // scrolling box applies in one view and not the other while every descendant rule still
+    // matches the same markup.
+    function isChart() {
+        return !viewport || viewport.classList.contains("designer-chart");
+    }
+
+    function applyView(view) {
+        var chart = view === "Chart";
+
+        if (viewport) {
+            viewport.classList.toggle("designer-chart", chart);
+            viewport.classList.toggle("designer-list", !chart);
+        }
+
+        if (zoomControls) {
+            zoomControls.hidden = !chart;
+        }
+
+        if (!chart) {
+            setZoom(1);
+        }
+
+        surface.ownerDocument.querySelectorAll("[data-designer-view]").forEach(function (link) {
+            var active = link.getAttribute("data-designer-view") === view;
+            link.classList.toggle("btn-primary", active);
+            link.classList.toggle("btn-outline-secondary", !active);
+        });
+
+        if (viewCookie) {
+            document.cookie = viewCookie + "=" + view + ";path=/;max-age=31536000;samesite=lax";
+        }
+    }
+
+    document.querySelectorAll("[data-designer-view]").forEach(function (link) {
+        link.addEventListener("click", function (event) {
+            // Without script these are ordinary links and the server renders the other view;
+            // with it, the switch is a class swap that keeps every branch already expanded.
+            event.preventDefault();
+            applyView(link.getAttribute("data-designer-view"));
+        });
+    });
+
+    // ---- zoom and pan, chart only ------------------------------------------------------
+
+    function setZoom(value) {
+        if (canvas) {
+            canvas.style.setProperty("--designer-zoom", String(value));
+        }
+    }
+
+    function currentZoom() {
+        if (!canvas) {
+            return 1;
+        }
+
+        return parseFloat(canvas.style.getPropertyValue("--designer-zoom")) || 1;
+    }
+
+    function fitToScreen() {
+        if (!canvas || !viewport) {
+            return;
+        }
+
+        // Measured unzoomed, because zoom scales the layout box the measurement comes from.
+        setZoom(1);
+
+        var available = viewport.clientWidth - 16;
+        var needed = canvas.scrollWidth;
+
+        setZoom(needed > available && needed > 0 ? Math.max(0.3, available / needed) : 1);
+    }
+
+    if (zoomControls) {
+        zoomControls.hidden = !isChart();
+
+        zoomControls.addEventListener("click", function (event) {
+            var button = event.target.closest("[data-designer-zoom]");
+
+            if (!button) {
+                return;
+            }
+
+            var action = button.getAttribute("data-designer-zoom");
+
+            if (action === "fit") {
+                fitToScreen();
+            } else if (action === "in") {
+                setZoom(Math.min(2, currentZoom() * 1.2));
+            } else {
+                setZoom(Math.max(0.3, currentZoom() / 1.2));
+            }
+        });
+    }
+
+    if (viewport) {
+        var panning = null;
+
+        viewport.addEventListener("pointerdown", function (event) {
+            if (!isChart() || event.target.closest("button, a, input")) {
+                return;
+            }
+
+            panning = {
+                x: event.clientX,
+                y: event.clientY,
+                left: viewport.scrollLeft,
+                top: viewport.scrollTop
+            };
+
+            viewport.classList.add("is-panning");
+        });
+
+        viewport.addEventListener("pointermove", function (event) {
+            if (!panning) {
+                return;
+            }
+
+            viewport.scrollLeft = panning.left - (event.clientX - panning.x);
+            viewport.scrollTop = panning.top - (event.clientY - panning.y);
+        });
+
+        ["pointerup", "pointerleave", "pointercancel"].forEach(function (name) {
+            viewport.addEventListener(name, function () {
+                panning = null;
+                viewport.classList.remove("is-panning");
+            });
+        });
+    }
+
+    // ---- search ------------------------------------------------------------------------
+
+    var searchInput = document.getElementById("designer-search");
+    var resultsList = document.getElementById("designer-search-results");
+    var searchTimer = null;
+
+    function clearResults() {
+        if (resultsList) {
+            resultsList.innerHTML = "";
+            resultsList.hidden = true;
+        }
+    }
+
+    function renderResults(hits) {
+        resultsList.innerHTML = "";
+
+        if (hits.length === 0) {
+            resultsList.hidden = true;
+            return;
+        }
+
+        hits.forEach(function (hit) {
+            var item = document.createElement("li");
+            item.className = "list-group-item list-group-item-action";
+            item.textContent = hit.nameEn + " (" + hit.dimensionTypeNameEn + " — " + hit.code + ")";
+            item.addEventListener("click", function () {
+                expandPath(hit);
+            });
+            resultsList.appendChild(item);
+        });
+
+        resultsList.hidden = false;
+    }
+
+    // Walks the ancestor chain top-down, so every id after the first is already in the DOM by the
+    // time it is looked up. Works the same in both views: they are the same nodes.
+    function expandPath(hit) {
+        var ids = hit.ancestorRecordIds.concat([hit.recordId]);
+        var index = 0;
+
+        function next() {
+            if (index >= ids.length) {
+                var target = findNode(hit.recordId);
+
+                if (target) {
+                    target.scrollIntoView({ block: "center", inline: "center" });
+                    target.classList.add("designer-node-highlight");
+                    setTimeout(function () {
+                        target.classList.remove("designer-node-highlight");
+                    }, 2000);
+                }
+
+                clearResults();
+                searchInput.value = "";
+                return;
+            }
+
+            var li = findNode(ids[index]);
+
+            if (!li) {
+                clearResults();
+                return;
+            }
+
+            ensureLoaded(li).then(function () {
+                setExpanded(li, true);
+                index += 1;
+                next();
+            });
+        }
+
+        next();
+    }
+
+    if (searchInput && resultsList && searchUrl) {
+        searchInput.addEventListener("input", function () {
+            var text = searchInput.value.trim();
+
+            if (searchTimer) {
+                clearTimeout(searchTimer);
+            }
+
+            if (text.length === 0) {
+                clearResults();
+                return;
+            }
+
+            searchTimer = setTimeout(function () {
+                var url = searchUrl + "?" + query({ structureId: structureId, q: text, asAt: asAt });
+
+                fetch(url, { headers: { Accept: "application/json" } })
+                    .then(function (response) { return response.json(); })
+                    .then(renderResults);
+            }, 300);
+        });
+    }
+
+    // ---- the toolbar -------------------------------------------------------------------
+
+    document.querySelectorAll("[data-designer-autosubmit]").forEach(function (control) {
+        control.addEventListener("change", function () {
+            control.form.submit();
+        });
+    });
+})();

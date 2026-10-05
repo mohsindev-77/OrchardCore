@@ -26,6 +26,9 @@
     <PackageVersion Include="OrchardCore.ContentManagement.Display" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.ResourceManagement" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Admin.Abstractions" Version="$(OrchardCoreVersion)" />
+    <!-- NLog file logging for the host, so an error survives past the console. See ADR note in
+         WorkMate.Web's Program.cs for why this is wired at the host rather than per-module. -->
+    <PackageVersion Include="OrchardCore.Logging.NLog" Version="$(OrchardCoreVersion)" />
     <!--
       Referenced by WorkMate.Dimensions for TitlePartSettings. Specification section 4 requires
       TitlePart bound to NameEn on every generated dimension content type, and in 3.0.1 that

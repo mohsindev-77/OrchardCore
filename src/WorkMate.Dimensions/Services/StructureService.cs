@@ -207,10 +207,16 @@ internal sealed class StructureService : IStructureService
             return DimensionResult.Failed<StructureDocument>(errors);
         }
 
+        var today = await _authorisation.TodayAsync();
+        var plan = await _graph.PlanLevelChangeAsync(structureId, levelDimensionTypeIds, allowSkipLevel, today, cancellationToken);
+
+        if (plan.HasViolations)
+        {
+            return DimensionResult.Failed<StructureDocument>(plan.Violations);
+        }
+
         var typeCodes = await TypeCodesByIdAsync(cancellationToken);
         var before = StructureState.Of(document, typeCodes);
-
-        var levelsBefore = document.Levels.Select(level => level.DimensionTypeId).ToList();
 
         document.Name = name;
         document.Levels = ToLevels(levelDimensionTypeIds);
@@ -226,17 +232,15 @@ internal sealed class StructureService : IStructureService
         // they are part of this axis the moment the level is declared. Without this they would
         // be invisible on an axis they belong to, with nothing on screen to say why. A level
         // lost is the mirror case, and it closes rather than deletes, so everything before the
-        // change keeps resolving.
-        var added = levelDimensionTypeIds.Except(levelsBefore, StringComparer.Ordinal).ToList();
-        var removed = levelsBefore.Except(levelDimensionTypeIds, StringComparer.Ordinal).ToList();
-
-        if (added.Count > 0 || removed.Count > 0)
+        // change keeps resolving. Both halves of the plan were computed before anything above was
+        // saved, so they describe exactly this change, not an approximation of it.
+        if (plan.AddedDimensionTypeIds.Count > 0 || plan.RemovedDimensionTypeIds.Count > 0)
         {
             await _graph.OnStructureLevelsChangedAsync(
                 structureId,
-                added,
-                removed,
-                await _authorisation.TodayAsync(),
+                plan.AddedDimensionTypeIds,
+                plan.RemovedDimensionTypeIds,
+                today,
                 cancellationToken);
         }
 
@@ -244,6 +248,37 @@ internal sealed class StructureService : IStructureService
         await InvalidateCacheAsync();
 
         return DimensionResult.Success(document);
+    }
+
+    /// <inheritdoc />
+    public async Task<DimensionResult<StructureLevelChangePlan>> PlanLevelChangeAsync(
+        string structureId,
+        IReadOnlyList<string> levelDimensionTypeIds,
+        bool allowSkipLevel,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(levelDimensionTypeIds);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageStructures))
+        {
+            return DimensionResult.NotAuthorised<StructureLevelChangePlan>();
+        }
+
+        var document = await _structureLookup.GetAsync(structureId, cancellationToken);
+
+        if (document is null)
+        {
+            return DimensionResult.Failed<StructureLevelChangePlan>(new DimensionError(
+                DimensionRule.UnknownReference,
+                structureId,
+                S["There is no structure with the id '{0}' in this tenant.", structureId]));
+        }
+
+        var plan = await _graph.PlanLevelChangeAsync(
+            structureId, levelDimensionTypeIds, allowSkipLevel, await _authorisation.TodayAsync(), cancellationToken);
+
+        return DimensionResult.Success(plan);
     }
 
     /// <inheritdoc />

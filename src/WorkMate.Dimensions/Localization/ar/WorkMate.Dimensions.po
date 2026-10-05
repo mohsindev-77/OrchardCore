@@ -512,3 +512,302 @@ msgstr "سيتوقف عرض '{0}' للسجلات الجديدة اعتبارًا
 #: Views/DimensionTypes/Retire.cshtml
 msgid "Effective date"
 msgstr "تاريخ السريان"
+
+# ---- Admin: the structures screen ----
+
+#: Controllers/StructuresAdminController.cs
+msgid "Structure '{0}' was created."
+msgstr "تم إنشاء الهيكل '{0}'."
+
+#: Controllers/StructuresAdminController.cs
+msgid "Structure '{0}' was updated."
+msgstr "تم تحديث الهيكل '{0}'."
+
+#: Navigation/AdminMenu.cs
+#: Views/StructuresAdmin/Index.cshtml
+msgid "Structures"
+msgstr "الهياكل"
+
+#: Views/StructuresAdmin/Index.cshtml
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Create structure"
+msgstr "إنشاء هيكل"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "A structure is a named axis with ordered levels, such as Organisation or Location. A dimension record is placed on a structure by moving it in the organisation designer, not from this screen."
+msgstr "الهيكل هو محور مسمى له مستويات مرتبة، مثل الهيكل التنظيمي أو الموقع. يتم وضع سجل البعد على هيكل عن طريق نقله في مصمم الهيكل التنظيمي، وليس من هذه الشاشة."
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "No structures have been created yet."
+msgstr "لم يتم إنشاء أي هياكل بعد."
+
+#: Views/StructuresAdmin/Index.cshtml
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Levels"
+msgstr "المستويات"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "Allow skip level"
+msgstr "السماح بتخطي مستوى"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "Strict"
+msgstr "صارم"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "Primary organisation"
+msgstr "الهيكل التنظيمي الأساسي"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "No levels yet"
+msgstr "لا توجد مستويات بعد"
+
+#: Views/StructuresAdmin/Index.cshtml
+msgid "Primary"
+msgstr "أساسي"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Edit structure"
+msgstr "تعديل الهيكل"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Letters, digits, hyphens and underscores. Links, closure rows and assignments are scoped by this axis, so it cannot be changed afterwards."
+msgstr "حروف وأرقام وشرطات وشرطات سفلية. الروابط وصفوف الإغلاق والتعيينات مرتبطة بنطاق هذا المحور، لذا لا يمكن تغييره لاحقًا."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "The code cannot be changed once the structure exists."
+msgstr "لا يمكن تغيير الرمز بعد وجود الهيكل."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Allow skipping levels (for example, a Section directly under a Division)"
+msgstr "السماح بتخطي المستويات (على سبيل المثال، قسم فرعي مباشرة تحت شُعبة)"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Every record on this axis must sit at one of the levels below"
+msgstr "يجب أن يقع كل سجل على هذا المحور عند أحد المستويات أدناه"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Turn this off for an axis still being shaped, such as a new Project structure, where a record may not yet fit a declared level."
+msgstr "أوقف هذا الخيار لمحور لا يزال قيد التشكيل، مثل هيكل مشروع جديد، حيث قد لا يتناسب السجل بعد مع مستوى مُعلَن."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "This is the primary organisation structure"
+msgstr "هذا هو الهيكل التنظيمي الأساسي"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "The default scope for approvals and for data visibility. Only one structure in the tenant may hold this."
+msgstr "النطاق الافتراضي للموافقات ولرؤية البيانات. لا يجوز أن يحمل هذه الصفة سوى هيكل واحد في المستأجر."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "The dimension types permitted on this axis, root first. A Section under a Department, for example, needs Department listed before Section."
+msgstr "أنواع الأبعاد المسموح بها على هذا المحور، بدءًا بالجذر. على سبيل المثال، يحتاج القسم الفرعي الواقع تحت قسم إلى إدراج القسم قبل القسم الفرعي."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Ordinal"
+msgstr "الترتيب"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Dimension type"
+msgstr "نوع البعد"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Choose a dimension type"
+msgstr "اختر نوع بعد"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Move up"
+msgstr "نقل لأعلى"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Move down"
+msgstr "نقل لأسفل"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Up"
+msgstr "أعلى"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Down"
+msgstr "أسفل"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Add level"
+msgstr "إضافة مستوى"
+
+# ---- Admin: the structure level-change confirmation screen ----
+
+#: Internal/Graph/DimensionGraphService.cs
+msgid "'{0}' is currently placed under '{1}'. The new level order for '{2}' would put '{1}' at or below '{0}', which is not permitted."
+msgstr "'{0}' موضوع حاليًا تحت '{1}'. سيضع ترتيب المستويات الجديد لـ '{2}' العنصر '{1}' عند '{0}' أو تحته، وهذا غير مسموح به."
+
+#: Internal/Graph/DimensionGraphService.cs
+msgid "'{0}' is currently placed under '{1}'. The new level order for '{2}' would skip a level between them, which this structure would not allow."
+msgstr "'{0}' موضوع حاليًا تحت '{1}'. سيتخطى ترتيب المستويات الجديد لـ '{2}' مستوى بينهما، وهذا الهيكل لا يسمح بذلك."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Confirm level change"
+msgstr "تأكيد تغيير المستوى"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "'{0}' already has records placed on it. Review what this change does before it is applied."
+msgstr "'{0}' يحتوي بالفعل على سجلات موضوعة عليه. راجع ما سيفعله هذا التغيير قبل تطبيقه."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Adding these levels is safe: records of these types already exist and will be visible on this axis from today."
+msgstr "إضافة هذه المستويات آمنة: السجلات من هذه الأنواع موجودة بالفعل وستصبح مرئية على هذا المحور اعتبارًا من اليوم."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Dropping a level does not delete anything — the affected records stop being offered on this axis from today, and every historical report still resolves as before — but review the counts first."
+msgstr "إسقاط مستوى لا يحذف شيئًا — تتوقف السجلات المتأثرة عن العرض على هذا المحور اعتبارًا من اليوم، وتستمر كل التقارير التاريخية في التحليل كما كانت — لكن راجع الأعداد أولًا."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Level being dropped"
+msgstr "المستوى الذي سيُسقَط"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Records affected"
+msgstr "السجلات المتأثرة"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Employees affected today"
+msgstr "الموظفون المتأثرون اليوم"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Yes, apply this change"
+msgstr "نعم، طبّق هذا التغيير"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Back, nothing changed yet"
+msgstr "رجوع، لم يتغير شيء بعد"
+
+#: Navigation/AdminMenu.cs, Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Organisation designer"
+msgstr "مصمم الهيكل التنظيمي"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Structure"
+msgstr "الهيكل"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Show"
+msgstr "اعرض"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Choose a structure to see its tree."
+msgstr "اختر هيكلاً لعرض شجرته."
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Search this axis"
+msgstr "البحث في هذا المحور"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Search by code or name"
+msgstr "البحث بالرمز أو الاسم"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "This axis has no roots on this date."
+msgstr "ليس لهذا المحور أي جذور في هذا التاريخ."
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Unplaced records"
+msgstr "السجلات غير المنسوبة"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Created outside this designer, with no parent on this axis yet. They cannot be reached by expanding the tree."
+msgstr "أُنشئت خارج هذا المصمم، ولا يوجد لها أصل على هذا المحور بعد. لا يمكن الوصول إليها بتوسيع الشجرة."
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Nothing unplaced on this axis."
+msgstr "لا توجد سجلات غير منسوبة على هذا المحور."
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Expand or collapse this unit"
+msgstr "توسيع هذه الوحدة أو طيّها"
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Head: —"
+msgstr "الرئيس: —"
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Head: {0}"
+msgstr "الرئيس: {0}"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Chart"
+msgstr "مخطط"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "List"
+msgstr "قائمة"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "View"
+msgstr "العرض"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Show the organisation as at"
+msgstr "اعرض المنظمة كما كانت في"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Showing this axis as it was on {0}. Nothing on this screen changes anything."
+msgstr "يعرض هذا المحور كما كان في {0}. لا شيء في هذه الشاشة يغيّر أي بيانات."
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Back to today"
+msgstr "العودة إلى اليوم"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Zoom"
+msgstr "التكبير"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Zoom in"
+msgstr "تكبير"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Zoom out"
+msgstr "تصغير"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "Fit to screen"
+msgstr "ملاءمة الشاشة"
+
+#: Views/OrganisationDesignerAdmin/Index.cshtml
+msgid "{0} employees"
+msgstr "{0} موظفين"
+
+#: Recipes/DimensionTypesRecipeStep.cs, Recipes/StructuresRecipeStep.cs, Recipes/DimensionRecordsRecipeStep.cs
+msgid "'{0}' could not be created."
+msgstr "تعذر إنشاء '{0}'."
+
+#: Recipes/DimensionRecordsRecipeStep.cs
+msgid "'{0}' could not be placed."
+msgstr "تعذر وضع '{0}'."
+
+#: Recipes/DimensionRecordsRecipeStep.cs
+msgid "Record '{0}' could not be placed: its parent '{1}' was not found. Parents must be listed before their children."
+msgstr "تعذر وضع السجل '{0}': لم يتم العثور على الأصل '{1}'. يجب إدراج الأصول قبل أبنائها."
+
+#: Recipes/DimensionRecordsRecipeStep.cs
+msgid "Record '{0}' is placed on structure '{1}', which does not exist."
+msgstr "السجل '{0}' موضوع على الهيكل '{1}'، وهو غير موجود."
+
+#: Recipes/DimensionRecordsRecipeStep.cs
+msgid "Record '{0}' names dimension type '{1}', which does not exist."
+msgstr "السجل '{0}' يشير إلى نوع البعد '{1}'، وهو غير موجود."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' names level type '{1}', which does not exist. Levels must be listed after the types that back them."
+msgstr "الهيكل '{0}' يشير إلى نوع المستوى '{1}'، وهو غير موجود. يجب إدراج المستويات بعد الأنواع التي تستند إليها."
+
+#: Recipes/DimensionTypesRecipeStep.cs
+msgid "Dimension type '{0}' already exists with different content: {1}."
+msgstr "نوع البعد '{0}' موجود بالفعل بمحتوى مختلف: {1}."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' already exists with different content: {1}."
+msgstr "الهيكل '{0}' موجود بالفعل بمحتوى مختلف: {1}."
+
+#: Recipes/DimensionRecordsRecipeStep.cs
+msgid "Record '{0}' already exists with different content: {1}."
+msgstr "السجل '{0}' موجود بالفعل بمحتوى مختلف: {1}."

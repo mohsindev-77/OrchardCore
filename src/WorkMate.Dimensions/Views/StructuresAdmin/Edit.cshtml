@@ -1,0 +1,110 @@
+@model StructureEditViewModel
+
+<h1>@(Model.IsNew ? T["Create structure"] : T["Edit structure"])</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form asp-action="@(Model.IsNew ? "Create" : "Edit")" asp-route-id="@Model.StructureId" method="post">
+    <div class="mb-3">
+        <label asp-for="Code" class="form-label">@T["Code"]</label>
+        @if (Model.IsNew)
+        {
+            <input asp-for="Code" class="form-control w-auto" required maxlength="50" autofocus="autofocus" />
+            <div class="form-text">@T["Letters, digits, hyphens and underscores. Links, closure rows and assignments are scoped by this axis, so it cannot be changed afterwards."]</div>
+        }
+        else
+        {
+            <input asp-for="Code" class="form-control w-auto" readonly="readonly" />
+            <div class="form-text">@T["The code cannot be changed once the structure exists."]</div>
+        }
+    </div>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"].Value" required="true" max-length="200" />
+
+    <div class="form-check mb-3">
+        <input asp-for="AllowSkipLevel" class="form-check-input" />
+        <label asp-for="AllowSkipLevel" class="form-check-label">@T["Allow skipping levels (for example, a Section directly under a Division)"]</label>
+    </div>
+
+    <div class="form-check mb-3">
+        <input asp-for="IsStrict" class="form-check-input" />
+        <label asp-for="IsStrict" class="form-check-label">@T["Every record on this axis must sit at one of the levels below"]</label>
+        <div class="form-text">@T["Turn this off for an axis still being shaped, such as a new Project structure, where a record may not yet fit a declared level."]</div>
+    </div>
+
+    <div class="form-check mb-3">
+        <input asp-for="IsPrimaryOrganisation" class="form-check-input" />
+        <label asp-for="IsPrimaryOrganisation" class="form-check-label">@T["This is the primary organisation structure"]</label>
+        <div class="form-text">@T["The default scope for approvals and for data visibility. Only one structure in the tenant may hold this."]</div>
+    </div>
+
+    <fieldset class="mb-3">
+        <legend class="fs-5">@T["Levels"]</legend>
+        <p class="text-muted">
+            @T["The dimension types permitted on this axis, root first. A Section under a Department, for example, needs Department listed before Section."]
+        </p>
+
+        <table class="table" id="levels-table">
+            <thead>
+                <tr>
+                    <th>@T["Ordinal"]</th>
+                    <th>@T["Dimension type"]</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Model.LevelDimensionTypeIds.Count; i++)
+                {
+                    <tr class="level-row">
+                        <td class="level-ordinal">@(i + 1)</td>
+                        <td>
+                            <select asp-for="LevelDimensionTypeIds[i]" class="form-select form-select-sm">
+                                <option value="">@T["Choose a dimension type"]</option>
+                                @foreach (var option in Model.AvailableDimensionTypes)
+                                {
+                                    <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
+                                }
+                            </select>
+                        </td>
+                        <td class="text-nowrap">
+                            <button type="button" class="btn btn-sm btn-outline-secondary move-level-up" aria-label="@T["Move up"]">@T["Up"]</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary move-level-down" aria-label="@T["Move down"]">@T["Down"]</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-level-row">@T["Remove"]</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-level-row">@T["Add level"]</button>
+    </fieldset>
+
+    <!-- A row of raw markup, never bound to a model, that the script below clones, reindexes and
+         appends. __index__ is a placeholder the script replaces with the next free index. -->
+    <template id="level-row-template">
+        <tr class="level-row">
+            <td class="level-ordinal"></td>
+            <td>
+                <select name="LevelDimensionTypeIds[__index__]" class="form-select form-select-sm">
+                    <option value="">@T["Choose a dimension type"]</option>
+                    @foreach (var option in Model.AvailableDimensionTypes)
+                    {
+                        <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
+                    }
+                </select>
+            </td>
+            <td class="text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary move-level-up" aria-label="@T["Move up"]">@T["Up"]</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary move-level-down" aria-label="@T["Move down"]">@T["Down"]</button>
+                <button type="button" class="btn btn-sm btn-outline-danger remove-level-row">@T["Remove"]</button>
+            </td>
+        </tr>
+    </template>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">@T["Save"]</button>
+        <a asp-action="Index" class="btn btn-link">@T["Cancel"]</a>
+    </div>
+</form>
+
+<script src="~/WorkMate.Dimensions/js/structures.js"></script>

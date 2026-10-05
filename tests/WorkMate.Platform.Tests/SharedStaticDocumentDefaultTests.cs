@@ -43,8 +43,28 @@ namespace WorkMate.Platform.Tests;
 /// </remarks>
 public sealed class SharedStaticDocumentDefaultTests
 {
+    /// <summary>
+    /// Every project under <c>src</c>, with no exclusion for <c>WorkMate.Core</c> or
+    /// <c>WorkMate.Web</c> the way <see cref="LocalisationResourceTests.Modules"/> has — this
+    /// hazard is not a localisation concern. <c>BilingualText.Empty</c>, the field that caused
+    /// ADR-0007, lived in <c>WorkMate.Core</c>, which every module depends on and which
+    /// <see cref="LocalisationResourceTests.Modules"/> skips because it has no localiser. A guard
+    /// that could not have caught the actual defect is not a guard.
+    /// </summary>
+    public static TheoryData<string> AllModules()
+    {
+        var data = new TheoryData<string>();
+
+        foreach (var directory in Directory.GetDirectories(Path.Combine(LocalisationResourceTests.RepositoryRoot, "src")))
+        {
+            data.Add(Path.GetFileName(directory));
+        }
+
+        return data;
+    }
+
     [Theory]
-    [MemberData(nameof(LocalisationResourceTests.Modules), MemberType = typeof(LocalisationResourceTests))]
+    [MemberData(nameof(AllModules))]
     public void NoSettablePropertyDefaultsToASharedStaticInstance(string moduleName)
     {
         var module = Path.Combine(LocalisationResourceTests.RepositoryRoot, "src", moduleName);

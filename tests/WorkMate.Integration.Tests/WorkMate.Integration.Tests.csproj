@@ -22,6 +22,10 @@
          screen is forbidden to a user lacking the permission it needs. -->
     <PackageReference Include="OrchardCore.Users.Core" />
     <PackageReference Include="OrchardCore.Users.Abstractions" />
+    <!-- RenderedForm reads a GET response's actual <form> so a POST test submits exactly what the
+         rendered page would, including fields the test author never thought to post — already
+         pinned as a security override for a package Orchard pulls in transitively. -->
+    <PackageReference Include="AngleSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />

@@ -59,6 +59,18 @@ whichever way the executor behaves, so the answer does not change any code.
 Prompt 3 adds the first real recipe steps and will be able to answer it in one
 line if it ever matters.
 
+**Answered in prompt 3.** `DimensionsRecipeStepsTenantTests` runs a real
+recipe — `dimension-types`, then `structures`, then `dimension-records` — with
+`RecipeDescriptor.RequireNewScope = false`, and the record step's `NewAsync`
+call welds every part correctly for a type the `dimension-types` step created
+moments earlier in the same execution. That is the decision above doing its
+job, not evidence the cache problem went away: `DimensionTypeService` still
+reads its own just-created definition with `LoadTypeDefinitionAsync`, per the
+rule below. What was not independently re-confirmed is the harvester's
+default for `RequireNewScope` when a recipe's JSON omits it, as every WorkMate
+recipe so far does — the test sets it explicitly to exercise the harder,
+same-scope case, which is also the one this module is built to survive.
+
 ## Decision
 
 **Any code that writes, and any code running in a scope that has just created

@@ -172,3 +172,49 @@ public sealed record CancelMovePlan(
     /// <summary>Whether anyone's assignment resolution would change as a result.</summary>
     public bool IsEmpty => EmployeesAffected.Count == 0;
 }
+
+/// <summary>
+/// What dropping one dimension type from a structure's levels would do to the records already on
+/// that level, today.
+/// </summary>
+/// <remarks>
+/// Scoped to the direct impact, not a full transitive walk of every descendant a record under the
+/// dropped level might carry: <see cref="RecordCount"/> is every record of this type currently on
+/// the axis, and <see cref="EmployeesAffected"/> is every employee assigned today at one of them.
+/// Nothing is deleted either way — <c>IDimensionGraphService.OnStructureLevelsChangedAsync</c>
+/// closes the affected self pairs rather than removing them, so prior-period reporting is
+/// unaffected — but a human approving the change still needs to know how much of today's structure
+/// it touches before confirming.
+/// </remarks>
+public sealed record LevelRemovalImpact(
+    string DimensionTypeId,
+    int RecordCount,
+    int EmployeesAffected);
+
+/// <summary>
+/// What changing a structure's levels would do, or what it did: the dry run
+/// <c>IStructureService.PlanLevelChangeAsync</c> returns, and what <c>UpdateAsync</c> checked
+/// before saving anything.
+/// </summary>
+/// <remarks>
+/// Adding or removing a level is always safe at the engine level — <c>OnStructureLevelsChangedAsync</c>
+/// closes rather than deletes — so <see cref="RemovalImpacts"/> is informational, not a blocker.
+/// <see cref="Violations"/> is the other half: reordering existing levels can put an
+/// <em>already-placed</em> record's real parent on the wrong side of the new order, which is not
+/// safe and is not merely informational. A plan with any violation is refused outright, the same
+/// as a move or a merge that fails validation — nothing is saved, and the reason names the rule
+/// and the record, not a generic failure.
+/// </remarks>
+public sealed record StructureLevelChangePlan(
+    string StructureId,
+    IReadOnlyList<string> AddedDimensionTypeIds,
+    IReadOnlyList<string> RemovedDimensionTypeIds,
+    IReadOnlyList<LevelRemovalImpact> RemovalImpacts,
+    IReadOnlyList<DimensionError> Violations)
+{
+    /// <summary>Whether the levels are actually changing at all.</summary>
+    public bool IsEmpty => AddedDimensionTypeIds.Count == 0 && RemovedDimensionTypeIds.Count == 0;
+
+    /// <summary>Whether this change would leave an existing placement invalid and must be refused.</summary>
+    public bool HasViolations => Violations.Count > 0;
+}

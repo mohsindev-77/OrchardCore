@@ -106,4 +106,27 @@ public interface IEmployeeAssignmentService
         string employeeId,
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// How many employees are placed at each of <paramref name="recordIds"/> as at a date — the
+    /// node itself only, not its descendants.
+    /// </summary>
+    /// <remarks>
+    /// One query for a set of nodes rather than one per node, because the caller is the
+    /// organisation designer drawing a row of cards: a count per card issued separately would be
+    /// a query per card on every expand.
+    ///
+    /// The ids are passed as an <c>IN</c> list, unlike <see cref="GetEmployeesUnderAsync"/>'s
+    /// correlated sub-select, and that is safe for the opposite reason: this is called with one
+    /// node's children or one page of roots — tens of ids — never a whole 5,000-record subtree.
+    /// A caller that needs a subtree's total asks <see cref="GetEmployeesUnderAsync"/> for it.
+    ///
+    /// A node with nobody at it is absent from the result rather than present with zero, so the
+    /// common case on a tenant with no employees yet costs nothing to carry.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, int>> CountEmployeesAtAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
 }

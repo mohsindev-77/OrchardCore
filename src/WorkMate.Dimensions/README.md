@@ -262,6 +262,49 @@ until there is a number to justify taking it on.
   `IStructureLookup` ever mutates the result — and gives the two write services their own uncached
   path for the one case that must.
 
+## Admin UI
+
+Three screens, each calling the same services the API and the recipe steps
+use — no screen holds a privileged path:
+
+- **`DimensionTypesAdminController`** — list and editor for dimension types.
+- **`StructuresAdminController`** — list and editor for structures and their
+  ordered levels. Editing the levels of a structure that already has records
+  placed on it previews the impact first (`IStructureService.PlanLevelChangeAsync`)
+  and requires confirmation for a level removal, or refuses outright, naming
+  the record at fault, for a reorder that would leave an existing placement
+  invalid — the same dry-run-then-apply shape as move and merge.
+- **`OrganisationDesignerAdminController`** — the read-only tree: a
+  structure's roots (`IDimensionGraphService.GetRootsAsync`), lazily loaded
+  children (`GetChildrenAsync`, fetched from the browser as each node is
+  expanded rather than all at once), search with expand-to-match
+  (`SearchAsync`, each hit carrying the ancestor chain the tree expands to
+  reveal it), and the unplaced-records panel (`GetUnplacedAsync`). Gated by
+  `ManageDimensionRecords` rather than a new permission — viewing the tree is
+  the same day-to-day capability that already lets a caller create and change
+  records, not a reason for an eighth permission. Move, merge, retire, rename
+  and "add unit" are a later slice; this controller does not write anything.
+
+### Waiting on the employee record: the unit head
+
+**Backlog note, 5 October 2026.** Each unit has an effective-dated head: an
+employee assignment flagged as head of that unit, not a field on the dimension
+record — the same reason placement is an assignment row and not a department
+field on the employee. The designer's chart card shows the current head's name,
+and "Head: Vacant" when the unit has none.
+
+Neither is possible yet, because no employee can exist until
+`WorkMate.Records` ships, so the card shows `Head: —` today. The dash means
+"not built yet", not "nobody": a card that said "Vacant" while the feature is
+missing would be making a claim about the organisation that nothing has
+checked. The line is rendered rather than omitted so the card's height does not
+change when heads start arriving.
+
+Prompt 5's approval routing — route to the unit head, and the vacant-head
+rule — must read the same source, so that what the chart shows and what an
+approval routes to can never disagree. The same note is on prompt 4 in
+`/docs/prompt-library.md`.
+
 ## Known limitation: simultaneous creation of the same code
 
 Even once `IDimensionValidator` enforces code uniqueness, two requests creating
@@ -307,20 +350,65 @@ only one of the four that carries a free-text reason, because cancelling a
 move is the one record-level operation this module requires one for.
 
 ## Recipe steps
-_None yet._ `dimension-types`, `structures`, `dimension-records` and
-`employee-assignments` arrive with prompt 3.
+`dimension-types`, `structures` and `dimension-records` are built, in
+`Recipes/`. `employee-assignments` has not landed yet — it arrives with the
+employee assignment admin UI.
 
-### For whoever writes them
+Each step validates every row of its own JSON array against one
+`IDimensionValidator.BeginBatch()` before creating any of them, and throws
+`RecipeExecutionException` naming every problem at once if any row fails, so
+a bad row never leaves a partial write behind from its own step. `structures`
+resolves its level types by code against what `dimension-types` already
+created; `dimension-records` resolves its type and structure the same way,
+and resolves a placement's parent by code too, once the record it names has
+actually been created — which is why a recipe must list a parent before its
+children, the same ordering constraint the record layer already has between
+types, structures and records themselves. See the remarks on
+`DimensionRecordsRecipeStep` for exactly where that two-phase shape stops
+being able to guarantee nothing-written and why that is still sound in
+practice. `Recipes/organisation-designer-demo.recipe.json`, in this module, is
+a worked example: a self-contained three-level structure with a deliberately
+unplaced record, clearly marked as test data, never referenced by
+`base.recipe.json`, and discoverable on `/Admin/Recipes` precisely because it
+sits in the module's own `Recipes/` folder rather than at the repository
+root — see `recipes/demo/README.md` for why that distinction matters.
+
+**Re-running a recipe is safe — ADR-0008.** A row naming a code that already
+exists is compared field by field against the tenant's data: an exact match
+is skipped (no write, no error), and anything else fails the step, naming
+the code and what differs, rather than silently overwriting it. This is a
+per-step guarantee, not a whole-recipe one — cross-step atomicity was
+considered and rejected; the ADR explains why — so a failure partway through
+one run can leave earlier steps' writes behind, and a later, corrected run
+is expected to recognise them as already correct rather than collide with
+them. `DimensionsRecipeStepsTenantTests` covers running the demo recipe
+twice, a fixed re-run after a deliberately broken one, and a same-code row
+with different content.
+
+### For whoever writes `employee-assignments`
 
 - **Open a validation batch** with `IDimensionValidator.BeginBatch()` and pass
   it to every create in the step, or duplicates within one import file go
-  undetected. Every `CreateAsync` takes one.
-- **Settle the open question in ADR-0006**: whether Orchard 3.0.1's recipe
-  executor runs each step in its own shell scope. It was deferred because the
-  module is correct either way — `SameScopeCreationTenantTests` proves types
-  and records can be created in one scope — but with a real step in hand the
-  answer is one assertion away, and `RecipeDescriptor.RequireNewScope` is the
-  flag that controls it.
+  undetected. Every `CreateAsync` takes one. See the three built steps for
+  the shape: validate the whole array first, write nothing until every row
+  across the step has passed, write for real, revalidating.
+- **Export uses a different mechanism from import, and that decision is
+  recorded as ADR-0010** (ADR-0007 is the fix for a shared static document
+  default, found while building the dimension types screen; ADR-0008 is
+  recipe re-run behaviour, found while building these three steps; ADR-0009
+  is migrations being append-only, found from a real tenant's missing
+  `NameAr` column; the export-mechanism ADR this slice still owes has moved
+  to the next free number three times now because of it):
+  `IRecipeStepHandler`/`NamedRecipeStepHandler` for import,
+  `IDeploymentSource`/`DeploymentStep`/`DeploymentStepDriver` from
+  `OrchardCore.Deployment.Abstractions` for export, with one composite
+  `DimensionsDeploymentStep` emitting all four recipe steps in dependency
+  order. Write ADR-0010 when the export side lands, not before.
+- **The open question in ADR-0006 — whether Orchard 3.0.1's recipe executor
+  runs each step in its own shell scope — is answered there**:
+  `DimensionsRecipeStepsTenantTests` runs `dimension-types` and
+  `dimension-records` in one execution with `RequireNewScope = false` and it
+  works, which is the harder case this module is built to survive either way.
 - **This one is for the designer screen, not the recipe steps: warn, don't
   silently accept, when a backdated move meets a later one.** The engine
   records it correctly either way — `DimensionGraphService.InsertLink` splits
@@ -349,6 +437,25 @@ _None yet._ `dimension-types`, `structures`, `dimension-records` and
   whichever had most recently been created. Fixed to a fresh instance each;
   `SharedStaticDocumentDefaultTests` in the platform test suite guards every
   module against the same mistake.
+- **ADR-0008** — recipe re-run behaviour: each of the three recipe steps
+  treats an already-existing code as a merge candidate (skip if it matches
+  exactly, fail naming the difference if it does not), never silently
+  overwritten. Cross-step atomicity — one transaction for the whole recipe —
+  was considered and rejected in favour of this.
+- **ADR-0009** — migrations are append-only. `DimensionRecordPartIndex.NameAr`
+  was added to an already-shipped migration step instead of a new one, so a
+  tenant that had already run that step never got the column and failed the
+  moment `dimension-records` tried to create a record. Fixed with
+  `Migrations.UpdateFrom3Async`, which checks whether the column already
+  exists (a brand-new tenant already has it, from the step that was edited)
+  before adding it, rather than reverting that edit. The check could not use
+  `DbConnection.GetSchema("Columns", …)` — `Microsoft.Data.Sqlite` does not
+  implement that collection at all, confirmed directly, and calling it broke
+  every tenant's setup until this was found — so it queries SQLite's
+  `PRAGMA table_info` and SQL Server's `INFORMATION_SCHEMA.COLUMNS` instead.
+  `DimensionsMigrationUpgradeTenantTests` both reproduces the exact historical
+  defect and checks, for every index table this module defines, that a fresh
+  tenant's live columns match the C# class exactly.
 
 ## Open questions this module is waiting on
 

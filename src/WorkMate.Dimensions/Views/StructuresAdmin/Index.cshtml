@@ -1,0 +1,64 @@
+@model List<StructureListItemViewModel>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@T["Structures"]</h1>
+    <a asp-action="Create" class="btn btn-primary">@T["Create structure"]</a>
+</div>
+
+<p class="text-muted">
+    @T["A structure is a named axis with ordered levels, such as Organisation or Location. A dimension record is placed on a structure by moving it in the organisation designer, not from this screen."]
+</p>
+
+@if (Model.Count == 0)
+{
+    <p>@T["No structures have been created yet."]</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>@T["Code"]</th>
+                <th>@T["Name"]</th>
+                <th>@T["Levels"]</th>
+                <th>@T["Allow skip level"]</th>
+                <th>@T["Strict"]</th>
+                <th>@T["Primary organisation"]</th>
+                <th class="text-end">@T["Actions"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var structure in Model)
+            {
+                <tr>
+                    <td><code>@structure.Code</code></td>
+                    <td>
+                        <div dir="ltr" lang="en">@structure.NameEn</div>
+                        <div dir="rtl" lang="ar" class="text-muted small">@structure.NameAr</div>
+                    </td>
+                    <td>
+                        @if (structure.LevelLabels.Count == 0)
+                        {
+                            <span class="text-muted">@T["No levels yet"]</span>
+                        }
+                        else
+                        {
+                            @(string.Join(" → ", structure.LevelLabels))
+                        }
+                    </td>
+                    <td>@(structure.AllowSkipLevel ? T["Yes"] : T["No"])</td>
+                    <td>@(structure.IsStrict ? T["Yes"] : T["No"])</td>
+                    <td>
+                        @if (structure.IsPrimaryOrganisation)
+                        {
+                            <span class="badge text-bg-info">@T["Primary"]</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        <a asp-action="Edit" asp-route-id="@structure.StructureId" class="btn btn-sm btn-outline-secondary">@T["Edit"]</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

@@ -1,0 +1,154 @@
+@model OrganisationDesignerViewModel
+@{
+    var isChart = Model.ViewMode == DesignerViewMode.Chart;
+    var asAtValue = Model.AsAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+}
+
+<link rel="stylesheet" href="~/WorkMate.Dimensions/css/organisation-designer.css" />
+
+<h1>@T["Organisation designer"]</h1>
+
+@if (Model.Structures.Count == 0)
+{
+    <p>@T["No structures have been created yet."]</p>
+    return;
+}
+
+@* One GET form carries every choice that changes what is shown, so the screen is addressable by
+   URL and works with no script at all: picking a structure, a date or a view reloads with the
+   choice in the query string, and the controller remembers the view in a cookie. *@
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-5 col-lg-4">
+        <label class="form-label" for="structureId">@T["Structure"]</label>
+        <select id="structureId" name="structureId" class="form-select" data-designer-autosubmit>
+            @foreach (var structure in Model.Structures)
+            {
+                <option value="@structure.StructureId" selected="@(structure.StructureId == Model.SelectedStructureId)">
+                    @structure.NameEn (@structure.Code)
+                </option>
+            }
+        </select>
+    </div>
+
+    @if (Model.CanViewHistory)
+    {
+        <div class="col-sm-4 col-lg-3">
+            <label class="form-label" for="asAt">@T["Show the organisation as at"]</label>
+            <input type="date" id="asAt" name="asAt" class="form-control" value="@asAtValue" data-designer-autosubmit />
+        </div>
+    }
+
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">@T["Show"]</button>
+    </div>
+
+    <div class="col-auto ms-sm-auto">
+        <div class="btn-group" role="group" aria-label="@T["View"]">
+            <a class="btn btn-sm @(isChart ? "btn-primary" : "btn-outline-secondary")"
+               data-designer-view="Chart"
+               asp-action="Index"
+               asp-route-structureId="@Model.SelectedStructureId"
+               asp-route-asAt="@asAtValue"
+               asp-route-view="Chart">@T["Chart"]</a>
+            <a class="btn btn-sm @(isChart ? "btn-outline-secondary" : "btn-primary")"
+               data-designer-view="List"
+               asp-action="Index"
+               asp-route-structureId="@Model.SelectedStructureId"
+               asp-route-asAt="@asAtValue"
+               asp-route-view="List">@T["List"]</a>
+        </div>
+    </div>
+</form>
+
+@if (Model.SelectedStructureId is null)
+{
+    <p>@T["Choose a structure to see its tree."]</p>
+    return;
+}
+
+@if (!Model.IsAsAtToday)
+{
+    <div class="alert alert-info py-2">
+        @T["Showing this axis as it was on {0}. Nothing on this screen changes anything.", asAtValue]
+        <a asp-action="Index" asp-route-structureId="@Model.SelectedStructureId" asp-route-view="@Model.ViewMode">@T["Back to today"]</a>
+    </div>
+}
+
+<div class="row g-3 designer-surface"
+     data-structure-id="@Model.SelectedStructureId"
+     data-as-at="@asAtValue"
+     data-children-url="@Url.Action("Children")"
+     data-search-url="@Url.Action("Search")"
+     data-view-cookie="@OrganisationDesignerViewModel.ViewModeCookieName"
+     data-employees-label="@T["{0} employees"].Value">
+
+    <div class="col-lg-8 col-xl-9">
+        <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
+            <div class="flex-grow-1" style="max-width: 24rem;">
+                <label class="form-label" for="designer-search">@T["Search this axis"]</label>
+                <input type="search" id="designer-search" class="form-control form-control-sm" autocomplete="off"
+                       placeholder="@T["Search by code or name"]" />
+            </div>
+
+            <div class="btn-group btn-group-sm" role="group" aria-label="@T["Zoom"]" id="designer-zoom-controls" hidden>
+                <button type="button" class="btn btn-outline-secondary" data-designer-zoom="out" aria-label="@T["Zoom out"]">−</button>
+                <button type="button" class="btn btn-outline-secondary" data-designer-zoom="fit">@T["Fit to screen"]</button>
+                <button type="button" class="btn btn-outline-secondary" data-designer-zoom="in" aria-label="@T["Zoom in"]">+</button>
+            </div>
+        </div>
+
+        <ul id="designer-search-results" class="list-group mb-2" hidden></ul>
+
+        @if (Model.Roots.Count == 0)
+        {
+            <p class="text-muted">@T["This axis has no roots on this date."]</p>
+        }
+        else
+        {
+            <div class="designer-chart-viewport @(isChart ? "designer-chart" : "designer-list")">
+                <div class="designer-chart-canvas">
+                    <div id="designer-tree">
+                        <ul>
+                            @foreach (var root in Model.Roots)
+                            {
+                                await Html.RenderPartialAsync("_DesignerNode", root);
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="col-lg-4 col-xl-3">
+        <h2 class="fs-5">@T["Unplaced records"]</h2>
+        <p class="text-muted small">
+            @T["Created outside this designer, with no parent on this axis yet. They cannot be reached by expanding the tree."]
+        </p>
+        @if (Model.Unplaced.Count == 0)
+        {
+            <p class="text-muted">@T["Nothing unplaced on this axis."]</p>
+        }
+        else
+        {
+            <ul class="list-group">
+                @foreach (var node in Model.Unplaced)
+                {
+                    <li class="list-group-item" data-record-id="@node.RecordId">
+                        <div dir="ltr" lang="en">@node.NameEn</div>
+                        <div dir="rtl" lang="ar" class="text-muted small">@node.NameAr</div>
+                        <div class="text-muted small">@node.DimensionTypeNameEn <code>@node.Code</code></div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@* The script clones this for every lazily loaded child. Rendered from the same partial as the
+   roots above, with an empty model, so there is no second copy of a unit's markup to keep in step. *@
+<template id="designer-node-template">
+    @{ await Html.RenderPartialAsync("_DesignerNode", new DesignerNodeViewModel()); }
+</template>
+
+<script src="~/WorkMate.Dimensions/js/organisation-designer.js"></script>

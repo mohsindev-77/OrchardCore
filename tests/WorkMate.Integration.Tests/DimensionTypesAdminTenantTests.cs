@@ -43,16 +43,18 @@ public sealed class DimensionTypesAdminTenantTests
     {
         var createPage = await BaseTenantFixture.GetPageAsync(_fixture.Administrator, "/Admin/Dimensions/Types/Create");
 
+        // Built from the rendered page's own fields, not a hand-picked subset: whatever hidden,
+        // disabled or display-only field the form carries rides along exactly as a browser would
+        // send it, which is the only way a test can catch a field that fails validation empty —
+        // see RenderedForm's remarks for the bug this replaced a narrower test to catch.
+        var fields = RenderedForm.FieldsOf(createPage)
+            .With("Code", "projecttest")
+            .With("NameEn", "Project test")
+            .With("NameAr", "مشروع تجريبي");
+
         var response = await _fixture.Administrator.PostAsync(
             "/Admin/Dimensions/Types/Create",
-            new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = BaseTenantFixture.AntiforgeryTokenIn(createPage),
-                ["Code"] = "projecttest",
-                ["NameEn"] = "Project test",
-                ["NameAr"] = "مشروع تجريبي",
-                ["AllowsSelfNesting"] = "false",
-            }));
+            new FormUrlEncodedContent(fields));
 
         response.EnsureSuccessStatusCode();
 

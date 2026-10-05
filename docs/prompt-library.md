@@ -314,6 +314,17 @@ steps. Show me each running before moving on.
 
 `WorkMate.Records`. Spec section 5. Two sessions: the employee record first, the form designer second.
 
+**Backlog note, 5 October 2026 — the unit head.** Raised while building the
+organisation designer's chart view in prompt 3. Each unit has an effective-dated
+head: an employee assignment flagged as head of that unit, not a field on the
+dimension record. The chart card shows the current head's name, and
+"Head: Vacant" when the unit has none. Until this lands the card shows
+"Head: —", which means "not built yet" rather than "nobody" — the designer
+cannot tell an unfilled post from an unbuilt feature while no employee can
+exist. Prompt 5's approval routing — route to the unit head, and the
+vacant-head rule — must read the same source, so that what the chart shows and
+what an approval routes to can never disagree.
+
 ```
 # Task: WorkMate.Records — the employee record and the form designer
 
@@ -342,6 +353,12 @@ content-type definition. Read spec section 5 in full. Follow CLAUDE.md.
 - A Placement section that reads and writes through
   IEmployeeAssignmentService. The employee holds no department or cost
   centre field; a test asserts none exists.
+- The unit head: an employee assignment flagged as head of a dimension
+  record, effective-dated like every other assignment, so that who led a
+  unit last March is answerable. The organisation designer's chart card
+  reads it and shows "Head: Vacant" when a unit has none; prompt 5's
+  approval routing must read the same source rather than its own. See the
+  backlog note above this brief.
 - IEmployeeService with the lifecycle transitions from spec section 5, each
   dated, each raising a domain event. Exit closes open assignments on the
   exit date.

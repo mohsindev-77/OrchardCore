@@ -125,6 +125,118 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. children.OrderBy(child => child.SortOrder).ThenBy(child => child.NameEn, StringComparer.Ordinal)];
     }
 
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetRootsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var rootTypeId = structure.DimensionTypeIdAt(0);
+
+        if (rootTypeId is null)
+        {
+            return [];
+        }
+
+        var date = await ResolveDateAsync(asAt);
+
+        var roots = (await RecordsOfTypeAsync(rootTypeId, cancellationToken))
+            .Where(record => record.EffectiveRange.Contains(date));
+
+        return [.. roots.OrderBy(root => root.SortOrder).ThenBy(root => root.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetUnplacedAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var date = await ResolveDateAsync(asAt);
+        var column = EffectiveDates.ToColumn(date);
+
+        var candidates = new List<DimensionNodeRef>();
+
+        foreach (var level in structure.Levels.Where(level => level.Ordinal > 0))
+        {
+            candidates.AddRange((await RecordsOfTypeAsync(level.DimensionTypeId, cancellationToken))
+                .Where(record => record.EffectiveRange.Contains(date)));
+        }
+
+        if (candidates.Count == 0)
+        {
+            return [];
+        }
+
+        var candidateIds = candidates.Select(candidate => candidate.RecordId).ToArray();
+
+        // A record with a parent as of this date is excluded; everything left has no row here at
+        // all, which is exactly the designer's definition of unplaced.
+        var parented = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.DescendantId.IsIn(candidateIds) &&
+                index.Depth > 0 &&
+                index.EffectiveFrom <= column &&
+                column <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        var parentedIds = new HashSet<string>(parented.Select(row => row.DescendantId), StringComparer.Ordinal);
+
+        return
+        [
+            .. candidates
+                .Where(record => !parentedIds.Contains(record.RecordId))
+                .OrderBy(record => record.NameEn, StringComparer.Ordinal),
+        ];
+    }
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> SearchAsync(
+        string structureId,
+        string searchText,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(searchText);
+
+        var trimmed = searchText.Trim();
+
+        if (trimmed.Length == 0)
+        {
+            return [];
+        }
+
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var date = await ResolveDateAsync(asAt);
+        var matches = new List<DimensionNodeRef>();
+
+        foreach (var level in structure.Levels)
+        {
+            foreach (var record in await RecordsOfTypeAsync(level.DimensionTypeId, cancellationToken))
+            {
+                if (!record.EffectiveRange.Contains(date))
+                {
+                    continue;
+                }
+
+                if (record.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    record.NameEn.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    record.NameAr.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    matches.Add(record);
+                }
+            }
+        }
+
+        return [.. matches.OrderBy(record => record.NameEn, StringComparer.Ordinal).Take(50)];
+    }
+
     public async Task<bool> IsUnderAsync(
         string structureId,
         string recordId,
@@ -225,6 +337,167 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 await RecomputeSubtreeAsync(structureId, record.RecordId, record.EffectiveRange, cancellationToken);
             }
         }
+    }
+
+    public async Task<StructureLevelChangePlan> PlanLevelChangeAsync(
+        string structureId,
+        IReadOnlyList<string> newLevelDimensionTypeIds,
+        bool newAllowSkipLevel,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(newLevelDimensionTypeIds);
+
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var currentLevelIds = structure.Levels
+            .OrderBy(level => level.Ordinal)
+            .Select(level => level.DimensionTypeId)
+            .ToList();
+
+        var added = newLevelDimensionTypeIds.Except(currentLevelIds, StringComparer.Ordinal).ToList();
+        var removed = currentLevelIds.Except(newLevelDimensionTypeIds, StringComparer.Ordinal).ToList();
+
+        var removalImpacts = new List<LevelRemovalImpact>();
+
+        foreach (var dimensionTypeId in removed)
+        {
+            removalImpacts.Add(await RemovalImpactAsync(structureId, dimensionTypeId, asAt, cancellationToken));
+        }
+
+        var violations = await ViolationsFromReorderingAsync(
+            structure, newLevelDimensionTypeIds, newAllowSkipLevel, asAt, cancellationToken);
+
+        return new StructureLevelChangePlan(structureId, added, removed, removalImpacts, violations);
+    }
+
+    private async Task<LevelRemovalImpact> RemovalImpactAsync(
+        string structureId,
+        string dimensionTypeId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var onAxisRecordIds = new List<string>();
+
+        foreach (var record in await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+        {
+            if (!record.EffectiveRange.Contains(asAt))
+            {
+                continue;
+            }
+
+            var link = await LoadLinkAsync(structureId, record.RecordId, cancellationToken);
+
+            if (link?.OnAxisUntil is { } until && asAt > until)
+            {
+                continue;
+            }
+
+            onAxisRecordIds.Add(record.RecordId);
+        }
+
+        var employeesAffected = 0;
+
+        if (onAxisRecordIds.Count > 0)
+        {
+            var date = EffectiveDates.ToColumn(asAt);
+
+            var assignmentRows = await _session
+                .QueryIndex<EmployeeAssignmentIndex>(index =>
+                    index.StructureId == structureId &&
+                    index.NodeId.IsIn(onAxisRecordIds) &&
+                    index.EffectiveFrom <= date &&
+                    date <= index.EffectiveToInclusive)
+                .ListAsync(cancellationToken);
+
+            employeesAffected = assignmentRows.Select(row => row.EmployeeId).Distinct(StringComparer.Ordinal).Count();
+        }
+
+        return new LevelRemovalImpact(dimensionTypeId, onAxisRecordIds.Count, employeesAffected);
+    }
+
+    /// <summary>
+    /// Every existing, today-effective placement that the proposed level order would make
+    /// invalid. Adding or removing a level never lands here — only reordering can, since a record
+    /// whose own type or whose parent's type is leaving the axis is already covered, safely, by
+    /// the self-pair capping <see cref="OnStructureLevelsChangedAsync"/> does.
+    /// </summary>
+    private async Task<IReadOnlyList<DimensionError>> ViolationsFromReorderingAsync(
+        Models.StructureDocument structure,
+        IReadOnlyList<string> newLevelDimensionTypeIds,
+        bool newAllowSkipLevel,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var links = await AllLinksAsync(structure.StructureId, cancellationToken);
+        var recordIds = links
+            .SelectMany(link => new[] { link.RecordId }.Concat(link.Parents.Select(parent => parent.ParentRecordId)))
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (recordIds.Length == 0)
+        {
+            return [];
+        }
+
+        var recordsById = (await _session
+                .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId.IsIn(recordIds) && index.Latest)
+                .ListAsync(cancellationToken))
+            .ToDictionary(row => row.ContentItemId, row => (row.Code, row.DimensionTypeId), StringComparer.Ordinal);
+
+        var newOrdinalByType = newLevelDimensionTypeIds
+            .Select((dimensionTypeId, ordinal) => (dimensionTypeId, ordinal))
+            .ToDictionary(x => x.dimensionTypeId, x => x.ordinal, StringComparer.Ordinal);
+
+        var violations = new List<DimensionError>();
+
+        foreach (var link in links)
+        {
+            var parentId = link.ParentOn(asAt);
+
+            if (parentId is null ||
+                !recordsById.TryGetValue(link.RecordId, out var child) ||
+                !recordsById.TryGetValue(parentId, out var parent))
+            {
+                continue;
+            }
+
+            // The child's or the parent's own type is leaving the axis: a removal impact,
+            // already reported above, and safe. Reordering is not the question for this pair.
+            if (!newOrdinalByType.TryGetValue(child.DimensionTypeId, out var childOrdinal) ||
+                !newOrdinalByType.TryGetValue(parent.DimensionTypeId, out var parentOrdinal))
+            {
+                continue;
+            }
+
+            if (childOrdinal <= parentOrdinal)
+            {
+                violations.Add(new DimensionError(
+                    DimensionRule.ParentTypeNotPermitted,
+                    child.Code,
+                    S["'{0}' is currently placed under '{1}'. The new level order for '{2}' would put '{1}' at or below '{0}', which is not permitted.",
+                        child.Code,
+                        parent.Code,
+                        structure.Code]));
+
+                continue;
+            }
+
+            if (childOrdinal - parentOrdinal > 1 && !newAllowSkipLevel)
+            {
+                violations.Add(new DimensionError(
+                    DimensionRule.LevelSkipping,
+                    child.Code,
+                    S["'{0}' is currently placed under '{1}'. The new level order for '{2}' would skip a level between them, which this structure would not allow.",
+                        child.Code,
+                        parent.Code,
+                        structure.Code]));
+            }
+        }
+
+        return violations;
     }
 
     public async Task<DimensionResult<int>> MoveAsync(

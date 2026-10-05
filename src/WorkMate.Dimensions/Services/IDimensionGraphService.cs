@@ -46,6 +46,44 @@ public interface IDimensionGraphService
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The roots of this axis: every record of the dimension type declared at ordinal zero,
+    /// effective on the date. The designer's tree starts here rather than at every self pair,
+    /// because a record of a deeper level with no parent is not a second root — it is unplaced,
+    /// and <see cref="GetUnplacedAsync"/> is where it is shown instead.
+    /// </summary>
+    Task<IReadOnlyList<DimensionNodeRef>> GetRootsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every record whose dimension type is a level of this axis below ordinal zero, effective on
+    /// the date, that has no parent on this axis as of that date.
+    /// </summary>
+    /// <remarks>
+    /// A record created outside the designer — through a generic content screen, an import, or an
+    /// API call — has no parent until something places it; see the README's note on "unplaced".
+    /// This is the organisation designer's panel for finding exactly those, so nothing created
+    /// outside the designer is silently invisible inside it.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> GetUnplacedAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every record of a dimension type on this axis, effective on the date, whose code or name in
+    /// either language contains <paramref name="searchText"/>. Ordered, capped, and carrying no
+    /// ancestor path — a caller that needs to expand the tree down to a match calls
+    /// <see cref="GetAncestorsAsync"/> for it.
+    /// </summary>
+    Task<IReadOnlyList<DimensionNodeRef>> SearchAsync(
+        string structureId,
+        string searchText,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Whether <paramref name="recordId"/> sits at or below <paramref name="ancestorId"/>.</summary>
     Task<bool> IsUnderAsync(
         string structureId,
@@ -87,6 +125,27 @@ public interface IDimensionGraphService
         IReadOnlyList<string> addedDimensionTypeIds,
         IReadOnlyList<string> removedDimensionTypeIds,
         DateOnly effectiveDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What replacing a structure's levels with <paramref name="newLevelDimensionTypeIds"/> would
+    /// do to the records already on this axis, without changing anything.
+    /// </summary>
+    /// <remarks>
+    /// <c>IStructureService.UpdateAsync</c> calls this before saving and refuses the whole change
+    /// if <see cref="StructureLevelChangePlan.HasViolations"/>, the same dry-run-then-apply shape
+    /// <see cref="PreviewCancelMoveAsync"/> and <c>IDimensionService</c>'s merge already use, so
+    /// the preview a designer shows and what actually happens cannot drift apart.
+    /// </remarks>
+    /// <param name="newAllowSkipLevel">
+    /// The proposed value, not the structure's current one — a change that also starts allowing
+    /// skipped levels can make a reorder valid that would otherwise be refused.
+    /// </param>
+    Task<StructureLevelChangePlan> PlanLevelChangeAsync(
+        string structureId,
+        IReadOnlyList<string> newLevelDimensionTypeIds,
+        bool newAllowSkipLevel,
+        DateOnly asAt,
         CancellationToken cancellationToken = default);
 
     /// <summary>

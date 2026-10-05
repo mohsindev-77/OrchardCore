@@ -229,6 +229,19 @@ public sealed class DimensionTypesAdminController : Controller
             return Forbid();
         }
 
+        // Code and NameEn are [BindNever] now — a posted value for either is never bound — so
+        // they must be set here, from the record the id names, before any redisplay, or the
+        // confirmation message would show nothing on a validation failure.
+        var document = await _dimensionTypeService.GetAsync(model.DimensionTypeId, cancellationToken: cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = document.Code;
+        model.NameEn = document.Name.En;
+
         if (!ModelState.IsValid)
         {
             return View(model);

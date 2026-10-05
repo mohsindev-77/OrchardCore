@@ -6,8 +6,6 @@
 
 <form asp-action="@(Model.IsNew ? "Create" : "Edit")" asp-route-id="@Model.DimensionTypeId" method="post">
     <input type="hidden" asp-for="DimensionTypeId" />
-    <input type="hidden" asp-for="IsSystemDefined" />
-    <input type="hidden" asp-for="ContentTypeName" />
 
     <div class="mb-3">
         <label asp-for="Code" class="form-label">@T["Code"]</label>

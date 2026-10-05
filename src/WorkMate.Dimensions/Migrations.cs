@@ -272,4 +272,127 @@ public sealed class Migrations : DataMigration
 
         return 3;
     }
+
+    /// <summary>
+    /// Adds <see cref="DimensionRecordPartIndex.NameAr"/> to a tenant whose
+    /// <c>DimensionRecordPartIndex</c> table predates it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The bug this repairs.</b> The column was added to this module's record layer by editing
+    /// the already-shipped <see cref="UpdateFrom1Async"/> in place, rather than by adding a new
+    /// step — a tenant that had already run <c>UpdateFrom1Async</c> before that edit landed was
+    /// recorded as being at version 2 and so never ran it again, and was left with a
+    /// <c>DimensionRecordPartIndex</c> table permanently missing the column. The first symptom was
+    /// SQLite error 1, "table DimensionRecordPartIndex has no column named NameAr", the moment the
+    /// <c>dimension-records</c> recipe step tried to create a record. That mistake is exactly what
+    /// CLAUDE.md's "migrations are append-only" rule now exists to rule out.
+    ///
+    /// <b>Why this checks before adding, unlike every other step here.</b> The edit this repairs
+    /// was not reverted — <see cref="UpdateFrom1Async"/>'s body still creates the column, because a
+    /// brand-new tenant must still get the complete, current schema from it without a second step
+    /// patching the first. That means a brand-new tenant reaches this step with the column already
+    /// present, while only a tenant stuck at version 2 from before the edit is missing it. Both
+    /// must be handled by one step without erroring on either, which an unconditional
+    /// <c>AddColumn</c> cannot do — SQLite and SQL Server both refuse to add a column that is
+    /// already there — so this is the one place in this module's migrations that inspects the
+    /// database before writing to it.
+    /// </remarks>
+    public async Task<int> UpdateFrom3Async()
+    {
+        if (!await ColumnExistsAsync(nameof(DimensionRecordPartIndex), nameof(DimensionRecordPartIndex.NameAr)))
+        {
+            await SchemaBuilder.AlterIndexTableAsync<DimensionRecordPartIndex>(table =>
+                table.AddColumn<string>(nameof(DimensionRecordPartIndex.NameAr), column => column.WithLength(NameLength)));
+        }
+
+        return 4;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="tableName"/> already has a column named <paramref name="columnName"/>,
+    /// read from the database itself rather than assumed from what the code expects — the whole
+    /// point of the check in <see cref="UpdateFrom3Async"/> is to stop trusting that.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="System.Data.Common.DbConnection.GetSchema(String, String[])"/>: it looks like
+    /// the standard, provider-agnostic way to ask this, but verified directly against
+    /// <c>Microsoft.Data.Sqlite</c> 10.0.8 — the provider this solution's tests actually run
+    /// against — it does not implement the "Columns" collection at all.
+    /// <c>connection.GetSchema("Columns", [])</c> throws <c>"The requested collection 'Columns' is
+    /// not defined"</c>, and `connection.GetSchema()` with no arguments lists only
+    /// <c>MetaDataCollections</c> and <c>ReservedWords</c> as supported. A provider-agnostic
+    /// abstraction that only one of the two providers this solution pins actually implements is
+    /// not provider-agnostic; this queries each dialect directly instead, which is what
+    /// <c>DimensionsMigrationUpgradeTenantTests</c> proves against the real SQLite provider.
+    ///
+    /// SQL Server's branch is unverified against a live SQL Server — this solution's tests run
+    /// against SQLite only — but <c>INFORMATION_SCHEMA.COLUMNS</c> is standard ANSI SQL, not a
+    /// SQL-Server-specific guess.
+    /// </remarks>
+    private async Task<bool> ColumnExistsAsync(string tableName, string columnName)
+    {
+        var fullTableName = SchemaBuilder.TablePrefix + tableName;
+        var connection = SchemaBuilder.Connection;
+
+        var wasClosed = connection.State == System.Data.ConnectionState.Closed;
+
+        if (wasClosed)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = SchemaBuilder.Transaction;
+
+            if (string.Equals(SchemaBuilder.Dialect.Name, "Sqlite", StringComparison.OrdinalIgnoreCase))
+            {
+                // PRAGMA does not accept bound parameters; fullTableName is built from nameof(...)
+                // and this module's own table prefix, never from anything a caller supplies.
+                command.CommandText = $"PRAGMA table_info('{fullTableName}')";
+
+                using var reader = await command.ExecuteReaderAsync();
+                var nameOrdinal = -1;
+
+                while (await reader.ReadAsync())
+                {
+                    if (nameOrdinal < 0)
+                    {
+                        nameOrdinal = reader.GetOrdinal("name");
+                    }
+
+                    if (string.Equals(reader.GetString(nameOrdinal), columnName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            command.CommandText =
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table AND COLUMN_NAME = @column";
+
+            var tableParameter = command.CreateParameter();
+            tableParameter.ParameterName = "@table";
+            tableParameter.Value = fullTableName;
+            command.Parameters.Add(tableParameter);
+
+            var columnParameter = command.CreateParameter();
+            columnParameter.ParameterName = "@column";
+            columnParameter.Value = columnName;
+            command.Parameters.Add(columnParameter);
+
+            var count = await command.ExecuteScalarAsync();
+            return count is not null and not DBNull && Convert.ToInt64(count, System.Globalization.CultureInfo.InvariantCulture) > 0;
+        }
+        finally
+        {
+            if (wasClosed)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
 }

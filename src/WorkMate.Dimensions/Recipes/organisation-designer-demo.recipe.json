@@ -1,0 +1,178 @@
+{
+  "name": "WorkMate.Demo.OrganisationDesigner",
+  "displayName": "WorkMate demo: organisation designer sample data",
+  "description": "TEST DATA — not a reference tenant and not part of base.recipe.json. Seeds a small, self-contained Division -> Department -> Section structure with a few placed units and one deliberately unplaced one, so the organisation designer's read-only tree has something real to show. Safe to run on any tenant that has not already used the demo-division/demo-department/demo-section/demo-org codes; it adds data, it does not touch anything else.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate", "demo"],
+  "tags": ["workmate", "demo", "test-data"],
+
+  "$notes": [
+    "Not applied automatically by any tenant provisioning flow. An operator runs it deliberately, from the Recipes admin screen or the recipe execution API, against a tenant already running WorkMate.Dimensions.",
+    "Exercises the three recipe steps prompt 3 adds: dimension-types, structures, dimension-records. Steps run in that order because structures reference types by code and records reference both types and structures by code, resolved at import — see WorkMate.Dimensions/Recipes.",
+    "Every type, structure and record is validated as one batch before anything is written; a single bad row would leave nothing from that step behind, not even the rows before it.",
+    "demo-dept-unassigned carries no placement on purpose: it is what a record created outside the designer looks like, and it is what the designer's unplaced-records panel is for."
+  ],
+
+  "steps": [
+    {
+      "name": "dimension-types",
+      "types": [
+        { "code": "demo-division", "nameEn": "Division", "nameAr": "قسم", "allowsSelfNesting": false },
+        { "code": "demo-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
+        { "code": "demo-section", "nameEn": "Section", "nameAr": "شعبة", "allowsSelfNesting": false }
+      ]
+    },
+    {
+      "name": "structures",
+      "structures": [
+        {
+          "code": "demo-org",
+          "nameEn": "WorkMate Demo Organisation",
+          "nameAr": "منظمة وورك ميت التجريبية",
+          "levelTypeCodes": ["demo-division", "demo-department", "demo-section"],
+          "allowSkipLevel": false,
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        }
+      ]
+    },
+    {
+      "name": "dimension-records",
+      "records": [
+        {
+          "code": "demo-div-sales",
+          "typeCode": "demo-division",
+          "nameEn": "Sales",
+          "nameAr": "المبيعات",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": null, "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-div-ops",
+          "typeCode": "demo-division",
+          "nameEn": "Operations",
+          "nameAr": "العمليات",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": null, "effectiveFrom": "2024-01-01" }
+          ]
+        },
+
+        {
+          "code": "demo-dept-retail",
+          "typeCode": "demo-department",
+          "nameEn": "Retail",
+          "nameAr": "البيع بالتجزئة",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-div-sales", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-dept-wholesale",
+          "typeCode": "demo-department",
+          "nameEn": "Wholesale",
+          "nameAr": "البيع بالجملة",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-div-sales", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-dept-logistics",
+          "typeCode": "demo-department",
+          "nameEn": "Logistics",
+          "nameAr": "اللوجستيات",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-div-ops", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-dept-support",
+          "typeCode": "demo-department",
+          "nameEn": "Support",
+          "nameAr": "الدعم",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-div-ops", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+
+        {
+          "code": "demo-sec-instore",
+          "typeCode": "demo-section",
+          "nameEn": "In-Store Sales",
+          "nameAr": "المبيعات داخل المتجر",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-retail", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-online",
+          "typeCode": "demo-section",
+          "nameEn": "Online Sales",
+          "nameAr": "المبيعات عبر الإنترنت",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-retail", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-key-accounts",
+          "typeCode": "demo-section",
+          "nameEn": "Key Accounts",
+          "nameAr": "العملاء الرئيسيون",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-wholesale", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-warehousing",
+          "typeCode": "demo-section",
+          "nameEn": "Warehousing",
+          "nameAr": "التخزين",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-logistics", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-fleet",
+          "typeCode": "demo-section",
+          "nameEn": "Fleet",
+          "nameAr": "الأسطول",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-logistics", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-helpdesk",
+          "typeCode": "demo-section",
+          "nameEn": "Helpdesk",
+          "nameAr": "مكتب المساعدة",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-dept-support", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+
+        {
+          "code": "demo-dept-unassigned",
+          "typeCode": "demo-department",
+          "nameEn": "Unassigned Department",
+          "nameAr": "إدارة غير منسوبة",
+          "effectiveFrom": "2024-01-01",
+          "placements": []
+        }
+      ]
+    }
+  ]
+}

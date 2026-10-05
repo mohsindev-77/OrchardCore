@@ -8,6 +8,7 @@ using OrchardCore.ContentManagement.Display.ContentDisplay;
 using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.Modules;
 using OrchardCore.Navigation;
+using OrchardCore.Recipes;
 using OrchardCore.Security.Permissions;
 using WorkMate.Dimensions.Drivers;
 using WorkMate.Dimensions.Handlers;
@@ -16,6 +17,7 @@ using WorkMate.Dimensions.Internal.Graph;
 using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Navigation;
+using WorkMate.Dimensions.Recipes;
 using WorkMate.Dimensions.Services;
 
 namespace WorkMate.Dimensions;
@@ -84,5 +86,11 @@ public sealed class Startup : StartupBase
         // This module's audit trail category and its three events, so an administrator can find
         // and filter them alongside Orchard's own.
         services.AddTransient<IConfigureOptions<AuditTrailOptions>, DimensionAuditTrailOptionsConfiguration>();
+
+        // Recipe steps, in the dependency order a recipe must list them: a type before the
+        // structure that is a level of it, a structure before the records placed on it.
+        services.AddRecipeExecutionStep<DimensionTypesRecipeStep>();
+        services.AddRecipeExecutionStep<StructuresRecipeStep>();
+        services.AddRecipeExecutionStep<DimensionRecordsRecipeStep>();
     }
 }
