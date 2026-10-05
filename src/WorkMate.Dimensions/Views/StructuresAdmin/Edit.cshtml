@@ -10,7 +10,7 @@
         @if (Model.IsNew)
         {
             <input asp-for="Code" class="form-control w-auto" required maxlength="50" autofocus="autofocus" />
-            <div class="form-text">@T["Letters, digits, hyphens and underscores. Links, closure rows and assignments are scoped by this axis, so it cannot be changed afterwards."]</div>
+            <div class="form-text">@T["Letters, digits, hyphens and underscores. Placements and employee assignments are scoped by this structure, so it cannot be changed afterwards."]</div>
         }
         else
         {
@@ -28,8 +28,8 @@
 
     <div class="form-check mb-3">
         <input asp-for="IsStrict" class="form-check-input" />
-        <label asp-for="IsStrict" class="form-check-label">@T["Every record on this axis must sit at one of the levels below"]</label>
-        <div class="form-text">@T["Turn this off for an axis still being shaped, such as a new Project structure, where a record may not yet fit a declared level."]</div>
+        <label asp-for="IsStrict" class="form-check-label">@T["Every unit in this structure must sit at one of the levels below"]</label>
+        <div class="form-text">@T["Turn this off for a structure still being shaped, such as a new Project structure, where a unit may not yet fit a declared level."]</div>
     </div>
 
     <div class="form-check mb-3">
@@ -41,7 +41,7 @@
     <fieldset class="mb-3">
         <legend class="fs-5">@T["Levels"]</legend>
         <p class="text-muted">
-            @T["The dimension types permitted on this axis, root first. A Section under a Department, for example, needs Department listed before Section."]
+            @T["The dimension types permitted in this structure, top level first. A Section under a Department, for example, needs Department listed before Section."]
         </p>
 
         <table class="table" id="levels-table">
@@ -107,4 +107,4 @@
     </div>
 </form>
 
-<script src="~/WorkMate.Dimensions/js/structures.js"></script>
+<script asp-name="workmate-structures" at="Foot"></script>

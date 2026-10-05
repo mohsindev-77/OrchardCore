@@ -31,17 +31,30 @@
 /* ---- the toggle control, shared by both views ------------------------------------------ */
 
 .designer-toggle {
-    border: 0;
-    background: none;
-    padding: 0;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex: none;
+    min-inline-size: 1.75rem;
+    padding: 0.05rem 0.25rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: var(--bs-border-radius-sm, 0.25rem);
+    background: var(--bs-tertiary-bg, #f8f9fa);
     color: inherit;
+    font-size: 0.75rem;
+    line-height: 1.2;
     cursor: pointer;
 }
 
-.designer-toggle[disabled] {
-    opacity: 0.35;
-    cursor: default;
+.designer-toggle:hover {
+    border-color: var(--bs-primary, #0d6efd);
+}
+
+/* Occupies exactly what the control would, so childless cards still line up with the rest. */
+.designer-toggle-spacer {
+    display: inline-block;
+    flex: none;
+    inline-size: 1.75rem;
 }
 
 .designer-node[data-expanded="true"] > .designer-card .designer-toggle-icon {
@@ -68,6 +81,29 @@
 .designer-card-head:empty,
 .designer-card-employees:empty {
     display: none;
+}
+
+/*
+    The whole card toggles, so the whole card says so. Only where there is something to open: a
+    section with nothing under it is not a disappointing button, it is not a button.
+*/
+.designer-node:not([data-child-count="0"]) > .designer-card {
+    cursor: pointer;
+}
+
+.designer-node:not([data-child-count="0"]) > .designer-card:hover {
+    border-color: var(--bs-primary, #0d6efd);
+}
+
+/* The structure's own card: the one card on the chart that is not a unit. */
+.designer-chart .designer-node-structure > .designer-card {
+    border-color: var(--bs-primary-border-subtle, #9ec5fe);
+    background-color: var(--bs-primary-bg-subtle, #cfe2ff);
+    font-weight: 600;
+}
+
+.designer-list .designer-node-structure > .designer-card {
+    font-weight: 600;
 }
 
 .designer-node-highlight > .designer-card {

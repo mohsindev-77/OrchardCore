@@ -10,6 +10,12 @@
     <PackageReference Include="OrchardCore.Recipes.Abstractions" />
     <PackageReference Include="OrchardCore.Security" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
+    <!--
+      The LocalizationSettings section itself, which only the Localization module declares.
+      Migrations.UpdateFrom1Async writes it, to bring a tenant created before Arabic was a
+      supported culture up to the two cultures the base recipe gives a new one.
+    -->
+    <PackageReference Include="OrchardCore.Localization" />
     <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
     <PackageReference Include="OrchardCore.DisplayManagement" />
     <PackageReference Include="OrchardCore.Navigation.Core" />

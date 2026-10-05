@@ -285,6 +285,70 @@ use — no screen holds a privileged path:
   records, not a reason for an eighth permission. Move, merge, retire, rename
   and "add unit" are a later slice; this controller does not write anything.
 
+### The designer's two views
+
+One tree, rendered once, shown two ways: a top-down **chart** of cards and an
+indented **list**. Both come from the same partial (`_DesignerNode.cshtml`) and
+differ only by a class on the viewport, so switching between them keeps every
+branch that is already expanded and there is no second rendering path to drift.
+The choice is remembered in a cookie the server writes, so it survives a browser
+with no JavaScript — which is the browser that most needs the list.
+
+The chart starts at the structure's own card, with the structure's roots beneath
+it. Every card carries one and the same expand control: a count of the unit's
+children, computed on the server (`IDimensionGraphService.CountChildrenAsync`)
+before anything is fetched, and no control at all when the count is zero. Nothing
+the browser does afterwards changes which control a card has — a card's control
+never becomes a different, disabled one because of what has already been clicked.
+
+**The whole card toggles, not only the control on it.** Reaching for the unit's
+name is what people do first, and a card that ignores it reads as a broken
+screen. The control stays because it is what is reachable from the keyboard and
+what says, in its label and count, that there is something to open. Dragging the
+chart to pan does not toggle the card it was grabbed by: the pan handler marks a
+pointer gesture that travelled more than a few pixels and the click that follows
+it is ignored.
+
+### Assets go through the resource manager
+
+`WorkMateDimensionsResourceManifest` registers this module's stylesheet and three
+scripts, and the views ask for them by name — `<style asp-name="…">`,
+`<script asp-name="…" at="Foot">` — never by path.
+
+This is not tidiness. Static files are served with
+`cache-control: public, max-age=2592000`. Referenced by a bare path, that is
+thirty days during which a browser that has loaded the screen once will not fetch
+the file again, or even ask whether it changed; rebuilding, restarting and
+deploying all leave it running the old script against freshly rendered HTML.
+That failure looks exactly like a screen whose server code is correct and whose
+every control is dead, and it cost a full review cycle to find. Through the
+resource manager Orchard appends a content hash to the URL, so changing a file
+changes its URL. `DesignerAssetsAndCultureTenantTests` fails if any WorkMate
+asset goes back to a bare path.
+
+### Dates on the wire
+
+`Internal/IsoDate.cs` is the one place the designer parses and formats the dates
+it exchanges with the browser, always ISO-8601 and always invariant. A date
+control submits `yyyy-MM-dd` but *displays* in the browser's locale, so the same
+day reads as 05/10/2026 to one user and 10/05/2026 to another; a culture-sensitive
+parse anywhere in that round trip resolves a different day for an Arabic user than
+for an English one, and under a culture whose default calendar is not Gregorian
+(ar-SA uses Umm al-Qura) a different year. Pinned by `IsoDateTests` across en,
+en-US, en-GB, ar and ar-SA.
+
+Zoom in, zoom out and fit-to-screen are rendered by the server in chart view and
+hidden by script in list view, so a script that fails to run leaves the controls
+present rather than silently removing them. The chart pans by dragging. Every
+rule that positions anything uses CSS logical properties, so the whole chart
+mirrors under `dir="rtl"` without a rule written twice.
+
+The behaviour that only exists once the browser runs the page's script —
+expanding, collapsing, switching view, zooming, search-to-branch — is covered by
+`tests/WorkMate.Browser.Tests`, which drives a real Chromium against a real
+tenant seeded with the demo recipe. See that project's README; it needs browsers
+installed before it can run.
+
 ### Waiting on the employee record: the unit head
 
 **Backlog note, 5 October 2026.** Each unit has an effective-dated head: an

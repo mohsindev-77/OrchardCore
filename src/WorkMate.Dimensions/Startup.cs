@@ -9,6 +9,7 @@ using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.Modules;
 using OrchardCore.Navigation;
 using OrchardCore.Recipes;
+using OrchardCore.ResourceManagement;
 using OrchardCore.Security.Permissions;
 using WorkMate.Dimensions.Drivers;
 using WorkMate.Dimensions.Handlers;
@@ -19,6 +20,7 @@ using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Navigation;
 using WorkMate.Dimensions.Recipes;
 using WorkMate.Dimensions.Services;
+using WorkMate.Dimensions.Shell;
 
 namespace WorkMate.Dimensions;
 
@@ -29,6 +31,11 @@ public sealed class Startup : StartupBase
         services.AddDataMigration<Migrations>();
         services.AddPermissionProvider<Permissions>();
         services.AddNavigationProvider<AdminMenu>();
+
+        // Every admin asset this module ships, so views name them instead of pathing to them and
+        // Orchard gives each URL a content hash. See the manifest's remarks: a bare path is cached
+        // by the browser for thirty days and a rebuild never reaches it.
+        services.AddTransient<IConfigureOptions<ResourceManagementOptions>, WorkMateDimensionsResourceManifest>();
 
         // Configuration layer: the dimension types and the structures they are levels of.
         services.AddIndexProvider<DimensionTypeIndexProvider>();

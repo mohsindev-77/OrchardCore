@@ -515,7 +515,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             errors.Add(new DimensionError(
                 DimensionRule.AllocationTotal,
                 employeeId,
-                S["A placement needs at least one node. Use the end operation to remove an employee from an axis."]));
+                S["A placement needs at least one unit. Use the end operation to remove an employee from a structure."]));
 
             return Task.FromResult<IReadOnlyList<DimensionError>>(errors);
         }

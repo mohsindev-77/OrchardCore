@@ -41,11 +41,39 @@ public sealed class DesignerNodeViewModel
     /// </summary>
     public string? HeadDisplayName { get; set; }
 
+    /// <summary>
+    /// How many units sit directly under this one on the date being shown.
+    /// </summary>
+    /// <remarks>
+    /// Carried on every node so the expand control is the same control everywhere: a unit with
+    /// children gets one showing the count, a unit without gets none at all. Deciding that only
+    /// after fetching made two cards on the same chart look different from each other.
+    /// </remarks>
+    public int ChildCount { get; set; }
+
+    /// <summary>
+    /// The structure itself, drawn as the chart's top card with the roots beneath it.
+    /// </summary>
+    /// <remarks>
+    /// Not a dimension record and never editable: it carries the structure's name and code so the
+    /// chart reads as one organisation rather than as a row of unconnected roots, and so the
+    /// connectors above the roots lead somewhere. Later slices hang no action menu off it.
+    /// </remarks>
+    public bool IsStructure { get; set; }
+
+    /// <summary>
+    /// Children rendered by the server rather than fetched. Only the structure card has any: every
+    /// unit's children are still loaded on demand when its branch is first expanded.
+    /// </summary>
+    public List<DesignerNodeViewModel> Children { get; set; } = [];
+
     public static DesignerNodeViewModel Of(
         DimensionNodeRef node,
         IReadOnlyDictionary<string, DimensionTypeDocument> typesById,
-        IReadOnlyDictionary<string, int>? employeeCounts = null) => new()
+        IReadOnlyDictionary<string, int>? employeeCounts = null,
+        IReadOnlyDictionary<string, int>? childCounts = null) => new()
     {
+        ChildCount = childCounts is not null && childCounts.TryGetValue(node.RecordId, out var children) ? children : 0,
         RecordId = node.RecordId,
         Code = node.Code,
         NameEn = node.NameEn,

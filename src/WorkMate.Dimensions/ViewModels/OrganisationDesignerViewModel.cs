@@ -52,4 +52,22 @@ public sealed class OrganisationDesignerViewModel
     public List<DesignerNodeViewModel> Roots { get; set; } = [];
 
     public List<DesignerNodeViewModel> Unplaced { get; set; } = [];
+
+    /// <summary>
+    /// The structure as the chart's top card, with <see cref="Roots"/> drawn beneath it.
+    /// </summary>
+    /// <remarks>
+    /// A chart that starts at the roots has nothing holding it together: two divisions appear side
+    /// by side with connectors leading up to nothing. The structure is what they are both part of,
+    /// so it is what the connectors lead to.
+    /// </remarks>
+    public DesignerNodeViewModel StructureCard => new()
+    {
+        IsStructure = true,
+        NameEn = SelectedStructureNameEn,
+        NameAr = SelectedStructureNameAr,
+        Code = SelectedStructureCode,
+        ChildCount = Roots.Count,
+        Children = Roots,
+    };
 }

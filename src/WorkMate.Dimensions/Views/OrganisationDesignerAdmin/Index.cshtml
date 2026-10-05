@@ -1,10 +1,16 @@
 @model OrganisationDesignerViewModel
 @{
     var isChart = Model.ViewMode == DesignerViewMode.Chart;
-    var asAtValue = Model.AsAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+    // ToIso, not ToString with the ambient culture: under a culture whose default calendar is not
+    // Gregorian this is a different year, and it is the value the date input and every fetch the
+    // page makes are built from. See WorkMate.Dimensions.Internal.IsoDate.
+    var asAtValue = Model.AsAt.ToIso();
 }
 
-<link rel="stylesheet" href="~/WorkMate.Dimensions/css/organisation-designer.css" />
+@* Named, not pathed. Orchard puts a content hash on the URL, so changing the file changes the URL
+   and a browser cannot keep serving a cached copy for the thirty days the static file middleware
+   asks it to. See WorkMateDimensionsResourceManifest. *@
+<style asp-name="workmate-organisation-designer"></style>
 
 <h1>@T["Organisation designer"]</h1>
 
@@ -69,7 +75,7 @@
 @if (!Model.IsAsAtToday)
 {
     <div class="alert alert-info py-2">
-        @T["Showing this axis as it was on {0}. Nothing on this screen changes anything.", asAtValue]
+        @T["Showing this structure as it was on {0}. Nothing on this screen changes anything.", asAtValue]
         <a asp-action="Index" asp-route-structureId="@Model.SelectedStructureId" asp-route-view="@Model.ViewMode">@T["Back to today"]</a>
     </div>
 }
@@ -85,12 +91,15 @@
     <div class="col-lg-8 col-xl-9">
         <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
             <div class="flex-grow-1" style="max-width: 24rem;">
-                <label class="form-label" for="designer-search">@T["Search this axis"]</label>
+                <label class="form-label" for="designer-search">@T["Search this structure"]</label>
                 <input type="search" id="designer-search" class="form-control form-control-sm" autocomplete="off"
                        placeholder="@T["Search by code or name"]" />
             </div>
 
-            <div class="btn-group btn-group-sm" role="group" aria-label="@T["Zoom"]" id="designer-zoom-controls" hidden>
+            @* Rendered visible by the server in chart view rather than unhidden by script, so a
+               broken script cannot silently remove them; the script only hides them when the list
+               is showing, where there is nothing to zoom. *@
+            <div class="btn-group btn-group-sm" role="group" aria-label="@T["Zoom"]" id="designer-zoom-controls" hidden="@(isChart ? null : "hidden")">
                 <button type="button" class="btn btn-outline-secondary" data-designer-zoom="out" aria-label="@T["Zoom out"]">−</button>
                 <button type="button" class="btn btn-outline-secondary" data-designer-zoom="fit">@T["Fit to screen"]</button>
                 <button type="button" class="btn btn-outline-secondary" data-designer-zoom="in" aria-label="@T["Zoom in"]">+</button>
@@ -101,18 +110,17 @@
 
         @if (Model.Roots.Count == 0)
         {
-            <p class="text-muted">@T["This axis has no roots on this date."]</p>
+            <p class="text-muted">@T["This structure has no top-level units on this date."]</p>
         }
         else
         {
             <div class="designer-chart-viewport @(isChart ? "designer-chart" : "designer-list")">
                 <div class="designer-chart-canvas">
                     <div id="designer-tree">
+                        @* One top card — the structure — with the roots already beneath it. Every
+                           deeper level is fetched when its branch is first expanded. *@
                         <ul>
-                            @foreach (var root in Model.Roots)
-                            {
-                                await Html.RenderPartialAsync("_DesignerNode", root);
-                            }
+                            @{ await Html.RenderPartialAsync("_DesignerNode", Model.StructureCard); }
                         </ul>
                     </div>
                 </div>
@@ -123,11 +131,11 @@
     <div class="col-lg-4 col-xl-3">
         <h2 class="fs-5">@T["Unplaced records"]</h2>
         <p class="text-muted small">
-            @T["Created outside this designer, with no parent on this axis yet. They cannot be reached by expanding the tree."]
+            @T["Created outside this designer, with no parent in this structure yet. They cannot be reached by expanding the tree."]
         </p>
         @if (Model.Unplaced.Count == 0)
         {
-            <p class="text-muted">@T["Nothing unplaced on this axis."]</p>
+            <p class="text-muted">@T["Nothing unplaced in this structure."]</p>
         }
         else
         {
@@ -151,4 +159,4 @@
     @{ await Html.RenderPartialAsync("_DesignerNode", new DesignerNodeViewModel()); }
 </template>
 
-<script src="~/WorkMate.Dimensions/js/organisation-designer.js"></script>
+<script asp-name="workmate-organisation-designer" at="Foot"></script>

@@ -111,6 +111,17 @@ descriptions are the one exclusion, because Orchard localises those as data
 through `OrchardCore.DataLocalization`; the exclusion is pinned by a test so it
 cannot grow quietly.
 
+Translations are worth nothing on a tenant that cannot select the culture.
+`base.recipe.json` has set `LocalizationSettings.SupportedCultures` to
+`["en", "ar"]` since the first commit, which covers every tenant set up from it;
+`Migrations.UpdateFrom1Async` covers the ones that already existed, appending
+Arabic to whatever a tenant already supports and leaving its default culture
+alone. Found when Arabic could not be chosen at all on a real dev tenant whose
+settings predated that recipe line, and pinned by
+`PlatformMigrationUpgradeTenantTests`, which rolls a tenant back to English only
+and upgrades it the way a restart does. Append-only, like every migration here:
+see ADR-0009.
+
 `dotnet publish` from a clean checkout is part of this: MSBuild evaluates
 content globs before any target runs, so the build-time copy has not happened
 yet when publish decides what to include. `Directory.Build.targets` adds the PO

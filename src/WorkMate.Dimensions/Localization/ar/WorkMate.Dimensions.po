@@ -262,8 +262,8 @@ msgid "'{0}' is inside '{1}', so it cannot be the target of merging '{1}' into i
 msgstr "'{0}' يقع داخل '{1}'، لذا لا يمكن أن يكون هدفًا لدمج '{1}' فيه."
 
 #: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
-msgid "A placement needs at least one node. Use the end operation to remove an employee from an axis."
-msgstr "يحتاج التعيين إلى وحدة واحدة على الأقل. استخدم عملية الإنهاء لإزالة موظف من محور."
+msgid "A placement needs at least one unit. Use the end operation to remove an employee from a structure."
+msgstr "يحتاج التعيين إلى وحدة واحدة على الأقل. استخدم عملية الإنهاء لإزالة موظف من هيكل."
 
 #: WorkMate.Dimensions.Internal.Graph.EmployeeAssignmentService
 msgid "Allocations must total 100 percent on any one date. These total {0}."
@@ -534,8 +534,8 @@ msgid "Create structure"
 msgstr "إنشاء هيكل"
 
 #: Views/StructuresAdmin/Index.cshtml
-msgid "A structure is a named axis with ordered levels, such as Organisation or Location. A dimension record is placed on a structure by moving it in the organisation designer, not from this screen."
-msgstr "الهيكل هو محور مسمى له مستويات مرتبة، مثل الهيكل التنظيمي أو الموقع. يتم وضع سجل البعد على هيكل عن طريق نقله في مصمم الهيكل التنظيمي، وليس من هذه الشاشة."
+msgid "A structure is a named hierarchy with ordered levels, such as Organisation or Location. A unit is placed in a structure by moving it in the organisation designer, not from this screen."
+msgstr "الهيكل هو هيكل مسمى له مستويات مرتبة، مثل الهيكل التنظيمي أو الموقع. يتم وضع سجل البعد على هيكل عن طريق نقله في مصمم الهيكل التنظيمي، وليس من هذه الشاشة."
 
 #: Views/StructuresAdmin/Index.cshtml
 msgid "No structures have been created yet."
@@ -571,8 +571,8 @@ msgid "Edit structure"
 msgstr "تعديل الهيكل"
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Letters, digits, hyphens and underscores. Links, closure rows and assignments are scoped by this axis, so it cannot be changed afterwards."
-msgstr "حروف وأرقام وشرطات وشرطات سفلية. الروابط وصفوف الإغلاق والتعيينات مرتبطة بنطاق هذا المحور، لذا لا يمكن تغييره لاحقًا."
+msgid "Letters, digits, hyphens and underscores. Placements and employee assignments are scoped by this structure, so it cannot be changed afterwards."
+msgstr "حروف وأرقام وشرطات وشرطات سفلية. الروابط وصفوف الإغلاق والتعيينات مرتبطة بنطاق هذا الهيكل، لذا لا يمكن تغييره لاحقًا."
 
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "The code cannot be changed once the structure exists."
@@ -583,12 +583,12 @@ msgid "Allow skipping levels (for example, a Section directly under a Division)"
 msgstr "السماح بتخطي المستويات (على سبيل المثال، قسم فرعي مباشرة تحت شُعبة)"
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Every record on this axis must sit at one of the levels below"
-msgstr "يجب أن يقع كل سجل على هذا المحور عند أحد المستويات أدناه"
+msgid "Every unit in this structure must sit at one of the levels below"
+msgstr "يجب أن يقع كل سجل على هذا الهيكل عند أحد المستويات أدناه"
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Turn this off for an axis still being shaped, such as a new Project structure, where a record may not yet fit a declared level."
-msgstr "أوقف هذا الخيار لمحور لا يزال قيد التشكيل، مثل هيكل مشروع جديد، حيث قد لا يتناسب السجل بعد مع مستوى مُعلَن."
+msgid "Turn this off for a structure still being shaped, such as a new Project structure, where a unit may not yet fit a declared level."
+msgstr "أوقف هذا الخيار لهيكل لا يزال قيد التشكيل، مثل هيكل مشروع جديد، حيث قد لا يتناسب السجل بعد مع مستوى مُعلَن."
 
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "This is the primary organisation structure"
@@ -599,8 +599,8 @@ msgid "The default scope for approvals and for data visibility. Only one structu
 msgstr "النطاق الافتراضي للموافقات ولرؤية البيانات. لا يجوز أن يحمل هذه الصفة سوى هيكل واحد في المستأجر."
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "The dimension types permitted on this axis, root first. A Section under a Department, for example, needs Department listed before Section."
-msgstr "أنواع الأبعاد المسموح بها على هذا المحور، بدءًا بالجذر. على سبيل المثال، يحتاج القسم الفرعي الواقع تحت قسم إلى إدراج القسم قبل القسم الفرعي."
+msgid "The dimension types permitted in this structure, top level first. A Section under a Department, for example, needs Department listed before Section."
+msgstr "أنواع الأبعاد المسموح بها على هذا الهيكل، بدءًا بالجذر. على سبيل المثال، يحتاج القسم الفرعي الواقع تحت قسم إلى إدراج القسم قبل القسم الفرعي."
 
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "Ordinal"
@@ -653,12 +653,12 @@ msgid "'{0}' already has records placed on it. Review what this change does befo
 msgstr "'{0}' يحتوي بالفعل على سجلات موضوعة عليه. راجع ما سيفعله هذا التغيير قبل تطبيقه."
 
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Adding these levels is safe: records of these types already exist and will be visible on this axis from today."
-msgstr "إضافة هذه المستويات آمنة: السجلات من هذه الأنواع موجودة بالفعل وستصبح مرئية على هذا المحور اعتبارًا من اليوم."
+msgid "Adding these levels is safe: units of these types already exist and will be visible in this structure from today."
+msgstr "إضافة هذه المستويات آمنة: السجلات من هذه الأنواع موجودة بالفعل وستصبح مرئية على هذا الهيكل اعتبارًا من اليوم."
 
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Dropping a level does not delete anything — the affected records stop being offered on this axis from today, and every historical report still resolves as before — but review the counts first."
-msgstr "إسقاط مستوى لا يحذف شيئًا — تتوقف السجلات المتأثرة عن العرض على هذا المحور اعتبارًا من اليوم، وتستمر كل التقارير التاريخية في التحليل كما كانت — لكن راجع الأعداد أولًا."
+msgid "Dropping a level does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."
+msgstr "إسقاط مستوى لا يحذف شيئًا — تتوقف السجلات المتأثرة عن العرض على هذا الهيكل اعتبارًا من اليوم، وتستمر كل التقارير التاريخية في التحليل كما كانت — لكن راجع الأعداد أولًا."
 
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
 msgid "Level being dropped"
@@ -697,28 +697,28 @@ msgid "Choose a structure to see its tree."
 msgstr "اختر هيكلاً لعرض شجرته."
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "Search this axis"
-msgstr "البحث في هذا المحور"
+msgid "Search this structure"
+msgstr "البحث في هذا الهيكل"
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
 msgid "Search by code or name"
 msgstr "البحث بالرمز أو الاسم"
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "This axis has no roots on this date."
-msgstr "ليس لهذا المحور أي جذور في هذا التاريخ."
+msgid "This structure has no top-level units on this date."
+msgstr "ليس لهذا الهيكل أي جذور في هذا التاريخ."
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
 msgid "Unplaced records"
 msgstr "السجلات غير المنسوبة"
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "Created outside this designer, with no parent on this axis yet. They cannot be reached by expanding the tree."
-msgstr "أُنشئت خارج هذا المصمم، ولا يوجد لها أصل على هذا المحور بعد. لا يمكن الوصول إليها بتوسيع الشجرة."
+msgid "Created outside this designer, with no parent in this structure yet. They cannot be reached by expanding the tree."
+msgstr "أُنشئت خارج هذا المصمم، ولا يوجد لها أصل على هذا الهيكل بعد. لا يمكن الوصول إليها بتوسيع الشجرة."
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "Nothing unplaced on this axis."
-msgstr "لا توجد سجلات غير منسوبة على هذا المحور."
+msgid "Nothing unplaced in this structure."
+msgstr "لا توجد سجلات غير منسوبة على هذا الهيكل."
 
 #: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
 msgid "Expand or collapse this unit"
@@ -749,8 +749,8 @@ msgid "Show the organisation as at"
 msgstr "اعرض المنظمة كما كانت في"
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "Showing this axis as it was on {0}. Nothing on this screen changes anything."
-msgstr "يعرض هذا المحور كما كان في {0}. لا شيء في هذه الشاشة يغيّر أي بيانات."
+msgid "Showing this structure as it was on {0}. Nothing on this screen changes anything."
+msgstr "يعرض هذا الهيكل كما كان في {0}. لا شيء في هذه الشاشة يغيّر أي بيانات."
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
 msgid "Back to today"

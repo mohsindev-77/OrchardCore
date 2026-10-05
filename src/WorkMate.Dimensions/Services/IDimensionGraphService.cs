@@ -47,6 +47,25 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// How many immediate children each of <paramref name="recordIds"/> has on this axis as at a
+    /// date.
+    /// </summary>
+    /// <remarks>
+    /// One query for a set of nodes rather than one per node: the caller is the organisation
+    /// designer, which needs the count on every card it draws so that the expand control can say
+    /// "2" before anything is fetched, and can be left off entirely for a unit with nothing under
+    /// it. Without it a card cannot tell "not expanded yet" from "nothing to expand", and the two
+    /// look different only after a click that appears to do nothing.
+    ///
+    /// A node with no children is absent from the result rather than present with zero.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, int>> CountChildrenAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The roots of this axis: every record of the dimension type declared at ordinal zero,
     /// effective on the date. The designer's tree starts here rather than at every self pair,
     /// because a record of a deeper level with no parent is not a second root — it is unplaced,

@@ -1,7 +1,7 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrchardCore.Admin;
+using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Dimensions.ViewModels;
@@ -208,7 +208,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         var today = await _authorisation.TodayAsync();
 
         if (string.IsNullOrWhiteSpace(asAt) ||
-            !DateOnly.TryParseExact(asAt, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed) ||
+            !IsoDate.TryParse(asAt, out var parsed) ||
             parsed == today)
         {
             return today;
@@ -265,10 +265,15 @@ public sealed class OrganisationDesignerAdminController : Controller
             return [];
         }
 
-        var counts = await _assignmentService.CountEmployeesAtAsync(
-            structureId, [.. nodes.Select(node => node.RecordId)], asAt, cancellationToken);
+        var recordIds = nodes.Select(node => node.RecordId).ToList();
 
-        return [.. nodes.Select(node => DesignerNodeViewModel.Of(node, typesById, counts))];
+        var employeeCounts = await _assignmentService.CountEmployeesAtAsync(
+            structureId, recordIds, asAt, cancellationToken);
+
+        var childCounts = await _graphService.CountChildrenAsync(
+            structureId, recordIds, asAt, cancellationToken);
+
+        return [.. nodes.Select(node => DesignerNodeViewModel.Of(node, typesById, employeeCounts, childCounts))];
     }
 
     private Task<bool> IsAuthorisedAsync() =>

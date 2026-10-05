@@ -125,6 +125,39 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. children.OrderBy(child => child.SortOrder).ThenBy(child => child.NameEn, StringComparer.Ordinal)];
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> CountChildrenAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        if (recordIds.Count == 0)
+        {
+            return new Dictionary<string, int>(StringComparer.Ordinal);
+        }
+
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId.IsIn(ids) &&
+                index.Depth == 1 &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.AncestorId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.DescendantId).Distinct(StringComparer.Ordinal).Count(),
+                StringComparer.Ordinal);
+    }
+
     public async Task<IReadOnlyList<DimensionNodeRef>> GetRootsAsync(
         string structureId,
         DateOnly? asAt = null,

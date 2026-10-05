@@ -84,6 +84,14 @@ public sealed class WorkMateSettings
 
     public const string DefaultCultureName = "en";
 
+    /// <summary>
+    /// The second culture every tenant has. Every name on this platform is bilingual, so Arabic is
+    /// not an option a tenant turns on but a guarantee the platform makes — <c>base.recipe.json</c>
+    /// gives a new tenant both cultures, and <c>Migrations.UpdateFrom1Async</c> gives an older one
+    /// Arabic if it somehow has not got it.
+    /// </summary>
+    public const string ArabicCultureName = "ar";
+
     // The first tenants are in Bahrain, so the defaults are Bahraini: the dinar, and a
     // Sunday-to-Thursday week. A tenant elsewhere changes them once, on this screen or through
     // its own recipe; nothing in the platform assumes them.

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!--
+      The browser suite drives a real Chromium against a real Kestrel server. It is the only
+      project here that needs a browser downloaded before it can run, which is why it is its own
+      project rather than more tests inside WorkMate.Integration.Tests: a developer without the
+      browser installed still gets the rest of the suite.
+    -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />
+  </ItemGroup>
+</Project>

@@ -9,7 +9,7 @@
 @if (Model.AddedLevelLabels.Count > 0)
 {
     <div class="alert alert-info">
-        <p class="mb-1">@T["Adding these levels is safe: records of these types already exist and will be visible on this axis from today."]</p>
+        <p class="mb-1">@T["Adding these levels is safe: units of these types already exist and will be visible in this structure from today."]</p>
         <ul class="mb-0">
             @foreach (var label in Model.AddedLevelLabels)
             {
@@ -22,7 +22,7 @@
 @if (Model.RemovalImpacts.Count > 0)
 {
     <div class="alert alert-warning">
-        <p class="mb-1">@T["Dropping a level does not delete anything — the affected records stop being offered on this axis from today, and every historical report still resolves as before — but review the counts first."]</p>
+        <p class="mb-1">@T["Dropping a level does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."]</p>
         <table class="table table-sm mb-0">
             <thead>
                 <tr>

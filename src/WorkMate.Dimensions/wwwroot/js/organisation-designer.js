@@ -60,6 +60,16 @@
             ? employeesLabel.replace("{0}", node.employeeCount)
             : "";
 
+        // The same two attributes the server sets when it renders a card: a unit with children
+        // gets the expand control showing the count, a unit without gets the spacer instead, so a
+        // fetched card is indistinguishable from a server-rendered one.
+        var children = node.childCount || 0;
+
+        li.setAttribute("data-child-count", String(children));
+        li.querySelector(".designer-toggle").hidden = children === 0;
+        li.querySelector(".designer-toggle-count").textContent = String(children);
+        li.querySelector(".designer-toggle-spacer").hidden = children > 0;
+
         return li;
     }
 
@@ -95,26 +105,52 @@
                 });
 
                 li.setAttribute("data-loaded", "true");
-
-                if (children.length === 0) {
-                    var toggle = li.querySelector(".designer-toggle");
-                    toggle.disabled = true;
-                    toggle.querySelector(".designer-toggle-icon").textContent = "·";
-                }
             });
     }
 
-    tree.addEventListener("click", function (event) {
-        var button = event.target.closest(".designer-toggle");
+    // Set by the pan handler when a drag turned into a click, so that dragging the chart by a card
+    // does not also expand the card you happened to grab.
+    var suppressNextClick = false;
 
-        if (!button || button.disabled) {
+    // The whole card toggles, not only the little control on it. Reaching for the name of the unit
+    // is what people do first, and a card that quietly ignores it reads as a broken screen. The
+    // control stays, because it is the part that is reachable from the keyboard and that says, in
+    // its own label and count, that there is something to open.
+    tree.addEventListener("click", function (event) {
+        if (suppressNextClick) {
+            suppressNextClick = false;
             return;
         }
 
-        var li = button.closest(".designer-node");
+        // Anything genuinely interactive inside a card keeps its own click.
+        if (event.target.closest("a, input, select, textarea")) {
+            return;
+        }
+
+        var li = event.target.closest(".designer-node");
 
         if (!li) {
             return;
+        }
+
+        var button = event.target.closest(".designer-toggle");
+
+        if (button) {
+            if (button.disabled) {
+                return;
+            }
+        } else {
+            var card = event.target.closest(".designer-card");
+
+            // closest() finds the nearest card, which for a click on a child's card is the child's.
+            // Only the node's own card toggles it, and only when there is something to open.
+            if (!card || card.parentElement !== li) {
+                return;
+            }
+
+            if (Number(li.getAttribute("data-child-count")) === 0) {
+                return;
+            }
         }
 
         var expanded = li.getAttribute("data-expanded") === "true";
@@ -229,11 +265,14 @@
                 return;
             }
 
+            suppressNextClick = false;
+
             panning = {
                 x: event.clientX,
                 y: event.clientY,
                 left: viewport.scrollLeft,
-                top: viewport.scrollTop
+                top: viewport.scrollTop,
+                moved: false
             };
 
             viewport.classList.add("is-panning");
@@ -244,12 +283,26 @@
                 return;
             }
 
-            viewport.scrollLeft = panning.left - (event.clientX - panning.x);
-            viewport.scrollTop = panning.top - (event.clientY - panning.y);
+            var dx = event.clientX - panning.x;
+            var dy = event.clientY - panning.y;
+
+            // A few pixels of travel is a click with an unsteady hand, not a drag.
+            if (Math.abs(dx) + Math.abs(dy) > 4) {
+                panning.moved = true;
+            }
+
+            viewport.scrollLeft = panning.left - dx;
+            viewport.scrollTop = panning.top - dy;
         });
 
         ["pointerup", "pointerleave", "pointercancel"].forEach(function (name) {
             viewport.addEventListener(name, function () {
+                // pointerup runs before click, so this is in place by the time the card's click
+                // handler asks whether to ignore it.
+                if (panning && panning.moved) {
+                    suppressNextClick = true;
+                }
+
                 panning = null;
                 viewport.classList.remove("is-panning");
             });
