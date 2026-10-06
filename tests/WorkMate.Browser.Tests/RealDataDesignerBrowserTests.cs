@@ -200,7 +200,7 @@ public sealed class RealDataDesignerBrowserTests
         ]);
 
     private static ILocator Node(IPage page, string nameEn) =>
-        page.Locator($".designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
+        page.Locator($"#designer-tree .designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
 
     private static List<string> Watch(IPage page)
     {

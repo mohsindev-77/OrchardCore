@@ -1,0 +1,84 @@
+@model MergeUnitViewModel
+@*
+    Folding one unit into another. Architecture section 6: a merge reassigns children and employees
+    to the target from a stated date, retires the source, and leaves prior-period reporting
+    resolving to the source. It runs as a dry run first and says exactly what will change.
+*@
+<h1>@T["Merge a unit into another"]</h1>
+
+<p class="text-muted">
+    @T["Merging {0}", BilingualDisplay.NameWithAlternate(Model.SourceNameEn, Model.SourceNameAr)] <code>@Model.SourceCode</code>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form method="post" asp-action="Merge">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="SourceRecordId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <div class="mb-3" style="max-width: 28rem;">
+        <label class="form-label" asp-for="TargetRecordId">@T["Merge it into"]</label>
+        <select class="form-select" asp-for="TargetRecordId">
+            <option value="">@T["Choose a unit"]</option>
+            @foreach (var target in Model.Targets)
+            {
+                <option value="@target.RecordId">@BilingualDisplay.Name(target.NameEn, target.NameAr) (@target.Code)</option>
+            }
+        </select>
+        <div class="form-text">@T["Units of the same kind, which is what can take over this one's place."]</div>
+        <span asp-validation-for="TargetRecordId" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <div class="form-text">@T["Reports for earlier periods keep resolving through the unit being merged."]</div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @if (Model.Plan is { } plan)
+    {
+        <div class="alert alert-warning">
+            <p class="mb-1 fw-semibold">@T["What this will do"]</p>
+            <ul class="mb-0">
+                <li>@T["{0} will be retired on {1}.", BilingualDisplay.Name(Model.SourceNameEn, Model.SourceNameAr), BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</li>
+                <li>@T["{0} units move to {1}.", plan.ChildrenReparented.Count, BilingualDisplay.Name(Model.TargetNameEn, Model.TargetNameAr)]</li>
+                <li>@T["{0} people are reassigned to {1}.", plan.EmployeesReassigned.Count, BilingualDisplay.Name(Model.TargetNameEn, Model.TargetNameAr)]</li>
+                <li>@T["Everything before that date still resolves through {0}.", BilingualDisplay.Name(Model.SourceNameEn, Model.SourceNameAr)]</li>
+            </ul>
+        </div>
+
+        @if (Model.ChildrenMoving.Count > 0)
+        {
+            <details class="mb-3">
+                <summary class="small">@T["Show what moves"]</summary>
+                <ul class="list-group list-group-flush small">
+                    @foreach (var child in Model.ChildrenMoving)
+                    {
+                        <li class="list-group-item">
+                            @BilingualDisplay.Name(child.NameEn, child.NameAr) <code>@child.Code</code>
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" asp-for="Confirmed" value="true" />
+            <label class="form-check-label" asp-for="Confirmed">
+                @T["Yes, merge it on the date above."]
+            </label>
+        </div>
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn @(Model.Plan is null ? "btn-outline-secondary" : "btn-danger")">
+            @(Model.Plan is null ? T["Check what this will do"] : T["Merge unit"])
+        </button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Cancel"]</a>
+    </div>
+</form>

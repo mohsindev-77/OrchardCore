@@ -106,13 +106,7 @@ public interface IDimensionService
     /// user commits, the same dry-run-then-confirm shape as a level change, a move and a merge.
     /// <see cref="RetireAsync"/> runs the same assessment again on write.
     /// </remarks>
-    /// <param name="structureId">
-    /// The structure whose children are being asked about. Retirement itself closes the record
-    /// everywhere — it is a property of the record, not of one structure — but "what sits under
-    /// it" is only a question a structure can answer, and the designer asks it from inside one.
-    /// </param>
     Task<DimensionResult<RetirePlan>> PlanRetireAsync(
-        string structureId,
         string recordId,
         DateOnly effectiveDate,
         CancellationToken cancellationToken = default);
@@ -121,9 +115,10 @@ public interface IDimensionService
     /// Retires a record from <paramref name="effectiveDate"/>: it disappears from pickers and
     /// keeps resolving for historical queries.
     /// </summary>
-    /// <param name="childrenDisposition">
-    /// What happens to the units underneath. Required when there are any, refused when there are
-    /// any and it is null.
+    /// <param name="childrenDispositions">
+    /// What happens to the units underneath, keyed by structure id. One entry is required for
+    /// every structure the plan reports children on; a retirement with any of them missing is
+    /// refused, naming the structure it has not been told about.
     /// </param>
     /// <remarks>
     /// A parent closing over its live children is the defect this parameter exists for. Nothing
@@ -133,14 +128,18 @@ public interface IDimensionService
     /// is a legitimate end state, but only as a decision somebody made: move them, close them with
     /// their parent, or leave them and let the screen say so.
     ///
+    /// Keyed by structure because retirement closes the record itself and therefore lands on every
+    /// structure it sits on at once. A unit can be a parent on more than one, and the screen only
+    /// ever shows one of them; answering for the one in view and silently stranding children on
+    /// the other is the same defect wearing a different hat.
+    ///
     /// Checked here as well as on the screen, because specification rule 5 puts the authority in
     /// the service and because a recipe or an API client can retire a record too.
     /// </remarks>
     Task<DimensionResult<DimensionNodeRef>> RetireAsync(
-        string structureId,
         string recordId,
         DateOnly effectiveDate,
-        ChildrenDisposition? childrenDisposition = null,
+        IReadOnlyDictionary<string, ChildrenDisposition>? childrenDispositions = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Reparents a record on one axis from an explicit date.</summary>

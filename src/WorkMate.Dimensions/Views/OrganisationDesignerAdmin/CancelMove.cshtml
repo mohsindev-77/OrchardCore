@@ -1,0 +1,87 @@
+@model CancelMoveViewModel
+@*
+    Undoing a move that was recorded in error. The one operation in this module that removes a
+    recorded fact rather than dating it, which is why it asks for a reason and will not proceed
+    without one — and why ADR-0005 can let a backdated move split rather than overwrite, knowing
+    this exists as the documented way to take a later move back.
+*@
+<h1>@T["Cancel a move"]</h1>
+
+<p class="text-muted">
+    @BilingualDisplay.NameWithAlternate(Model.NameEn, Model.NameAr) <code>@Model.Code</code>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+@if (Model.RecordedMoves.Count == 0)
+{
+    <div class="alert alert-info">@T["No moves are recorded for this unit on this structure."]</div>
+    <a class="btn btn-secondary"
+       asp-action="Index"
+       asp-route-structureId="@Model.StructureId"
+       asp-route-asAt="@Model.AsAt">@T["Back to the designer"]</a>
+    return;
+}
+
+<form method="post" asp-action="CancelMove">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="RecordId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <div class="mb-3" style="max-width: 28rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Which move"]</label>
+        <select class="form-select" asp-for="EffectiveFrom">
+            <option value="">@T["Choose a move"]</option>
+            @foreach (var move in Model.RecordedMoves)
+            {
+                <option value="@move.EffectiveFrom">
+                    @T["{0} — under {1}", BilingualDisplay.DateFromIso(move.EffectiveFrom), BilingualDisplay.Name(move.ParentNameEn, move.ParentNameAr)]
+                </option>
+            }
+        </select>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @if (Model.Plan is { } plan)
+    {
+        <div class="alert alert-warning">
+            <p class="mb-1 fw-semibold">@T["What this will do"]</p>
+            <ul class="mb-0">
+                <li>@T["The move to {0} on {1} is removed from the record.", BilingualDisplay.Name(Model.CancelledParentName, Model.CancelledParentNameAr), BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</li>
+                @if (plan.RestoredParentId is null)
+                {
+                    <li>@T["Nothing was displaced by it, so the unit will have no parent from that date."]</li>
+                }
+                else
+                {
+                    <li>@T["The placement it displaced, under {0}, is restored.", BilingualDisplay.Name(Model.RestoredParentName, Model.RestoredParentNameAr)]</li>
+                }
+                <li>@T["{0} people resolve differently as a result.", plan.EmployeesAffected.Count]</li>
+            </ul>
+        </div>
+
+        <div class="mb-3" style="max-width: 32rem;">
+            <label class="form-label" asp-for="Reason">@T["Why is it being cancelled?"]</label>
+            <textarea class="form-control" asp-for="Reason" rows="2" required></textarea>
+            <div class="form-text">@T["Recorded on the audit trail. A cancellation is never anonymous."]</div>
+            <span asp-validation-for="Reason" class="text-danger"></span>
+        </div>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" asp-for="Confirmed" value="true" />
+            <label class="form-check-label" asp-for="Confirmed">
+                @T["Yes, cancel this move."]
+            </label>
+        </div>
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn @(Model.Plan is null ? "btn-outline-secondary" : "btn-danger")">
+            @(Model.Plan is null ? T["Check what this will do"] : T["Cancel this move"])
+        </button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Back to the designer"]</a>
+    </div>
+</form>

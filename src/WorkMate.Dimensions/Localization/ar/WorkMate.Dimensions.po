@@ -979,9 +979,6 @@ msgstr "أُوقف الأصل"
 msgid "{0} closed on {1}."
 msgstr "أُغلقت {0} في {1}."
 
-msgid "Units under this one"
-msgstr "الوحدات التابعة لهذه الوحدة"
-
 msgid "These sit directly under {0} on its last day. Retiring it leaves them with no parent unless you say otherwise."
 msgstr "تقع هذه مباشرةً تحت {0} في آخر أيامها. إيقافها يتركها بلا أصل ما لم تحدد غير ذلك."
 
@@ -1024,5 +1021,160 @@ msgstr "تبقى فعّالة وتنتقل إلى لوحة غير المنسوب
 msgid "Choose what happens to the units under this one."
 msgstr "اختر ما يحدث للوحدات التابعة لهذه الوحدة."
 
-msgid "{0} units still sit under this one on {1}. Say what should happen to them before retiring it."
-msgstr "لا تزال {0} وحدة تقع تحت هذه الوحدة في {1}. حدد ما ينبغي أن يحدث لها قبل إيقافها."
+# Stage C: move, merge and cancel move.
+
+msgid "Units under this one on {0}"
+msgstr "الوحدات التابعة لهذه الوحدة في {0}"
+
+msgid "{0} units still sit under this one on '{1}' on {2}. Say what should happen to them before retiring it."
+msgstr "لا تزال {0} وحدة تقع تحت هذه الوحدة في '{1}' بتاريخ {2}. حدد ما ينبغي أن يحدث لها قبل إيقافها."
+
+msgid "Move to…"
+msgstr "نقل إلى…"
+
+msgid "Place under…"
+msgstr "وضع تحت…"
+
+msgid "Merge into…"
+msgstr "دمج في…"
+
+msgid "Cancel a move…"
+msgstr "إلغاء نقل…"
+
+msgid "Move a unit"
+msgstr "نقل وحدة"
+
+msgid "Move it under"
+msgstr "نقلها لتكون تحت"
+
+msgid "Only units this structure's levels allow this one to sit under are listed."
+msgstr "لا تُعرض إلا الوحدات التي تسمح مستويات هذا الهيكل بوضع هذه الوحدة تحتها."
+
+msgid "The first day it sits in the new place. Everything before stays as it was."
+msgstr "أول يوم تكون فيه في موضعها الجديد. يبقى كل ما سبق كما هو."
+
+msgid "Now"
+msgstr "الآن"
+
+msgid "From {0}"
+msgstr "من {0}"
+
+msgid "Not placed on this structure."
+msgstr "غير موضوعة على هذا الهيكل."
+
+msgid "No parent: it moves to the unplaced panel."
+msgstr "بلا أصل: تنتقل إلى لوحة غير المنسوبة."
+
+msgid "Travelling with it"
+msgstr "ينتقل معها"
+
+msgid "{0} units and {1} people."
+msgstr "{0} وحدة و{1} من الأشخاص."
+
+msgid "This move is dated inside a later one"
+msgstr "هذا النقل مؤرخ داخل نقل لاحق"
+
+msgid "It will apply from {0} to {1} only. The move to {2} already on record stands, and takes over after that."
+msgstr "سيسري من {0} إلى {1} فقط. ويبقى النقل إلى {2} المسجّل مسبقًا قائمًا، ويسري بعد ذلك."
+
+msgid "If the later move was the mistake, cancel it rather than dating around it."
+msgstr "إذا كان النقل اللاحق هو الخطأ، فألغِه بدلًا من الالتفاف عليه بالتواريخ."
+
+msgid "Yes, move it on the date above."
+msgstr "نعم، انقلها في التاريخ أعلاه."
+
+msgid "Move unit"
+msgstr "نقل الوحدة"
+
+msgid "Enter the date this move takes effect."
+msgstr "أدخل تاريخ سريان هذا النقل."
+
+msgid "Merge a unit into another"
+msgstr "دمج وحدة في أخرى"
+
+msgid "Merging {0}"
+msgstr "دمج {0}"
+
+msgid "Merge it into"
+msgstr "دمجها في"
+
+msgid "Choose a unit"
+msgstr "اختر وحدة"
+
+msgid "Units of the same kind, which is what can take over this one's place."
+msgstr "وحدات من النوع نفسه، وهي ما يمكن أن يحل محل هذه الوحدة."
+
+msgid "Reports for earlier periods keep resolving through the unit being merged."
+msgstr "تظل تقارير الفترات السابقة تُحتسب من خلال الوحدة المدموجة."
+
+msgid "{0} will be retired on {1}."
+msgstr "ستُوقف {0} في {1}."
+
+msgid "{0} units move to {1}."
+msgstr "تنتقل {0} وحدة إلى {1}."
+
+msgid "{0} people are reassigned to {1}."
+msgstr "يُعاد إسناد {0} من الأشخاص إلى {1}."
+
+msgid "Everything before that date still resolves through {0}."
+msgstr "يظل كل ما قبل ذلك التاريخ يُحتسب من خلال {0}."
+
+msgid "Show what moves"
+msgstr "عرض ما سينتقل"
+
+msgid "Yes, merge it on the date above."
+msgstr "نعم، ادمجها في التاريخ أعلاه."
+
+msgid "Merge unit"
+msgstr "دمج الوحدة"
+
+msgid "Enter the date this merge takes effect."
+msgstr "أدخل تاريخ سريان هذا الدمج."
+
+msgid "Choose the unit to merge into."
+msgstr "اختر الوحدة المراد الدمج فيها."
+
+msgid "Cancel a move"
+msgstr "إلغاء نقل"
+
+msgid "No moves are recorded for this unit on this structure."
+msgstr "لا توجد عمليات نقل مسجّلة لهذه الوحدة على هذا الهيكل."
+
+msgid "Which move"
+msgstr "أي نقل"
+
+msgid "Choose a move"
+msgstr "اختر نقلًا"
+
+msgid "{0} — under {1}"
+msgstr "{0} — تحت {1}"
+
+msgid "The move to {0} on {1} is removed from the record."
+msgstr "سيُحذف النقل إلى {0} بتاريخ {1} من السجل."
+
+msgid "Nothing was displaced by it, so the unit will have no parent from that date."
+msgstr "لم يُزِح شيئًا، لذا ستبقى الوحدة بلا أصل من ذلك التاريخ."
+
+msgid "The placement it displaced, under {0}, is restored."
+msgstr "يُستعاد الموضع الذي أزاحه، تحت {0}."
+
+msgid "{0} people resolve differently as a result."
+msgstr "سيتغيّر احتساب {0} من الأشخاص نتيجة لذلك."
+
+msgid "Why is it being cancelled?"
+msgstr "لماذا يجري إلغاؤه؟"
+
+msgid "Recorded on the audit trail. A cancellation is never anonymous."
+msgstr "يُسجَّل في سجل التدقيق. الإلغاء لا يكون مجهول المصدر أبدًا."
+
+msgid "Yes, cancel this move."
+msgstr "نعم، ألغِ هذا النقل."
+
+msgid "Cancel this move"
+msgstr "إلغاء هذا النقل"
+
+msgid "Choose the move to cancel."
+msgstr "اختر النقل المراد إلغاؤه."
+
+msgid "Say why this move is being cancelled."
+msgstr "اذكر سبب إلغاء هذا النقل."

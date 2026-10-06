@@ -738,6 +738,249 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             [.. errors]);
     }
 
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetPlacementTargetsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = await ResolveDateAsync(asAt);
+        var moving = await HydrateAsync([(recordId, 0)], cancellationToken);
+
+        if (moving is not [var node, ..])
+        {
+            return [];
+        }
+
+        // Its own branch is out: a unit cannot sit inside itself, and the validator would refuse
+        // every one of them as a cycle.
+        var excluded = new HashSet<string>(StringComparer.Ordinal) { recordId };
+
+        excluded.UnionWith((await GetDescendantsAsync(
+                structureId, recordId, date, skip: 0, take: 500, cancellationToken))
+            .Items.Select(descendant => descendant.RecordId));
+
+        var permitted = new List<DimensionNodeRef>();
+
+        foreach (var candidate in await AllNodesAsync(structureId, date, cancellationToken))
+        {
+            if (excluded.Contains(candidate.RecordId))
+            {
+                continue;
+            }
+
+            var childTypes = await GetPermittedChildTypeIdsAsync(
+                structureId, candidate.RecordId, date, cancellationToken);
+
+            if (childTypes.Contains(node.DimensionTypeId, StringComparer.Ordinal))
+            {
+                permitted.Add(candidate);
+            }
+        }
+
+        return [.. permitted.OrderBy(candidate => candidate.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetMergeTargetsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var date = await ResolveDateAsync(asAt);
+        var moving = await HydrateAsync([(recordId, 0)], cancellationToken);
+
+        if (moving is not [var node, ..])
+        {
+            return [];
+        }
+
+        // Of its own kind, and not inside its own branch: a merge reassigns the source's children
+        // to the target, and a target that was one of them would be reassigned to itself.
+        var excluded = new HashSet<string>(StringComparer.Ordinal) { recordId };
+
+        excluded.UnionWith((await GetDescendantsAsync(
+                structureId, recordId, date, skip: 0, take: 500, cancellationToken))
+            .Items.Select(descendant => descendant.RecordId));
+
+        return
+        [
+            .. (await AllNodesAsync(structureId, date, cancellationToken))
+                .Where(candidate => !excluded.Contains(candidate.RecordId)
+                    && candidate.DimensionTypeId == node.DimensionTypeId)
+                .OrderBy(candidate => candidate.NameEn, StringComparer.Ordinal),
+        ];
+    }
+
+    /// <summary>
+    /// Every unit on a structure on one date, placed or not. Built from the roots down plus the
+    /// unplaced panel, so it uses the same reads everything else does rather than a second way of
+    /// deciding what is on an axis.
+    /// </summary>
+    private async Task<IReadOnlyList<DimensionNodeRef>> AllNodesAsync(
+        string structureId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var all = new List<DimensionNodeRef>();
+        var roots = await GetRootsAsync(structureId, asAt, cancellationToken);
+
+        all.AddRange(roots);
+
+        foreach (var root in roots)
+        {
+            all.AddRange((await GetDescendantsAsync(
+                    structureId, root.RecordId, asAt, skip: 0, take: 500, cancellationToken))
+                .Items);
+        }
+
+        // A unit with no parent of its own is still a perfectly good parent for something else.
+        all.AddRange(await GetUnplacedAsync(structureId, asAt, cancellationToken));
+
+        return [.. all.DistinctBy(node => node.RecordId, StringComparer.Ordinal)];
+    }
+
+    public async Task<IReadOnlyList<RecordedMove>> GetRecordedMovesAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken = default)
+    {
+        var link = await LoadLinkAsync(structureId, recordId, cancellationToken);
+
+        if (link is null || link.Parents.Count == 0)
+        {
+            return [];
+        }
+
+        var parentIds = link.Parents
+            .Select(parent => parent.ParentRecordId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        // Undated: a move's parent may well have retired since, and a picker that could not name
+        // it would be listing dates with nothing to say what happened on them.
+        var parents = (await _session
+                .QueryIndex<DimensionRecordPartIndex>(index =>
+                    index.ContentItemId.IsIn(parentIds) && index.Latest)
+                .ListAsync(cancellationToken))
+            .ToDictionary(row => row.ContentItemId, row => (row.NameEn, row.NameAr, row.Code), StringComparer.Ordinal);
+
+        return
+        [
+            .. link.Parents
+                .OrderByDescending(parent => parent.Range.From)
+                .Select(parent =>
+                {
+                    parents.TryGetValue(parent.ParentRecordId, out var named);
+
+                    return new RecordedMove(
+                        parent.Range.From,
+                        parent.Range.To,
+                        parent.ParentRecordId,
+                        named.NameEn ?? parent.ParentRecordId,
+                        named.NameAr ?? string.Empty,
+                        named.Code ?? string.Empty);
+                }),
+        ];
+    }
+
+    public async Task<DimensionResult<MovePlan>> PlanMoveAsync(
+        string structureId,
+        string recordId,
+        string? newParentId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.MoveDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<MovePlan>();
+        }
+
+        // The same call the write makes. Violations shown here are the ones that would refuse it.
+        var violations = await _validator.ValidatePlacementAsync(
+            structureId, recordId, newParentId, effectiveFrom, cancellationToken);
+
+        var currentPath = (await GetAncestorsAsync(structureId, recordId, effectiveFrom, cancellationToken))
+            .Reverse()
+            .ToList();
+
+        var newPath = new List<DimensionNodeRef>();
+
+        if (newParentId is not null)
+        {
+            newPath.AddRange((await GetAncestorsAsync(structureId, newParentId, effectiveFrom, cancellationToken))
+                .Reverse());
+
+            if (await HydrateAsync([(newParentId, 0)], cancellationToken) is [var parent, ..])
+            {
+                newPath.Add(parent);
+            }
+        }
+
+        var descendants = await GetDescendantsAsync(
+            structureId, recordId, effectiveFrom, skip: 0, take: 1, cancellationToken);
+
+        // The whole branch, because everyone in it resolves through this node and so changes
+        // approver chain and cost centre with it — not only the people standing at the node.
+        var branch = new List<string> { recordId };
+        branch.AddRange((await GetDescendantsAsync(
+                structureId, recordId, effectiveFrom, skip: 0, take: 500, cancellationToken))
+            .Items.Select(node => node.RecordId));
+
+        var branchIds = branch.ToArray();
+        var column = EffectiveDates.ToColumn(effectiveFrom);
+
+        var assignmentRows = await _session
+            .QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.NodeId.IsIn(branchIds) &&
+                index.EffectiveFrom <= column &&
+                column <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        var employeesAffected = assignmentRows
+            .Select(row => row.EmployeeId)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        // What range the new link would claim. InsertLink computes this the same way; asking it
+        // here rather than duplicating the arithmetic is what keeps the warning honest.
+        var link = await LoadLinkAsync(structureId, recordId, cancellationToken);
+        var planned = InsertLink(link?.Parents ?? [], newParentId, effectiveFrom)
+            .FirstOrDefault(entry => entry.Range.From == effectiveFrom);
+
+        string? supersededBy = null;
+        string? supersededByAr = null;
+
+        if (planned?.Range.To is { } claimedUntil)
+        {
+            var next = (link?.Parents ?? [])
+                .Where(entry => entry.Range.From > claimedUntil)
+                .OrderBy(entry => entry.Range.From)
+                .FirstOrDefault();
+
+            if (next is not null && await HydrateAsync([(next.ParentRecordId, 0)], cancellationToken) is [var after, ..])
+            {
+                supersededBy = after.NameEn;
+                supersededByAr = after.NameAr;
+            }
+        }
+
+        return DimensionResult.Success(new MovePlan(
+            structureId,
+            recordId,
+            newParentId,
+            effectiveFrom,
+            currentPath,
+            newPath,
+            descendants.Total,
+            employeesAffected,
+            violations,
+            planned?.Range.To,
+            supersededBy,
+            supersededByAr));
+    }
+
     public async Task<DimensionResult<int>> MoveAsync(
         string structureId,
         string recordId,

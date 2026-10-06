@@ -12,11 +12,11 @@
 <p class="text-muted">
     @if (Model.ParentRecordId is null)
     {
-        @T["A new top-level unit of {0}.", Model.StructureNameEn]
+        @T["A new top-level unit of {0}.", BilingualDisplay.Name(Model.StructureNameEn, Model.StructureNameAr)]
     }
     else
     {
-        @T["A new unit under {0}, in {1}.", Model.ParentNameEn, Model.StructureNameEn]
+        @T["A new unit under {0}, in {1}.", BilingualDisplay.Name(Model.ParentNameEn, Model.ParentNameAr), BilingualDisplay.Name(Model.StructureNameEn, Model.StructureNameAr)]
     }
 </p>
 

@@ -306,11 +306,14 @@ public sealed class OrganisationDesignerBrowserTests
     /// <summary>Opens every branch, so the assertions see the whole tree rather than its top.</summary>
     private static async Task ExpandEverythingAsync(IPage page)
     {
-        const string collapsed = ".designer-node[data-expanded='false']:not([data-child-count='0'])";
+        const string collapsed = "#designer-tree .designer-node[data-expanded='false']:not([data-child-count='0'])";
 
         // Bounded, because a bug that reopened what it just closed would otherwise hang the suite
-        // rather than fail it. The demo tree is three levels of a dozen units.
-        for (var round = 0; round < 40; round++)
+        // rather than fail it. The bound is only a backstop and is deliberately far above the tree
+        // it expects: the tenant is shared, every other test in the collection adds units to it,
+        // and a cap set to the demo recipe's own size turns somebody else's new test into a
+        // failure here that says nothing about the chart.
+        for (var round = 0; round < 500; round++)
         {
             var next = page.Locator(collapsed).First;
 
@@ -330,13 +333,19 @@ public sealed class OrganisationDesignerBrowserTests
     /// Where every card actually ended up, measured in the browser. Positions are relative to the
     /// chart canvas, not the window, so panning or scrolling cannot move them.
     /// </summary>
+    /// <remarks>
+    /// Scoped to the tree. The unplaced panel draws the same card partial — which is what gives an
+    /// unplaced unit an action menu and makes it draggable — but it is a stacked list beside the
+    /// chart rather than part of it, so its cards are not in any of the chart's rows and have no
+    /// business in a measurement about row alignment.
+    /// </remarks>
     private static async Task<IReadOnlyList<MeasuredCard>> MeasureCardsAsync(IPage page) =>
         await page.EvaluateAsync<MeasuredCard[]>(
             """
             () => {
                 const canvas = document.querySelector('.designer-chart-canvas').getBoundingClientRect();
 
-                return [...document.querySelectorAll('.designer-node')].map(node => {
+                return [...document.querySelectorAll('#designer-tree .designer-node')].map(node => {
                     let depth = 0;
                     for (let p = node.parentElement; p; p = p.parentElement) {
                         if (p.classList && p.classList.contains('designer-node')) { depth++; }
@@ -379,7 +388,7 @@ public sealed class OrganisationDesignerBrowserTests
 
     /// <summary>One unit's card, found by the English name on it.</summary>
     private static ILocator Node(IPage page, string nameEn) =>
-        page.Locator($".designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
+        page.Locator($"#designer-tree .designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
 
     private static ILocator Toggle(IPage page, string nameEn) =>
         Node(page, nameEn).Locator(".designer-toggle").First;

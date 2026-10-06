@@ -235,6 +235,63 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every unit <paramref name="recordId"/> could legitimately be placed under on this
+    /// structure, by its own level rules, as at a date.
+    /// </summary>
+    /// <remarks>
+    /// Excludes the unit itself and everything under it, which would be a cycle, and anything
+    /// whose level does not permit this unit's type. The write re-validates whichever is chosen;
+    /// this is what keeps the picker from offering choices that were never going to work, and what
+    /// a drag checks before it will accept a drop.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> GetPlacementTargetsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every unit <paramref name="recordId"/> could be merged into: the units that could stand
+    /// where it does, which is to say ones of its own dimension type.
+    /// </summary>
+    Task<IReadOnlyList<DimensionNodeRef>> GetMergeTargetsAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The placements on record for a unit on one structure, newest first — what a cancellation
+    /// can be asked to undo.
+    /// </summary>
+    /// <remarks>
+    /// Read off the link's own dated parent list rather than from the closure, because that list
+    /// is the record of decisions: each entry is one move somebody made, on the date they made it
+    /// effective from, and cancelling identifies a move by exactly that date.
+    /// </remarks>
+    Task<IReadOnlyList<RecordedMove>> GetRecordedMovesAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What <see cref="MoveAsync"/> would do, without doing any of it.
+    /// </summary>
+    /// <remarks>
+    /// Runs the same validator the move runs, so the screen shows the same violations the write
+    /// would raise; the write runs them again and remains the authority. It also reports the range
+    /// the new link would actually claim, which is the one thing a person cannot work out from the
+    /// form: a backdated move stops at the day before whatever was recorded after it, and ADR-0005
+    /// requires the designer to say so rather than let a late correction look like a replacement.
+    /// </remarks>
+    Task<DimensionResult<MovePlan>> PlanMoveAsync(
+        string structureId,
+        string recordId,
+        string? newParentId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reparents a node from <paramref name="effectiveFrom"/>, closing the old link the day
     /// before and rebuilding the closure for the moved subtree only.
     /// </summary>

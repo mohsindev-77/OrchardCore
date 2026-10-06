@@ -339,6 +339,14 @@ The plan is built as at **the day the unit closes**, not the day before it: the
 question is which units are left with nowhere to sit once it has gone, and a unit
 opened on the same morning is invisible to a plan that looks at yesterday.
 
+**The question is asked of every structure, not the one on screen.** Retirement
+closes the record, so it lands on every structure the record sits on at once; a
+unit that is a department on the organisation chart and a cost centre on the
+finance one strands children on both. `PlanRetireAsync` returns one
+`StructureChildren` per structure it is a parent on, `RetireAsync` takes the
+answers keyed by structure, and a missing one is refused by name — "there are
+children somewhere" is not something a person can act on.
+
 The unplaced panel distinguishes the two reasons a unit has no parent — "never
 placed in this structure" for one that arrived from an import, and a **Parent
 retired** badge naming the parent and the date for one that lost it. The former
@@ -347,9 +355,58 @@ the caller, because a retired record does not resolve on any date the caller
 would naturally ask for, and one retired on the day it opened does not resolve on
 any date at all.
 
+**The panel's cards are the tree's cards.** It renders `_DesignerNode`, the same
+partial, so an unplaced unit has the same action menu, the same drag behaviour
+and the same markup as one on the chart — the menu's move entry just reads
+"Place under…" instead of "Move to…", because a unit that is not anywhere is
+placed rather than moved. It was a bespoke `list-group` before, and that is
+exactly why it quietly had no menu and could not be dragged: every browser test
+locates a card as `.designer-node`, and those rows were not one, so nothing in
+the suite ever asked the panel the question. `EveryCardOnTheScreenHasAnAction
+MenuForAUserWhoMayEdit` now asks it of every `.designer-node` on the page rather
+than of a list of the ones somebody remembered.
+
+*Known gap.* There is a third way to have no parent — somebody moving a unit to
+"(top of the structure)" — and the panel still calls that one "never placed in
+this structure". Moving to no parent empties the link's dated parent list rather
+than appending to it, so `GetRecordedMovesAsync` cannot tell it from a record
+that was never placed at all. Telling the two apart needs the link to keep the
+vacating entry; it is a wrong sentence on a correctly placed record, not a wrong
+placement.
+
 All three record an audit entry under `DimensionRecordChanged`, naming the
 operation, the unit, the date it takes effect, and the name on either side of
 the change.
+
+### Move, merge and cancel move
+
+- **Move** — `PlanMoveAsync` previews it: the path it sits on now, the path it
+  would sit on, how many units and people travel with it, and anything the
+  validator objects to. Reached two ways and both land on that same preview — the
+  card menu's "Move to…", and dragging a card onto another. A drag never
+  commits: it is the easiest action here to do by accident and so the last one
+  that should act on having happened.
+- **Merge** — the existing `PlanMergeAsync`/`MergeAsync` pair behind a dry run
+  that names what moves across and what happens to the source. Gated by
+  `MergeDimensionRecords`.
+- **Cancel move** — pick one of the placements on record
+  (`GetRecordedMovesAsync`), see what undoing it would restore, and give a
+  reason. The reason is mandatory in the markup and in the service, which throws
+  rather than record an anonymous cancellation.
+
+**Backdated moves.** ADR-0005's addendum requires the designer to warn when a
+move is dated inside a period a later move already claims. `MovePlan` reports the
+range the new link would actually claim — `InsertLink`'s own arithmetic, asked
+rather than duplicated — and the screen says the move will apply only up to the
+day before the one already on record, names the parent that takes over, and
+points at cancelling as the way to remove that later move if it was the mistake.
+
+**Drag against pan.** One pointer, two gestures, told apart by where it goes
+down: empty canvas pans, a card begins a move. A card's drag only starts after
+8px of travel, because every click on a card starts with a pointerdown on a card.
+The grabbed card fades, the card under the pointer is outlined as the drop
+target, and Escape abandons the whole thing. A drag that travelled is also
+suppressed from becoming a click, so letting go never also toggles the branch.
 
 #### Who may do what
 
@@ -357,6 +414,8 @@ the change.
 | --- | --- |
 | See the designer | any of `ManageDimensionRecords`, `ViewDimensionHistory`, `MoveDimensionRecords`, `MergeDimensionRecords` |
 | Add, rename, retire | `ManageDimensionRecords` |
+| Move, cancel move, drag a card | `MoveDimensionRecords` |
+| Merge | `MergeDimensionRecords` |
 | Resolve a past date | `ViewDimensionHistory` |
 
 Viewing was gated on `ManageDimensionRecords` while the screen was read-only for
@@ -436,6 +495,30 @@ parse anywhere in that round trip resolves a different day for an Arabic user th
 for an English one, and under a culture whose default calendar is not Gregorian
 (ar-SA uses Umm al-Qura) a different year. Pinned by `IsoDateTests` across en,
 en-US, en-GB, ar and ar-SA.
+
+### Dates and names on the screen
+
+`ViewModels/BilingualDisplay.cs` is the other half of that rule, and the opposite
+of it: on the wire a date is ISO-8601 because there it must mean the same day to
+everyone; on screen it is whatever the reader's culture says a date looks like,
+and a name is whichever half of the bilingual pair the reader can read.
+
+Anywhere a name or a date is interpolated into a localised sentence it goes
+through that class. A card may show an English line and an Arabic line, and that
+is bilingual display done right — both names belong to the record and a reader of
+either finds theirs. A *sentence* is a different thing: "Support closed on
+2026-10-06. الدعم" is an English sentence with an ISO date and an Arabic word
+stranded after the full stop, which reads as a bug in either language. The
+sentence is translated whole in the PO file, the name arrives in the reader's
+language (`Name`), and the date in the reader's format (`Date`, `DateFromIso`).
+Where the point is to identify a record rather than read a sentence — an action
+screen's heading, an entry in a picker — `NameWithAlternate` puts the other
+language in brackets after it: "Support (الدعم)".
+
+Formatting uses `CurrentCulture` and the choice of language `CurrentUICulture`.
+Orchard's localisation middleware sets both from the request so in practice they
+agree, but they answer two different questions and CA1305 is right to insist they
+be asked separately.
 
 Zoom in, zoom out and fit-to-screen are rendered by the server in chart view and
 hidden by script in list view, so a script that fails to run leaves the controls

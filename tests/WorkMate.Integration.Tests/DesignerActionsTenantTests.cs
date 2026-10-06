@@ -277,7 +277,7 @@ public sealed class DesignerActionsTenantTests
 
             child.Succeeded.Should().BeTrue(Because(child.Errors));
 
-            var retired = await records.RetireAsync(scenario.StructureId, child.Value!.RecordId, retireFrom);
+            var retired = await records.RetireAsync(child.Value!.RecordId, retireFrom);
 
             retired.Succeeded.Should().BeTrue(Because(retired.Errors));
 
@@ -313,11 +313,11 @@ public sealed class DesignerActionsTenantTests
 
             child.Succeeded.Should().BeTrue(Because(child.Errors));
 
-            var plan = await records.PlanRetireAsync(scenario.StructureId, scenario.RootRecordId, new DateOnly(2026, 10, 1));
+            var plan = await records.PlanRetireAsync(scenario.RootRecordId, new DateOnly(2026, 10, 1));
 
             plan.Succeeded.Should().BeTrue(Because(plan.Errors));
             plan.Value!.DescendantCount.Should().Be(1, "one unit still sits under the root");
-            plan.Value.DirectChildren.Should().ContainSingle()
+            plan.Value.On(scenario.StructureId)!.DirectChildren.Should().ContainSingle()
                 .Which.RecordId.Should().Be(child.Value!.RecordId, "and the plan names it");
             plan.Value.HasChildrenToDecide.Should().BeTrue();
 
@@ -342,8 +342,7 @@ public sealed class DesignerActionsTenantTests
             var scenario = await GivenAParentWithAChildAsync(services, "needchoice");
             var records = services.GetRequiredService<IDimensionService>();
 
-            var refused = await records.RetireAsync(
-                scenario.StructureId, scenario.ParentRecordId, RetireDay);
+            var refused = await records.RetireAsync(scenario.ParentRecordId, RetireDay);
 
             refused.Succeeded.Should().BeFalse("no disposition was given and a unit sits underneath");
             refused.Errors.Should().ContainSingle()
@@ -366,18 +365,17 @@ public sealed class DesignerActionsTenantTests
 
             // The plan offers the sibling, because the structure's levels permit a department
             // under either division — and offers neither the unit closing nor anything inside it.
-            var plan = await records.PlanRetireAsync(scenario.StructureId, scenario.ParentRecordId, RetireDay);
+            var plan = await records.PlanRetireAsync(scenario.ParentRecordId, RetireDay);
 
-            plan.Value!.ValidMoveTargets.Select(target => target.RecordId)
+            plan.Value!.On(scenario.StructureId)!.ValidMoveTargets.Select(target => target.RecordId)
                 .Should().Contain(scenario.SiblingRecordId)
                 .And.NotContain(scenario.ParentRecordId)
                 .And.NotContain(scenario.ChildRecordId);
 
             var retired = await records.RetireAsync(
-                scenario.StructureId,
                 scenario.ParentRecordId,
                 RetireDay,
-                ChildrenDisposition.MoveTo(scenario.SiblingRecordId));
+                OnStructure(scenario.StructureId, ChildrenDisposition.MoveTo(scenario.SiblingRecordId)));
 
             retired.Succeeded.Should().BeTrue(Because(retired.Errors));
 
@@ -411,14 +409,14 @@ public sealed class DesignerActionsTenantTests
             var records = services.GetRequiredService<IDimensionService>();
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
-            var plan = await records.PlanRetireAsync(scenario.StructureId, scenario.ParentRecordId, RetireDay);
+            var plan = await records.PlanRetireAsync(scenario.ParentRecordId, RetireDay);
 
-            plan.Value!.Subtree.Select(node => node.RecordId).Should().BeEquivalentTo(
+            plan.Value!.On(scenario.StructureId)!.Subtree.Select(node => node.RecordId).Should().BeEquivalentTo(
                 [scenario.ChildRecordId, scenario.GrandchildRecordId!],
                 "the preview shows the whole branch, not only the children");
 
             var retired = await records.RetireAsync(
-                scenario.StructureId, scenario.ParentRecordId, RetireDay, ChildrenDisposition.Cascade);
+                scenario.ParentRecordId, RetireDay, OnStructure(scenario.StructureId, ChildrenDisposition.Cascade));
 
             retired.Succeeded.Should().BeTrue(Because(retired.Errors));
 
@@ -458,7 +456,7 @@ public sealed class DesignerActionsTenantTests
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
             var retired = await records.RetireAsync(
-                scenario.StructureId, scenario.ParentRecordId, RetireDay, ChildrenDisposition.Unplaced);
+                scenario.ParentRecordId, RetireDay, OnStructure(scenario.StructureId, ChildrenDisposition.Unplaced));
 
             retired.Succeeded.Should().BeTrue(Because(retired.Errors));
 
@@ -480,6 +478,77 @@ public sealed class DesignerActionsTenantTests
             reasons.Should().ContainKey(scenario.ChildRecordId);
             reasons[scenario.ChildRecordId].FormerParentId.Should().Be(scenario.ParentRecordId);
             reasons[scenario.ChildRecordId].RetiredOn.Should().Be(RetireDay);
+        });
+    }
+
+    /// <summary>
+    /// Retirement closes the record, so it lands on every structure the record sits on. A unit
+    /// that is a parent on two of them strands children on both, and answering for one is not
+    /// answering.
+    /// </summary>
+    /// <remarks>
+    /// The screen only ever shows one structure, so without this the second one is invisible at
+    /// exactly the moment it matters. The refusal names it, because "there are children somewhere"
+    /// is not something a person can act on.
+    /// </remarks>
+    [Fact]
+    public async Task AUnitThatIsAParentOnTwoStructuresNeedsAnAnswerForBoth()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var scenario = await GivenAParentOnTwoStructuresAsync(services, "twoaxes");
+            var records = services.GetRequiredService<IDimensionService>();
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            var plan = await records.PlanRetireAsync(scenario.SharedRecordId, RetireDay);
+
+            plan.Value!.ChildrenByStructure.Select(entry => entry.StructureId)
+                .Should().BeEquivalentTo([scenario.FirstStructureId, scenario.SecondStructureId],
+                    "the preview asks about every structure it is a parent on");
+
+            // Answering for the one on screen is not enough, and the refusal says which one is
+            // missing rather than that something, somewhere, is.
+            var halfAnswered = await records.RetireAsync(
+                scenario.SharedRecordId,
+                RetireDay,
+                OnStructure(scenario.FirstStructureId, ChildrenDisposition.Unplaced));
+
+            halfAnswered.Succeeded.Should().BeFalse();
+            halfAnswered.Errors.Should().ContainSingle()
+                .Which.Subject.Should().Be(scenario.SecondStructureCode,
+                    "the error names the structure that has not been answered for");
+
+            (await records.GetAsync(scenario.SharedRecordId))!.IsActive.Should().BeTrue(
+                "and nothing was retired while a question was still open");
+
+            // Both answered, and the two structures can be answered differently.
+            var retired = await records.RetireAsync(
+                scenario.SharedRecordId,
+                RetireDay,
+                new Dictionary<string, ChildrenDisposition>(StringComparer.Ordinal)
+                {
+                    [scenario.FirstStructureId] = ChildrenDisposition.Unplaced,
+                    [scenario.SecondStructureId] = ChildrenDisposition.Cascade,
+                });
+
+            retired.Succeeded.Should().BeTrue(Because(retired.Errors));
+
+            // The day before, both children are where they were.
+            (await graph.GetChildrenAsync(scenario.FirstStructureId, scenario.SharedRecordId, RetireDay.AddDays(-1)))
+                .Should().ContainSingle(node => node.RecordId == scenario.FirstChildRecordId);
+            (await graph.GetChildrenAsync(scenario.SecondStructureId, scenario.SharedRecordId, RetireDay.AddDays(-1)))
+                .Should().ContainSingle(node => node.RecordId == scenario.SecondChildRecordId);
+
+            // On the day, each got the answer it was given.
+            (await records.GetAsync(scenario.FirstChildRecordId))!.IsActive.Should().BeTrue(
+                "the first structure's child was left unplaced, not closed");
+
+            (await graph.GetOrphanedByParentRetirementAsync(
+                scenario.FirstStructureId, [scenario.FirstChildRecordId]))
+                .Should().ContainKey(scenario.FirstChildRecordId);
+
+            (await records.GetAsync(scenario.SecondChildRecordId, RetireDay)).Should().BeNull(
+                "the second structure's child was cascaded");
         });
     }
 
@@ -527,7 +596,7 @@ public sealed class DesignerActionsTenantTests
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
             (await records.RetireAsync(
-                scenario.StructureId, scenario.ParentRecordId, RetireDay, ChildrenDisposition.Unplaced))
+                scenario.ParentRecordId, RetireDay, OnStructure(scenario.StructureId, ChildrenDisposition.Unplaced)))
                 .Succeeded.Should().BeTrue();
 
             (await graph.GetOrphanedByParentRetirementAsync(scenario.StructureId, [scenario.ChildRecordId]))
@@ -567,7 +636,7 @@ public sealed class DesignerActionsTenantTests
                 added.Value!.RecordId, new BilingualText("Audited Renamed", "جديد"), new DateOnly(2026, 2, 1));
             renamed.Succeeded.Should().BeTrue(Because(renamed.Errors));
 
-            var retired = await records.RetireAsync(scenario.StructureId, added.Value.RecordId, new DateOnly(2026, 3, 1));
+            var retired = await records.RetireAsync(added.Value.RecordId, new DateOnly(2026, 3, 1));
             retired.Succeeded.Should().BeTrue(Because(retired.Errors));
 
             var entries = await EventsForAsync(services, added.Value.RecordId);
@@ -700,6 +769,11 @@ public sealed class DesignerActionsTenantTests
     /// <summary>The day the retirement tests close a unit on. Far enough out to be unambiguous.</summary>
     private static readonly DateOnly RetireDay = new(2026, 11, 2);
 
+    /// <summary>One structure's answer to the children question, as the service wants it.</summary>
+    private static Dictionary<string, ChildrenDisposition> OnStructure(
+        string structureId, ChildrenDisposition disposition) =>
+        new(StringComparer.Ordinal) { [structureId] = disposition };
+
     /// <param name="SiblingRecordId">
     /// A second division, so the move disposition has somewhere valid to send the child that is
     /// not inside the branch being closed.
@@ -710,6 +784,82 @@ public sealed class DesignerActionsTenantTests
         string ChildRecordId,
         string SiblingRecordId,
         string? GrandchildRecordId);
+
+    private sealed record ParentOnTwoStructures(
+        string FirstStructureId,
+        string SecondStructureId,
+        string SecondStructureCode,
+        string SharedRecordId,
+        string FirstChildRecordId,
+        string SecondChildRecordId);
+
+    /// <summary>
+    /// One unit that is a parent on two structures at once, each with a child of its own: a
+    /// department on the organisation chart that is also a cost centre on the finance one.
+    /// </summary>
+    /// <remarks>
+    /// Both structures share the same level types, which is what lets one record sit on both. That
+    /// is the ordinary way a tenant runs more than one axis over the same units.
+    /// </remarks>
+    private static async Task<ParentOnTwoStructures> GivenAParentOnTwoStructuresAsync(
+        IServiceProvider services,
+        string prefix)
+    {
+        var types = services.GetRequiredService<IDimensionTypeService>();
+        var structures = services.GetRequiredService<IStructureService>();
+        var records = services.GetRequiredService<IDimensionService>();
+
+        var division = await types.CreateAsync(
+            $"{prefix}-division", new BilingualText($"{prefix} Division", "قسم"), [], allowsSelfNesting: false);
+        division.Succeeded.Should().BeTrue(Because(division.Errors));
+
+        var department = await types.CreateAsync(
+            $"{prefix}-department", new BilingualText($"{prefix} Department", "إدارة"), [], allowsSelfNesting: false);
+        department.Succeeded.Should().BeTrue(Because(department.Errors));
+
+        async Task<string> StructureAsync(string code)
+        {
+            var created = await structures.CreateAsync(
+                code,
+                new BilingualText(code, "هيكل"),
+                [division.Value!.DimensionTypeId, department.Value!.DimensionTypeId],
+                allowSkipLevel: false,
+                isStrict: true,
+                isPrimaryOrganisation: false);
+
+            created.Succeeded.Should().BeTrue(Because(created.Errors));
+
+            return created.Value!.StructureId;
+        }
+
+        var first = await StructureAsync($"{prefix}-first");
+        var second = await StructureAsync($"{prefix}-second");
+
+        // Created once and placed on both: EnsureSelfPairsAsync puts it on every structure whose
+        // levels include its type, and PlaceAsync gives it a parent on each.
+        var shared = await records.AddUnitAsync(
+            first, null, division.Value!.DimensionTypeId,
+            $"{prefix}-div-1", new BilingualText($"{prefix} Shared Division", "مشترك"), Start);
+        shared.Succeeded.Should().BeTrue(Because(shared.Errors));
+
+        var firstChild = await records.AddUnitAsync(
+            first, shared.Value!.RecordId, department.Value!.DimensionTypeId,
+            $"{prefix}-dept-1", new BilingualText($"{prefix} First Child", "واحد"), Start);
+        firstChild.Succeeded.Should().BeTrue(Because(firstChild.Errors));
+
+        var secondChild = await records.AddUnitAsync(
+            second, shared.Value.RecordId, department.Value.DimensionTypeId,
+            $"{prefix}-dept-2", new BilingualText($"{prefix} Second Child", "اثنان"), Start);
+        secondChild.Succeeded.Should().BeTrue(Because(secondChild.Errors));
+
+        return new ParentOnTwoStructures(
+            first,
+            second,
+            $"{prefix}-second",
+            shared.Value.RecordId,
+            firstChild.Value!.RecordId,
+            secondChild.Value!.RecordId);
+    }
 
     /// <summary>
     /// Two divisions, a department under the first, and optionally a section under that: the

@@ -55,6 +55,15 @@ public sealed class OrganisationDesignerViewModel
     public bool CanEdit { get; set; }
 
     /// <summary>
+    /// Whether the viewer may reparent units — <c>MoveDimensionRecords</c>. Its own permission
+    /// because a move rewrites what every historical report under the unit resolves to.
+    /// </summary>
+    public bool CanMove { get; set; }
+
+    /// <summary>Whether the viewer may fold one unit into another — <c>MergeDimensionRecords</c>.</summary>
+    public bool CanMerge { get; set; }
+
+    /// <summary>
     /// A unit whose branch should already be open when the page loads, so that the result of an
     /// action is on screen instead of hidden inside a collapsed parent.
     /// </summary>
@@ -112,5 +121,7 @@ public sealed class OrganisationDesignerViewModel
         StructureId = SelectedStructureId ?? string.Empty,
         AsAtIso = AsAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
         CanEdit = CanEdit,
+        CanMove = CanMove,
+        CanMerge = CanMerge,
     };
 }

@@ -29,7 +29,14 @@ namespace WorkMate.Dimensions.Controllers;
 /// <see cref="Permissions.ViewDimensionHistory"/>, enforced in
 /// <see cref="EffectiveDateAsync"/> rather than only by hiding the control.
 ///
-/// Move, merge and cancel-move are a later slice.
+/// Move, merge and cancel-move additionally need
+/// <see cref="Permissions.MoveDimensionRecords"/>, which is also what decides whether the retire
+/// screen may offer "move the children to another parent" as a disposition: a reader who cannot
+/// move a record cannot be handed moving one as the way out of a retirement.
+///
+/// Names and dates reaching a sentence on any of these screens go through
+/// <see cref="ViewModels.BilingualDisplay"/> rather than being interpolated raw, so the sentence is
+/// in one language throughout and the date is in the reader's format rather than ISO-8601.
 /// </remarks>
 [Admin("Dimensions/Designer/{action}", "OrganisationDesigner{action}")]
 public sealed class OrganisationDesignerAdminController : Controller
@@ -103,6 +110,8 @@ public sealed class OrganisationDesignerAdminController : Controller
             Today = await _authorisation.TodayAsync(),
             CanViewHistory = await CanViewHistoryAsync(),
             CanEdit = await CanEditAsync(),
+            CanMove = await CanMoveAsync(),
+            CanMerge = await CanMergeAsync(),
             ViewMode = ResolveViewMode(view),
             ExpandRecordId = expand,
         };
@@ -164,6 +173,10 @@ public sealed class OrganisationDesignerAdminController : Controller
 
         foreach (var node in unplaced)
         {
+            // Every one of them is drawn in the unplaced panel, whichever of the two reasons put
+            // it there: that is what makes the card offer "Place under…" rather than "Move to…".
+            node.IsUnplaced = true;
+
             if (!orphaned.TryGetValue(node.RecordId, out var reason))
             {
                 continue;
@@ -171,7 +184,7 @@ public sealed class OrganisationDesignerAdminController : Controller
 
             node.OrphanedFromParentName = reason.FormerParentNameEn;
             node.OrphanedFromParentNameAr = reason.FormerParentNameAr;
-            node.OrphanedOn = reason.RetiredOn.ToIso();
+            node.OrphanedOn = reason.RetiredOn;
         }
     }
 
@@ -339,6 +352,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         }
 
         model.StructureNameEn = structure.Name.En;
+        model.StructureNameAr = structure.Name.Ar;
 
         if (model.ParentRecordId is not null)
         {
@@ -350,6 +364,7 @@ public sealed class OrganisationDesignerAdminController : Controller
             }
 
             model.ParentNameEn = parent.NameEn;
+            model.ParentNameAr = parent.NameAr;
         }
 
         var permittedIds = await _graphService.GetPermittedChildTypeIdsAsync(
@@ -563,8 +578,7 @@ public sealed class OrganisationDesignerAdminController : Controller
             return View(nameof(Retire), model);
         }
 
-        var planned = await _dimensionService.PlanRetireAsync(
-            model.StructureId, model.RecordId, effectiveDate, cancellationToken);
+        var planned = await _dimensionService.PlanRetireAsync(model.RecordId, effectiveDate, cancellationToken);
 
         if (!planned.Succeeded)
         {
@@ -574,6 +588,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         }
 
         model.Plan = planned.Value;
+        AlignDispositionsToPlan(model);
 
         // Shown before it happens, and only acted on once the user has seen this exact plan and
         // said yes to it — the same dry-run-then-confirm shape as a level change, a move and a
@@ -587,22 +602,19 @@ public sealed class OrganisationDesignerAdminController : Controller
 
         // Children are the one thing that is not a warning. A parent closing over live units
         // leaves them active with no place on the tree, so the screen will not commit until
-        // somebody has said which of the three things should happen to them.
-        if (model.Plan!.HasChildrenToDecide && model.ChildrenDisposition is null)
+        // somebody has said which of the three things should happen to them — on every structure
+        // it is a parent on, not only the one they are looking at.
+        if (model.Dispositions.Any(entry => entry.Kind is null))
         {
             ModelState.AddModelError(
-                nameof(model.ChildrenDisposition),
+                nameof(model.Dispositions),
                 S["Choose what happens to the units under this one."].Value);
 
             return View(nameof(Retire), model);
         }
 
-        var disposition = model.Plan.HasChildrenToDecide
-            ? Disposition(model)
-            : null;
-
         var result = await _dimensionService.RetireAsync(
-            model.StructureId, model.RecordId, effectiveDate, disposition, cancellationToken);
+            model.RecordId, effectiveDate, model.ToDispositions(), cancellationToken);
 
         if (!result.Succeeded)
         {
@@ -614,18 +626,435 @@ public sealed class OrganisationDesignerAdminController : Controller
         return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: null);
     }
 
-    /// <summary>
-    /// The choice the form carried, as the services understand it. An empty parent on a move means
-    /// the top of the structure, which is a real answer and not a missing one.
-    /// </summary>
-    private static ChildrenDisposition Disposition(RetireUnitViewModel model) =>
-        model.ChildrenDisposition switch
+    // ---- move a unit --------------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> Move(
+        string structureId,
+        string recordId,
+        string? parentId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanMoveAsync())
         {
-            ChildrenDispositionKind.MoveToParent => ChildrenDisposition.MoveTo(
-                string.IsNullOrWhiteSpace(model.NewParentRecordId) ? null : model.NewParentRecordId),
-            ChildrenDispositionKind.RetireCascade => ChildrenDisposition.Cascade,
-            _ => ChildrenDisposition.Unplaced,
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        var model = new MoveUnitViewModel
+        {
+            StructureId = structureId,
+            RecordId = recordId,
+            Code = record.Code,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            // Pre-filled when the move started as a drag, empty when it started from the menu.
+            NewParentRecordId = parentId,
+            EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
+            AsAt = asAt ?? string.Empty,
         };
+
+        model.Targets = await MoveTargetsAsync(model, cancellationToken);
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Move))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MovePost(MoveUnitViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanMoveAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(model.RecordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = record.Code;
+        model.NameEn = record.NameEn;
+        model.NameAr = record.NameAr;
+        model.Targets = await MoveTargetsAsync(model, cancellationToken);
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Enter the date this move takes effect."].Value);
+
+            return View(nameof(Move), model);
+        }
+
+        var parentId = string.IsNullOrWhiteSpace(model.NewParentRecordId) ? null : model.NewParentRecordId;
+
+        var planned = await _graphService.PlanMoveAsync(
+            model.StructureId, model.RecordId, parentId, effectiveFrom, cancellationToken);
+
+        if (!planned.Succeeded)
+        {
+            AddErrors(planned);
+
+            return View(nameof(Move), model);
+        }
+
+        model.Plan = planned.Value;
+
+        // Shown first, every time — including when a drag started it. A drag is the easiest of
+        // all these actions to do by accident, so it is the one that least deserves to commit on
+        // the strength of having happened.
+        if (!model.Confirmed || model.Plan!.HasViolations)
+        {
+            AddErrors(model.Plan!.Violations);
+
+            return View(nameof(Move), model);
+        }
+
+        var result = await _dimensionService.MoveAsync(
+            model.StructureId, model.RecordId, parentId, effectiveFrom, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(Move), model);
+        }
+
+        return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: model.RecordId);
+    }
+
+    /// <summary>
+    /// Everywhere this unit may go: every other unit on the structure whose level permits its
+    /// type, plus the top. The service re-validates the chosen one on write.
+    /// </summary>
+    private async Task<IReadOnlyList<DimensionNodeRef>> MoveTargetsAsync(
+        MoveUnitViewModel model,
+        CancellationToken cancellationToken)
+    {
+        var asAt = IsoDate.TryParse(model.EffectiveFrom, out var parsed)
+            ? parsed
+            : await _authorisation.TodayAsync();
+
+        return await _graphService.GetPlacementTargetsAsync(
+            model.StructureId, model.RecordId, asAt, cancellationToken);
+    }
+
+    // ---- merge two units ----------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> Merge(
+        string structureId,
+        string recordId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanMergeAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        var model = new MergeUnitViewModel
+        {
+            StructureId = structureId,
+            SourceRecordId = recordId,
+            SourceCode = record.Code,
+            SourceNameEn = record.NameEn,
+            EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
+            AsAt = asAt ?? string.Empty,
+        };
+
+        model.Targets = await MergeTargetsAsync(model, cancellationToken);
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Merge))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MergePost(MergeUnitViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanMergeAsync())
+        {
+            return Forbid();
+        }
+
+        var source = await _dimensionService.GetAsync(model.SourceRecordId, null, cancellationToken);
+
+        if (source is null)
+        {
+            return NotFound();
+        }
+
+        model.SourceCode = source.Code;
+        model.SourceNameEn = source.NameEn;
+        model.SourceNameAr = source.NameAr;
+        model.Targets = await MergeTargetsAsync(model, cancellationToken);
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Enter the date this merge takes effect."].Value);
+
+            return View(nameof(Merge), model);
+        }
+
+        if (string.IsNullOrWhiteSpace(model.TargetRecordId))
+        {
+            ModelState.AddModelError(nameof(model.TargetRecordId), S["Choose the unit to merge into."].Value);
+
+            return View(nameof(Merge), model);
+        }
+
+        var planned = await _dimensionService.PlanMergeAsync(
+            model.StructureId, model.SourceRecordId, model.TargetRecordId, effectiveFrom, cancellationToken);
+
+        if (!planned.Succeeded)
+        {
+            AddErrors(planned);
+
+            return View(nameof(Merge), model);
+        }
+
+        model.Plan = planned.Value;
+        await DescribeMergeAsync(model, cancellationToken);
+
+        if (!model.Confirmed)
+        {
+            return View(nameof(Merge), model);
+        }
+
+        var result = await _dimensionService.MergeAsync(
+            model.StructureId, model.SourceRecordId, model.TargetRecordId, effectiveFrom, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(Merge), model);
+        }
+
+        return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: model.TargetRecordId);
+    }
+
+    private async Task<IReadOnlyList<DimensionNodeRef>> MergeTargetsAsync(
+        MergeUnitViewModel model,
+        CancellationToken cancellationToken)
+    {
+        var asAt = IsoDate.TryParse(model.EffectiveFrom, out var parsed)
+            ? parsed
+            : await _authorisation.TodayAsync();
+
+        // Merging folds one unit into another of the same kind, so the candidates are the units
+        // that could stand where this one does.
+        return await _graphService.GetMergeTargetsAsync(
+            model.StructureId, model.SourceRecordId, asAt, cancellationToken);
+    }
+
+    /// <summary>
+    /// Turns the plan's record ids into the names the confirmation needs. The plan carries ids
+    /// because that is what the service works in; a person needs to read what is moving.
+    /// </summary>
+    private async Task DescribeMergeAsync(MergeUnitViewModel model, CancellationToken cancellationToken)
+    {
+        var target = await _dimensionService.GetAsync(model.TargetRecordId, null, cancellationToken);
+
+        model.TargetNameEn = target?.NameEn ?? model.TargetRecordId;
+        model.TargetNameAr = target?.NameAr ?? string.Empty;
+
+        var children = new List<DimensionNodeRef>();
+
+        foreach (var childId in model.Plan?.ChildrenReparented ?? [])
+        {
+            if (await _dimensionService.GetAsync(childId, null, cancellationToken) is { } child)
+            {
+                children.Add(child);
+            }
+        }
+
+        model.ChildrenMoving = children;
+    }
+
+    // ---- cancel a move ------------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> CancelMove(
+        string structureId,
+        string recordId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanMoveAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        var model = new CancelMoveViewModel
+        {
+            StructureId = structureId,
+            RecordId = recordId,
+            Code = record.Code,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            AsAt = asAt ?? string.Empty,
+            EffectiveFrom = string.Empty,
+        };
+
+        await LoadRecordedMovesAsync(model, cancellationToken);
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ActionName(nameof(CancelMove))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelMovePost(CancelMoveViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanMoveAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(model.RecordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = record.Code;
+        model.NameEn = record.NameEn;
+        model.NameAr = record.NameAr;
+
+        await LoadRecordedMovesAsync(model, cancellationToken);
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Choose the move to cancel."].Value);
+
+            return View(nameof(CancelMove), model);
+        }
+
+        var planned = await _dimensionService.PlanCancelMoveAsync(
+            model.StructureId, model.RecordId, effectiveFrom, cancellationToken);
+
+        if (!planned.Succeeded)
+        {
+            AddErrors(planned);
+
+            return View(nameof(CancelMove), model);
+        }
+
+        model.Plan = planned.Value;
+        await DescribeCancellationAsync(model, cancellationToken);
+
+        if (!model.Confirmed)
+        {
+            return View(nameof(CancelMove), model);
+        }
+
+        // Mandatory, and checked here rather than by an attribute so the message is this module's
+        // own: cancelling removes a recorded decision, and an audit entry that cannot say why is
+        // not much better than no entry.
+        if (string.IsNullOrWhiteSpace(model.Reason))
+        {
+            ModelState.AddModelError(nameof(model.Reason), S["Say why this move is being cancelled."].Value);
+
+            return View(nameof(CancelMove), model);
+        }
+
+        var result = await _dimensionService.CancelMoveAsync(
+            model.StructureId, model.RecordId, effectiveFrom, model.Reason.Trim(), cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(CancelMove), model);
+        }
+
+        return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: model.RecordId);
+    }
+
+    private async Task LoadRecordedMovesAsync(CancelMoveViewModel model, CancellationToken cancellationToken)
+    {
+        var moves = await _graphService.GetRecordedMovesAsync(
+            model.StructureId, model.RecordId, cancellationToken);
+
+        model.RecordedMoves =
+        [
+            .. moves.Select(move => new RecordedMoveViewModel(
+                move.EffectiveFrom.ToIso(), move.ParentNameEn, move.ParentNameAr, move.ParentCode)),
+        ];
+    }
+
+    private async Task DescribeCancellationAsync(CancelMoveViewModel model, CancellationToken cancellationToken)
+    {
+        if (model.Plan is not { } plan)
+        {
+            return;
+        }
+
+        async Task<string> NameOfAsync(string? recordId) =>
+            recordId is null
+                ? string.Empty
+                : (await _dimensionService.GetAsync(recordId, null, cancellationToken))?.NameEn ?? recordId;
+
+        model.CancelledParentName = await NameOfAsync(plan.CancelledParentId);
+        model.RestoredParentName = await NameOfAsync(plan.RestoredParentId);
+    }
+
+    /// <summary>
+    /// Gives the form one answer slot per structure the plan found children on, keeping whatever
+    /// has already been chosen.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt from the plan rather than trusted from the post, so a hand-edited form cannot
+    /// answer for a structure the plan did not ask about, and so a structure that gained a child
+    /// between the preview and the confirmation gets a slot that is still empty — which is what
+    /// sends the person back to the question instead of past it.
+    /// </remarks>
+    private static void AlignDispositionsToPlan(RetireUnitViewModel model)
+    {
+        var answered = model.Dispositions
+            .Where(entry => !string.IsNullOrEmpty(entry.StructureId))
+            .ToDictionary(entry => entry.StructureId, StringComparer.Ordinal);
+
+        model.Dispositions =
+        [
+            .. (model.Plan?.ChildrenByStructure ?? []).Select(entry =>
+                answered.TryGetValue(entry.StructureId, out var existing)
+                    ? existing
+                    : new StructureDispositionViewModel { StructureId = entry.StructureId }),
+        ];
+    }
 
     // ---- shared -------------------------------------------------------------------------
 
@@ -749,11 +1178,14 @@ public sealed class OrganisationDesignerAdminController : Controller
             structureId, recordIds, asAt, cancellationToken);
 
         var canEdit = await CanEditAsync();
+        var canMove = await CanMoveAsync();
+        var canMerge = await CanMergeAsync();
 
         return
         [
             .. nodes.Select(node => DesignerNodeViewModel.Of(
-                node, typesById, employeeCounts, childCounts, structureId, asAt.ToIso(), canEdit)),
+                node, typesById, employeeCounts, childCounts,
+                structureId, asAt.ToIso(), canEdit, canMove, canMerge)),
         ];
     }
 
@@ -794,6 +1226,13 @@ public sealed class OrganisationDesignerAdminController : Controller
     /// </summary>
     private Task<bool> CanMoveAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords);
+
+    /// <summary>
+    /// Who may fold one unit into another. Its own permission in specification section 4, because
+    /// a merge rewrites what a whole branch and everybody in it resolves under.
+    /// </summary>
+    private Task<bool> CanMergeAsync() =>
+        _authorizationService.AuthorizeAsync(User, Permissions.MergeDimensionRecords);
 
     private Task<bool> CanViewHistoryAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ViewDimensionHistory);

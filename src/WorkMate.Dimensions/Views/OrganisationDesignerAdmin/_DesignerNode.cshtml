@@ -54,6 +54,33 @@
                            asp-route-structureId="@Model.StructureId"
                            asp-route-recordId="@Model.RecordId"
                            asp-route-asAt="@Model.AsAtIso">@T["Rename"]</a>
+                        @if (Model.CanMove)
+                        {
+                            @* The keyboard way in. Dragging a card does the same thing and lands
+                               on the same screen; neither commits without the preview.
+
+                               A unit with no parent is placed rather than moved, and the label
+                               says so — it is the same screen and the same write, but "move" is
+                               the wrong word for something that is not anywhere yet. *@
+                            <a class="designer-action" data-designer-action="move"
+                               asp-action="Move"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-recordId="@Model.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@(Model.IsUnplaced ? T["Place under…"] : T["Move to…"])</a>
+                            <a class="designer-action" data-designer-action="cancelmove"
+                               asp-action="CancelMove"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-recordId="@Model.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@T["Cancel a move…"]</a>
+                        }
+                        @if (Model.CanMerge)
+                        {
+                            <a class="designer-action" data-designer-action="merge"
+                               asp-action="Merge"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-recordId="@Model.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@T["Merge into…"]</a>
+                        }
                         <a class="designer-action" data-designer-action="retire"
                            asp-action="Retire"
                            asp-route-structureId="@Model.StructureId"
@@ -88,6 +115,36 @@
                 @* One expression rather than an @if block, so a unit with nobody at it renders an
                    element with no whitespace in it at all — which is what :empty needs to hide it. *@
                 <div class="designer-card-employees">@(Model.EmployeeCount is { } employees ? T["{0} employees", employees].Value : string.Empty)</div>
+            }
+            @if (Model.IsUnplaced)
+            {
+                @* Two reasons a unit has no parent, and they are not the same thing: one came from
+                   an import and has never been anywhere, the other was somewhere until its parent
+                   closed underneath it.
+
+                   There is a third — a unit deliberately moved off the tree — which this still
+                   calls "never placed", because moving to no parent empties the link's parent list
+                   rather than adding to it, so nothing on the record tells the two apart. See the
+                   note in the module README; it is a wrong sentence, not a wrong placement.
+
+                   One sentence, translated whole, with the name in the reader's language and the
+                   date in the reader's format. An English sentence with an Arabic word after the
+                   full stop is not bilingual — it reads as a bug in either language. *@
+                @if (Model.IsOrphanedByParentRetirement)
+                {
+                    <div class="designer-orphan-badge" data-designer-orphaned>
+                        <span class="badge text-bg-warning">@T["Parent retired"]</span>
+                        <span class="designer-orphan-reason">
+                            @T["{0} closed on {1}.",
+                                BilingualDisplay.Name(Model.OrphanedFromParentName, Model.OrphanedFromParentNameAr),
+                                BilingualDisplay.Date(Model.OrphanedOn)]
+                        </span>
+                    </div>
+                }
+                else
+                {
+                    <div class="designer-orphan-reason">@T["Never placed in this structure."]</div>
+                }
             }
         </div>
     </div>

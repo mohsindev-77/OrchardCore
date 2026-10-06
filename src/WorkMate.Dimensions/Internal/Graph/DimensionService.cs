@@ -312,7 +312,6 @@ internal sealed class DimensionService : IDimensionService
             cancellationToken);
 
     public async Task<DimensionResult<RetirePlan>> PlanRetireAsync(
-        string structureId,
         string recordId,
         DateOnly effectiveDate,
         CancellationToken cancellationToken = default)
@@ -330,7 +329,7 @@ internal sealed class DimensionService : IDimensionService
         }
 
         return DimensionResult.Success(
-            await BuildRetirePlanAsync(structureId, recordId, effectiveDate, cancellationToken));
+            await BuildRetirePlanAsync(recordId, effectiveDate, cancellationToken));
     }
 
     /// <summary>
@@ -338,7 +337,6 @@ internal sealed class DimensionService : IDimensionService
     /// so the two can never disagree about what is at stake.
     /// </summary>
     private async Task<RetirePlan> BuildRetirePlanAsync(
-        string structureId,
         string recordId,
         DateOnly effectiveDate,
         CancellationToken cancellationToken)
@@ -354,7 +352,10 @@ internal sealed class DimensionService : IDimensionService
         // its own range is still open here, so the closure still resolves everything under it.
         var descendants = 0;
         var employees = 0;
+        var byStructure = new List<StructureChildren>();
 
+        // Every structure, not only the one the screen is showing: retirement closes the record,
+        // so it lands on all of them at once.
         foreach (var structure in await _structureService.ListAsync(cancellationToken))
         {
             var page = await _graph.GetDescendantsAsync(
@@ -366,26 +367,36 @@ internal sealed class DimensionService : IDimensionService
                 structure.StructureId, [recordId], effectiveDate, cancellationToken);
 
             employees += counts.TryGetValue(recordId, out var count) ? count : 0;
+
+            var directChildren = await _graph.GetChildrenAsync(
+                structure.StructureId, recordId, effectiveDate, cancellationToken);
+
+            if (directChildren.Count == 0)
+            {
+                continue;
+            }
+
+            var subtree = await SubtreeAsync(structure.StructureId, recordId, effectiveDate, cancellationToken);
+
+            byStructure.Add(new StructureChildren(
+                structure.StructureId,
+                structure.Code,
+                structure.Name.En,
+                structure.Name.Ar,
+                directChildren,
+                subtree,
+                await ValidMoveTargetsAsync(
+                    structure.StructureId, recordId, directChildren, subtree, effectiveDate, cancellationToken)));
         }
-
-        var directChildren = await _graph.GetChildrenAsync(structureId, recordId, effectiveDate, cancellationToken);
-        var subtree = await SubtreeAsync(structureId, recordId, effectiveDate, cancellationToken);
-
-        var moveTargets = directChildren.Count == 0
-            ? []
-            : await ValidMoveTargetsAsync(structureId, recordId, directChildren, subtree, effectiveDate, cancellationToken);
 
         return new RetirePlan(
             recordId,
-            structureId,
             effectiveDate,
             assessment.Outcome,
             assessment.Blockers,
             descendants,
             employees,
-            directChildren,
-            subtree,
-            moveTargets);
+            byStructure);
     }
 
     /// <summary>Everything under a node on a date, nearest first.</summary>
@@ -481,10 +492,9 @@ internal sealed class DimensionService : IDimensionService
     }
 
     public async Task<DimensionResult<DimensionNodeRef>> RetireAsync(
-        string structureId,
         string recordId,
         DateOnly effectiveDate,
-        ChildrenDisposition? childrenDisposition = null,
+        IReadOnlyDictionary<string, ChildrenDisposition>? childrenDispositions = null,
         CancellationToken cancellationToken = default)
     {
         if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
@@ -494,22 +504,36 @@ internal sealed class DimensionService : IDimensionService
 
         // Re-planned here rather than trusted from the screen: the screen is not the authority,
         // and a unit can gain a child between the preview and the confirmation.
-        var plan = await BuildRetirePlanAsync(structureId, recordId, effectiveDate, cancellationToken);
+        var plan = await BuildRetirePlanAsync(recordId, effectiveDate, cancellationToken);
+        var dispositions = childrenDispositions ?? new Dictionary<string, ChildrenDisposition>(StringComparer.Ordinal);
 
-        if (plan.HasChildrenToDecide && childrenDisposition is null)
+        // Named one at a time, because "there are children somewhere" is not something a person
+        // can act on — the structure they are not looking at is exactly the one they need told.
+        var undecided = plan.ChildrenByStructure
+            .Where(entry => !dispositions.ContainsKey(entry.StructureId))
+            .ToList();
+
+        if (undecided.Count > 0)
         {
-            return DimensionResult.Failed<DimensionNodeRef>(new DimensionError(
-                DimensionRule.ChildrenNeedDisposition,
-                recordId,
-                S["{0} units still sit under this one on {1}. Say what should happen to them before retiring it.",
-                    plan.DirectChildren.Count,
-                    effectiveDate]));
+            return DimensionResult.Failed<DimensionNodeRef>(
+            [
+                .. undecided.Select(entry => new DimensionError(
+                    DimensionRule.ChildrenNeedDisposition,
+                    entry.StructureCode,
+                    S["{0} units still sit under this one on '{1}' on {2}. Say what should happen to them before retiring it.",
+                        entry.DirectChildren.Count,
+                        ViewModels.BilingualDisplay.Name(entry.StructureNameEn, entry.StructureNameAr),
+                        ViewModels.BilingualDisplay.Date(effectiveDate)])),
+            ]);
         }
 
-        if (plan.HasChildrenToDecide &&
-            await DisposeOfChildrenAsync(plan, childrenDisposition!, cancellationToken) is { } refusal)
+        foreach (var entry in plan.ChildrenByStructure)
         {
-            return refusal;
+            if (await DisposeOfChildrenAsync(
+                plan, entry, dispositions[entry.StructureId], cancellationToken) is { } refusal)
+            {
+                return refusal;
+            }
         }
 
         return await CloseRecordAsync(recordId, effectiveDate, cancellationToken);
@@ -521,18 +545,19 @@ internal sealed class DimensionService : IDimensionService
     /// </summary>
     private async Task<DimensionResult<DimensionNodeRef>?> DisposeOfChildrenAsync(
         RetirePlan plan,
+        StructureChildren onStructure,
         ChildrenDisposition disposition,
         CancellationToken cancellationToken)
     {
         switch (disposition.Kind)
         {
             case ChildrenDispositionKind.MoveToParent:
-                foreach (var child in plan.DirectChildren)
+                foreach (var child in onStructure.DirectChildren)
                 {
                     // The same date the parent closes, so there is no day on which the child sits
                     // nowhere: its old placement runs to the day before and the new one starts here.
                     var moved = await _graph.MoveAsync(
-                        plan.StructureId,
+                        onStructure.StructureId,
                         child.RecordId,
                         disposition.NewParentRecordId,
                         plan.EffectiveDate,
@@ -552,7 +577,7 @@ internal sealed class DimensionService : IDimensionService
                 // Shallowest first, so each unit closes after the one above it: by the time a node
                 // is reached its ancestors are already capped, and the closure it writes on the way
                 // through is its final one rather than one that has to be written again.
-                foreach (var descendant in plan.Subtree.OrderBy(node => node.Depth))
+                foreach (var descendant in onStructure.Subtree.OrderBy(node => node.Depth))
                 {
                     var closed = await CloseRecordAsync(
                         descendant.RecordId, plan.EffectiveDate, cancellationToken, plan.RecordId);
@@ -567,8 +592,8 @@ internal sealed class DimensionService : IDimensionService
 
             default:
                 await _graph.MarkOrphanedByParentRetirementAsync(
-                    plan.StructureId,
-                    [.. plan.DirectChildren.Select(child => child.RecordId)],
+                    onStructure.StructureId,
+                    [.. onStructure.DirectChildren.Select(child => child.RecordId)],
                     plan.RecordId,
                     plan.EffectiveDate,
                     cancellationToken);

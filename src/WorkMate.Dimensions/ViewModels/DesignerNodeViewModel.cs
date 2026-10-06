@@ -73,6 +73,19 @@ public sealed class DesignerNodeViewModel
     /// </summary>
     public bool CanEdit { get; set; }
 
+    /// <summary>
+    /// Whether this card offers move and cancel-move — specification section 4's
+    /// <c>MoveDimensionRecords</c>. Separate from <see cref="CanEdit"/> because reparenting changes
+    /// what every historical report under the unit resolves to, which creating one does not.
+    /// </summary>
+    public bool CanMove { get; set; }
+
+    /// <summary>
+    /// Whether this card offers merge — <c>MergeDimensionRecords</c>, its own permission for the
+    /// same reason.
+    /// </summary>
+    public bool CanMerge { get; set; }
+
     /// <summary>The structure the card belongs to, which every action link needs.</summary>
     public string StructureId { get; set; } = string.Empty;
 
@@ -96,11 +109,26 @@ public sealed class DesignerNodeViewModel
     /// <inheritdoc cref="OrphanedFromParentName"/>
     public string? OrphanedFromParentNameAr { get; set; }
 
-    /// <summary>The date that parent retired, ISO-8601.</summary>
-    public string? OrphanedOn { get; set; }
+    /// <summary>
+    /// The date that parent retired, as a date rather than as the wire string it travelled as.
+    /// </summary>
+    /// <remarks>
+    /// The badge is a sentence a person reads, so the date in it belongs in their own culture's
+    /// format — which is the opposite of the rule for a value on its way to or from the server,
+    /// where ISO-8601 is the only reading that means the same day to everyone. Keeping the date
+    /// typed here is what lets the view decide that, rather than inheriting a format chosen for a
+    /// query string.
+    /// </remarks>
+    public DateOnly? OrphanedOn { get; set; }
 
     /// <summary>Whether this unit lost its parent to a retirement rather than never having had one.</summary>
     public bool IsOrphanedByParentRetirement => OrphanedOn is not null;
+
+    /// <summary>
+    /// Whether this card is being drawn in the unplaced panel rather than in the tree. Changes
+    /// what its action menu offers — a unit with no parent is placed, not moved — and nothing else.
+    /// </summary>
+    public bool IsUnplaced { get; set; }
 
     public static DesignerNodeViewModel Of(
         DimensionNodeRef node,
@@ -109,11 +137,15 @@ public sealed class DesignerNodeViewModel
         IReadOnlyDictionary<string, int>? childCounts = null,
         string structureId = "",
         string asAtIso = "",
-        bool canEdit = false) => new()
+        bool canEdit = false,
+        bool canMove = false,
+        bool canMerge = false) => new()
     {
         StructureId = structureId,
         AsAtIso = asAtIso,
         CanEdit = canEdit,
+        CanMove = canMove,
+        CanMerge = canMerge,
         ChildCount = childCounts is not null && childCounts.TryGetValue(node.RecordId, out var children) ? children : 0,
         RecordId = node.RecordId,
         Code = node.Code,

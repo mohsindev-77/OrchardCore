@@ -1,0 +1,110 @@
+@model MoveUnitViewModel
+@*
+    Moving a unit. Reached two ways — dragging a card onto another, or picking from the list below
+    — and both land here, so the preview and the confirmation are the same either way. A drag is
+    the easiest action on this screen to do by accident and so the last one that should commit on
+    the strength of having happened.
+*@
+<h1>@T["Move a unit"]</h1>
+
+<p class="text-muted">
+    @BilingualDisplay.NameWithAlternate(Model.NameEn, Model.NameAr) <code>@Model.Code</code>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form method="post" asp-action="Move">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="RecordId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <div class="mb-3" style="max-width: 28rem;">
+        <label class="form-label" asp-for="NewParentRecordId">@T["Move it under"]</label>
+        <select class="form-select" asp-for="NewParentRecordId">
+            <option value="">@T["(top of the structure)"]</option>
+            @foreach (var target in Model.Targets)
+            {
+                <option value="@target.RecordId">@BilingualDisplay.Name(target.NameEn, target.NameAr) (@target.Code)</option>
+            }
+        </select>
+        <div class="form-text">@T["Only units this structure's levels allow this one to sit under are listed."]</div>
+    </div>
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <div class="form-text">@T["The first day it sits in the new place. Everything before stays as it was."]</div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @if (Model.Plan is { } plan)
+    {
+        <div class="alert alert-info">
+            <p class="mb-1 fw-semibold">@T["What this will do"]</p>
+            <dl class="row mb-0">
+                <dt class="col-sm-3">@T["Now"]</dt>
+                <dd class="col-sm-9">
+                    @(plan.CurrentPath.Count == 0
+                        ? T["Not placed on this structure."].Value
+                        : string.Join(" › ", plan.CurrentPath.Select(node => BilingualDisplay.Name(node.NameEn, node.NameAr))))
+                </dd>
+
+                <dt class="col-sm-3">@T["From {0}", BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</dt>
+                <dd class="col-sm-9">
+                    @(plan.NewPath.Count == 0
+                        ? T["No parent: it moves to the unplaced panel."].Value
+                        : string.Join(" › ", plan.NewPath.Select(node => BilingualDisplay.Name(node.NameEn, node.NameAr))))
+                </dd>
+
+                <dt class="col-sm-3">@T["Travelling with it"]</dt>
+                <dd class="col-sm-9">
+                    @T["{0} units and {1} people.", plan.DescendantsMoving, plan.EmployeesAffected]
+                </dd>
+            </dl>
+        </div>
+
+        @* ADR-0005's addendum: the engine splits rather than overwrites, so a backdated move
+           claims only up to the day before whatever was recorded after it. The one case that
+           most often looks like a replacement and is not. *@
+        @if (plan.SplitsHistory)
+        {
+            <div class="alert alert-warning">
+                <p class="mb-1 fw-semibold">@T["This move is dated inside a later one"]</p>
+                <p class="mb-0">
+                    @T["It will apply from {0} to {1} only. The move to {2} already on record stands, and takes over after that.",
+                        BilingualDisplay.DateFromIso(Model.EffectiveFrom),
+                        BilingualDisplay.Date(plan.ClaimedUntil!.Value),
+                        BilingualDisplay.Name(plan.SupersededByParentName, plan.SupersededByParentNameAr)]
+                </p>
+                <p class="mb-0">
+                    @T["If the later move was the mistake, cancel it rather than dating around it."]
+                </p>
+            </div>
+        }
+
+        @foreach (var advisory in plan.Advisories)
+        {
+            <div class="alert alert-warning py-2">@advisory.Message</div>
+        }
+
+        @if (!plan.HasViolations)
+        {
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" asp-for="Confirmed" value="true" />
+                <label class="form-check-label" asp-for="Confirmed">
+                    @T["Yes, move it on the date above."]
+                </label>
+            </div>
+        }
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn @(Model.Plan is null ? "btn-outline-secondary" : "btn-primary")">
+            @(Model.Plan is null ? T["Check what this will do"] : T["Move unit"])
+        </button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Cancel"]</a>
+    </div>
+</form>

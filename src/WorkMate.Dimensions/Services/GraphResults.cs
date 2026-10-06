@@ -181,31 +181,24 @@ public sealed record CancelledMoveRestoration(
 /// that most often means somebody picked the wrong card, so the screen says it before committing.
 /// </param>
 /// <param name="EmployeesAffected">People still placed at the record on that date.</param>
-/// <param name="StructureId">The structure the children question is being asked about.</param>
-/// <param name="DirectChildren">
-/// The units sitting directly under this one on its last day, which is what the person retiring it
-/// has to decide about. Deeper descendants are not listed here: they keep the parent they have.
+/// <param name="ChildrenByStructure">
+/// Every structure on which this unit is a parent on the day it would close, one entry each, with
+/// the children it would strand there. Empty when it is a parent nowhere.
 /// </param>
-/// <param name="Subtree">
-/// Everything under the unit on its last day, at every depth, nearest first — what a cascade would
-/// close. Empty when there is nothing underneath.
-/// </param>
-/// <param name="ValidMoveTargets">
-/// The units the children could be moved to instead, by the structure's own level rules. Excludes
-/// the unit being retired and everything already under it, because moving a child into its own
-/// branch is either a cycle or a placement that is about to close with the rest of it.
-/// </param>
+/// <remarks>
+/// Retirement closes the record itself, so it takes effect on every structure the record sits on
+/// at once — which means the children question has to be asked of all of them, not only of the one
+/// somebody happens to be looking at. A unit that is a department on the organisation chart and a
+/// cost centre on the finance structure strands children on both when it closes.
+/// </remarks>
 public sealed record RetirePlan(
     string RecordId,
-    string StructureId,
     DateOnly EffectiveDate,
     DeletionOutcome Outcome,
     IReadOnlyList<DimensionError> Blockers,
     int DescendantCount,
     int EmployeesAffected,
-    IReadOnlyList<DimensionNodeRef> DirectChildren,
-    IReadOnlyList<DimensionNodeRef> Subtree,
-    IReadOnlyList<DimensionNodeRef> ValidMoveTargets)
+    IReadOnlyList<StructureChildren> ChildrenByStructure)
 {
     /// <summary>
     /// Whether something live still refers to the record. Not a refusal — a reason to say so
@@ -217,11 +210,41 @@ public sealed record RetirePlan(
     public bool LeavesSomethingBehind => DescendantCount > 0 || EmployeesAffected > 0 || Blockers.Count > 0;
 
     /// <summary>
-    /// Whether retiring this unit would leave units with no parent, which is the question the
-    /// person doing it has to answer before it can go ahead.
+    /// Whether retiring this unit would leave units with no parent anywhere, which is the question
+    /// the person doing it has to answer before it can go ahead.
     /// </summary>
-    public bool HasChildrenToDecide => DirectChildren.Count > 0;
+    public bool HasChildrenToDecide => ChildrenByStructure.Count > 0;
+
+    /// <summary>What this unit would strand on one named structure, or null if nothing.</summary>
+    public StructureChildren? On(string structureId) =>
+        ChildrenByStructure.FirstOrDefault(entry => entry.StructureId == structureId);
 }
+
+/// <summary>
+/// What a retirement would strand on one structure, and where it could go instead.
+/// </summary>
+/// <param name="DirectChildren">
+/// The units sitting directly under this one on the day it closes, which is what the person
+/// retiring it has to decide about. Deeper descendants are not listed: they keep the parent they
+/// have, and move or close with it.
+/// </param>
+/// <param name="Subtree">
+/// Everything under the unit on that date, at every depth, nearest first — what a cascade would
+/// close.
+/// </param>
+/// <param name="ValidMoveTargets">
+/// The units the children could be moved to instead, by this structure's own level rules. Excludes
+/// the unit being retired and everything already under it, because moving a child into its own
+/// branch is either a cycle or a placement that is about to close with the rest of it.
+/// </param>
+public sealed record StructureChildren(
+    string StructureId,
+    string StructureCode,
+    string StructureNameEn,
+    string StructureNameAr,
+    IReadOnlyList<DimensionNodeRef> DirectChildren,
+    IReadOnlyList<DimensionNodeRef> Subtree,
+    IReadOnlyList<DimensionNodeRef> ValidMoveTargets);
 
 /// <summary>What happens to the units under a unit that is being retired.</summary>
 public enum ChildrenDispositionKind
@@ -273,6 +296,72 @@ public sealed record OrphanedByParentRetirement(
     string FormerParentNameEn,
     string FormerParentNameAr,
     DateOnly RetiredOn);
+
+/// <summary>One placement on record: a parent, and the date somebody made it effective from.</summary>
+public sealed record RecordedMove(
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo,
+    string ParentRecordId,
+    string ParentNameEn,
+    string ParentNameAr,
+    string ParentCode);
+
+/// <summary>
+/// What moving a unit would do, before any of it is done: where it sits now, where it would sit,
+/// how much travels with it, and anything the validator objects to.
+/// </summary>
+/// <param name="CurrentPath">Its ancestors on the effective date as things stand, root first.</param>
+/// <param name="NewPath">
+/// The ancestors it would have, root first, ending at the new parent. Empty when it would become a
+/// root of the structure or leave the tree for the unplaced panel.
+/// </param>
+/// <param name="DescendantsMoving">
+/// How many units travel with it. They keep their place relative to it; what changes is what the
+/// whole branch resolves under.
+/// </param>
+/// <param name="EmployeesAffected">
+/// How many people are placed in the branch on that date, and so resolve to a different chain of
+/// approvers and cost centres from it.
+/// </param>
+/// <param name="ClaimedUntil">
+/// The last day this move would own, when a later move already on record bounds it — null when it
+/// runs open-ended. Per ADR-0005's addendum the engine splits rather than overwrites: a backdated
+/// move claims only up to the day before whatever was recorded after it.
+/// </param>
+/// <param name="SupersededByParentName">The parent the later move goes to, for the warning text.</param>
+/// <param name="SupersededByParentNameAr">
+/// The same parent's Arabic name. Carried beside the English one because the warning is a sentence
+/// and a sentence takes the reader's language throughout, not a name in whichever half was handy.
+/// </param>
+public sealed record MovePlan(
+    string StructureId,
+    string RecordId,
+    string? NewParentRecordId,
+    DateOnly EffectiveFrom,
+    IReadOnlyList<DimensionNodeRef> CurrentPath,
+    IReadOnlyList<DimensionNodeRef> NewPath,
+    int DescendantsMoving,
+    int EmployeesAffected,
+    IReadOnlyList<DimensionError> Violations,
+    DateOnly? ClaimedUntil,
+    string? SupersededByParentName,
+    string? SupersededByParentNameAr = null)
+{
+    /// <summary>Whether the move would be refused as things stand.</summary>
+    public bool HasViolations => Violations.Any(violation => !violation.IsAdvisory);
+
+    /// <summary>Advisories: reported, never blocking. Architecture section 6.</summary>
+    public IEnumerable<DimensionError> Advisories => Violations.Where(violation => violation.IsAdvisory);
+
+    /// <summary>
+    /// Whether this move lands inside a period a later move already claimed, and so stops short
+    /// rather than running on. The one case ADR-0005 requires the designer to warn about.
+    /// </summary>
+    public bool SplitsHistory => ClaimedUntil is not null;
+
+    /// <summary>Whether the unit is being taken off the tree rather than reparented.</summary>
+    public bool LeavesTheTree => NewParentRecordId is null;
+}
 
 public sealed record CancelMovePlan(
     string StructureId,

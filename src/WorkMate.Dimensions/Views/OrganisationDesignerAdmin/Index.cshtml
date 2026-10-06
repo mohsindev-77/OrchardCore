@@ -75,7 +75,7 @@
 @if (!Model.IsAsAtToday)
 {
     <div class="alert alert-info py-2">
-        @T["Showing this structure as it was on {0}. Nothing on this screen changes anything.", asAtValue]
+        @T["Showing this structure as it was on {0}. Nothing on this screen changes anything.", BilingualDisplay.Date(Model.AsAt)]
         <a asp-action="Index" asp-route-structureId="@Model.SelectedStructureId" asp-route-view="@Model.ViewMode">@T["Back to today"]</a>
     </div>
 }
@@ -90,7 +90,11 @@
      data-expand-path="@string.Join(",", Model.ExpandPath)"
      data-add-url="@Url.Action("AddUnit")"
      data-rename-url="@Url.Action("Rename")"
-     data-retire-url="@Url.Action("Retire")">
+     data-retire-url="@Url.Action("Retire")"
+     data-move-url="@(Model.CanMove ? Url.Action("Move") : null)"
+     data-merge-url="@(Model.CanMerge ? Url.Action("Merge") : null)"
+     data-cancelmove-url="@(Model.CanMove ? Url.Action("CancelMove") : null)"
+     data-can-move="@(Model.CanMove ? "true" : "false")">
 
     <div class="col-lg-8 col-xl-9">
         <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
@@ -143,32 +147,15 @@
         }
         else
         {
-            <ul class="list-group">
+            @* The same partial the tree uses, so an unplaced unit is a card like any other: same
+               action menu, same drag behaviour, same markup for a test to find. It was a bespoke
+               list before, which is exactly why it quietly had no menu and could not be dragged —
+               and why nothing in the browser suite noticed, since every test looks for
+               .designer-node and these were not one. *@
+            <ul class="designer-unplaced" id="designer-unplaced">
                 @foreach (var node in Model.Unplaced)
                 {
-                    <li class="list-group-item" data-record-id="@node.RecordId">
-                        <div dir="ltr" lang="en">@node.NameEn</div>
-                        <div dir="rtl" lang="ar" class="text-muted small">@node.NameAr</div>
-                        <div class="text-muted small">@node.DimensionTypeNameEn <code>@node.Code</code></div>
-                        @* Two reasons a unit has no parent, and they are not the same thing: one
-                           came from an import and has never been anywhere, the other was somewhere
-                           until its parent closed underneath it. Saying "created outside this
-                           designer" about the second is simply false. *@
-                        @if (node.IsOrphanedByParentRetirement)
-                        {
-                            <div class="designer-orphan-badge" data-designer-orphaned>
-                                <span class="badge text-bg-warning">@T["Parent retired"]</span>
-                                <span class="text-muted small">
-                                    @T["{0} closed on {1}.", node.OrphanedFromParentName!, node.OrphanedOn!]
-                                </span>
-                                <span class="text-muted small" dir="rtl" lang="ar">@node.OrphanedFromParentNameAr</span>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="text-muted small">@T["Never placed in this structure."]</div>
-                        }
-                    </li>
+                    await Html.RenderPartialAsync("_DesignerNode", node);
                 }
             </ul>
         }

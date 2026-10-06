@@ -203,10 +203,12 @@ public sealed class DimensionCancelMoveTenantTests
             // later — so this retirement has to say what happens to it. Leaving it unplaced is
             // what keeps the link in place for the cancellation to try to restore.
             (await records.RetireAsync(
-                scenario.Structure,
                 scenario.OldParent,
                 new DateOnly(2025, 6, 1),
-                ChildrenDisposition.Unplaced)).Succeeded.Should().BeTrue();
+                new Dictionary<string, ChildrenDisposition>(StringComparer.Ordinal)
+                {
+                    [scenario.Structure] = ChildrenDisposition.Unplaced,
+                })).Succeeded.Should().BeTrue();
 
             var refused = await records.CancelMoveAsync(
                 scenario.Structure, scenario.Record, MoveDay, "testing a restoration onto a retired parent");

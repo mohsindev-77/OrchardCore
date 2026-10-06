@@ -68,6 +68,7 @@ public sealed class DesignerActionsBrowserTests
         await ExpandToDepartmentAsync(page);
         await AddUnitUnderAsync(page, Department, "browser-sec-rename", "Before Rename", "قبل");
 
+        await RevealAsync(page, "Before Rename");
         await OpenMenuAsync(page, "Before Rename");
         await page.ClickAsync(".designer-actions[open] a[data-designer-action='rename']");
 
@@ -98,6 +99,7 @@ public sealed class DesignerActionsBrowserTests
         await ExpandToDepartmentAsync(page);
         await AddUnitUnderAsync(page, Department, "browser-sec-retire", "Doomed Section", "محكوم");
 
+        await RevealAsync(page, "Doomed Section");
         await OpenMenuAsync(page, "Doomed Section");
         await page.ClickAsync(".designer-actions[open] a[data-designer-action='retire']");
 
@@ -135,8 +137,8 @@ public sealed class DesignerActionsBrowserTests
         await OpenRetireFormAsync(page, "No Choice Dept");
         await CheckWhatThisWillDoAsync(page);
 
-        await Assertions.Expect(page.Locator("#Disposition_Cascade")).ToBeVisibleAsync();
-        await Assertions.Expect(page.Locator("#Disposition_Unplaced")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("#Disposition_Cascade_0")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("#Disposition_Unplaced_0")).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByText("No Choice Section")).ToBeVisibleAsync();
 
         // Confirm without answering the question.
@@ -164,14 +166,13 @@ public sealed class DesignerActionsBrowserTests
         await OpenRetireFormAsync(page, "Move Kids Dept");
         await CheckWhatThisWillDoAsync(page);
 
-        await page.CheckAsync("#Disposition_Move");
-        await page.SelectOptionAsync("#NewParentRecordId", new SelectOptionValue { Label = "Retail (demo-dept-retail)" });
+        await page.CheckAsync("#Disposition_Move_0");
+        await page.SelectOptionAsync("#Dispositions_0__NewParentRecordId", new SelectOptionValue { Label = "Retail (demo-dept-retail)" });
         await page.CheckAsync("#Confirmed");
         await page.ClickAsync("form[action*='Retire'] button[type=submit]");
 
         // Under its new parent, still active, and not stranded in the unplaced panel.
-        await ExpandToAsync(page, Division, Department);
-        await Assertions.Expect(Node(page, "Move Kids Section")).ToBeVisibleAsync();
+        await RevealAsync(page, "Move Kids Section");
         await Assertions.Expect(Node(page, "Move Kids Dept")).ToHaveCountAsync(0);
         await Assertions.Expect(Unplaced(page, "Move Kids Section")).ToHaveCountAsync(0);
 
@@ -191,11 +192,11 @@ public sealed class DesignerActionsBrowserTests
         await OpenRetireFormAsync(page, "Cascade Dept");
         await CheckWhatThisWillDoAsync(page);
 
-        await page.CheckAsync("#Disposition_Cascade");
+        await page.CheckAsync("#Disposition_Cascade_0");
         await page.CheckAsync("#Confirmed");
         await page.ClickAsync("form[action*='Retire'] button[type=submit]");
 
-        await ExpandToAsync(page, Division);
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
         await Assertions.Expect(Node(page, "Cascade Dept")).ToHaveCountAsync(0);
         await Assertions.Expect(Node(page, "Cascade Section")).ToHaveCountAsync(0);
 
@@ -218,7 +219,7 @@ public sealed class DesignerActionsBrowserTests
         await OpenRetireFormAsync(page, "Orphan Dept");
         await CheckWhatThisWillDoAsync(page);
 
-        await page.CheckAsync("#Disposition_Unplaced");
+        await page.CheckAsync("#Disposition_Unplaced_0");
         await page.CheckAsync("#Confirmed");
         await page.ClickAsync("form[action*='Retire'] button[type=submit]");
 
@@ -265,20 +266,8 @@ public sealed class DesignerActionsBrowserTests
         await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
     }
 
-    private static async Task ExpandToDepartmentAsync(IPage page)
-    {
-        if (await Node(page, Department).CountAsync() == 0)
-        {
-            await Toggle(page, Division).ClickAsync();
-        }
-
-        await Assertions.Expect(Node(page, Department)).ToBeVisibleAsync();
-
-        if (await Node(page, Department).First.GetAttributeAsync("data-expanded") != "true")
-        {
-            await Toggle(page, Department).ClickAsync();
-        }
-    }
+    private static Task ExpandToDepartmentAsync(IPage page) =>
+        RevealAsync(page, Department);
 
     /// <summary>Opens one card's action menu, closing any other that is already open.</summary>
     private static async Task OpenMenuAsync(IPage page, string nameEn)
@@ -296,6 +285,7 @@ public sealed class DesignerActionsBrowserTests
     private static async Task AddUnitUnderAsync(
         IPage page, string parentNameEn, string code, string nameEn, string nameAr)
     {
+        await RevealAsync(page, parentNameEn);
         await OpenMenuAsync(page, parentNameEn);
         await page.ClickAsync(".designer-actions[open] a[data-designer-action='add']");
 
@@ -318,7 +308,7 @@ public sealed class DesignerActionsBrowserTests
         IPage page, string prefix, string departmentName, string sectionName)
     {
         await OpenDesignerAsync(page);
-        await ExpandToAsync(page, Division);
+        await RevealAsync(page, Division);
 
         await AddUnitUnderAsync(page, Division, $"{prefix}-dept", departmentName, "إدارة");
         await AddUnitUnderAsync(page, departmentName, $"{prefix}-sec", sectionName, "شعبة");
@@ -326,6 +316,7 @@ public sealed class DesignerActionsBrowserTests
 
     private static async Task OpenRetireFormAsync(IPage page, string nameEn)
     {
+        await RevealAsync(page, nameEn);
         await OpenMenuAsync(page, nameEn);
         await page.ClickAsync(".designer-actions[open] a[data-designer-action='retire']");
         await Assertions.Expect(page.Locator("h1")).ToHaveTextAsync("Retire a unit");
@@ -338,26 +329,46 @@ public sealed class DesignerActionsBrowserTests
         await Assertions.Expect(page.Locator(".alert")).ToContainTextAsync("What this will do");
     }
 
-    /// <summary>Opens each named branch in turn, from the top.</summary>
-    private static async Task ExpandToAsync(IPage page, params string[] names)
+    /// <summary>
+    /// Brings a card on screen by searching for it, whatever shape the tree is in.
+    /// </summary>
+    /// <remarks>
+    /// Walking down from the roots clicking toggles was the obvious way and the wrong one: the
+    /// page these tests land on after an action is already opening a branch of its own, so a test
+    /// that reads "collapsed" and clicks can arrive a moment after the script opened it and close
+    /// it again. Search is the product's own answer to "show me this unit".
+    /// </remarks>
+    private static async Task RevealAsync(IPage page, string nameEn)
     {
-        foreach (var name in names)
-        {
-            await Assertions.Expect(Node(page, name)).ToBeVisibleAsync();
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-            if (await Node(page, name).First.GetAttributeAsync("data-expanded") != "true")
-            {
-                await Toggle(page, name).ClickAsync();
-            }
+        if (await Node(page, nameEn).CountAsync() > 0 && await Node(page, nameEn).First.IsVisibleAsync())
+        {
+            return;
         }
+
+        await page.FillAsync("#designer-search", nameEn);
+
+        var hit = page.Locator("#designer-search-results li", new() { HasTextString = nameEn }).First;
+
+        await Assertions.Expect(hit).ToBeVisibleAsync();
+        await hit.ClickAsync();
+
+        await Assertions.Expect(Node(page, nameEn)).ToBeVisibleAsync();
     }
 
-    /// <summary>One row of the unplaced panel, found by the English name on it.</summary>
+    /// <summary>One card of the unplaced panel, found by the English name on it.</summary>
+    /// <remarks>
+    /// The same <c>.designer-node</c> the tree uses, because the panel renders the same partial.
+    /// It was bespoke list markup once, and that is precisely why nothing here noticed that those
+    /// cards had no action menu and could not be dragged: every locator in this suite asks for a
+    /// <c>.designer-node</c>, and the unplaced rows were not one.
+    /// </remarks>
     private static ILocator Unplaced(IPage page, string nameEn) =>
-        page.Locator($".col-lg-4 .list-group-item:has(div:text-is('{nameEn}'))");
+        page.Locator($"#designer-unplaced .designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
 
     private static ILocator Node(IPage page, string nameEn) =>
-        page.Locator($".designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
+        page.Locator($"#designer-tree .designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
 
     private static ILocator Toggle(IPage page, string nameEn) =>
         Node(page, nameEn).Locator(".designer-toggle").First;

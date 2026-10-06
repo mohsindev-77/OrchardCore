@@ -26,8 +26,18 @@
     var actionUrls = {
         add: surface.getAttribute("data-add-url"),
         rename: surface.getAttribute("data-rename-url"),
-        retire: surface.getAttribute("data-retire-url")
+        retire: surface.getAttribute("data-retire-url"),
+        move: surface.getAttribute("data-move-url"),
+        merge: surface.getAttribute("data-merge-url"),
+        cancelmove: surface.getAttribute("data-cancelmove-url")
     };
+
+    var moveUrl = actionUrls.move;
+
+    // Whether this viewer may reparent a unit at all. Without it a card is not draggable, for the
+    // same reason it carries no "Move to…" in its menu: the server would refuse either way, and a
+    // drag that always ended in a refusal is worse than one that never starts.
+    var canMove = surface.getAttribute("data-can-move") === "true";
 
     var viewport = surface.querySelector(".designer-chart-viewport");
     var canvas = surface.querySelector(".designer-chart-canvas");
@@ -91,6 +101,14 @@
                 action === "add"
                     ? { structureId: structureId, parentId: node.recordId, asAt: asAt }
                     : { structureId: structureId, recordId: node.recordId, asAt: asAt });
+        });
+
+        // A fetched card is draggable exactly as a server-rendered one is: the drag handler reads
+        // the DOM rather than a list captured at load, so there is nothing per-card to wire up.
+        li.querySelectorAll("[data-designer-action]").forEach(function (link) {
+            if (!actionUrls[link.getAttribute("data-designer-action")]) {
+                link.remove();
+            }
         });
 
         return li;
@@ -195,7 +213,9 @@
     // is what people do first, and a card that quietly ignores it reads as a broken screen. The
     // control stays, because it is the part that is reachable from the keyboard and that says, in
     // its own label and count, that there is something to open.
-    tree.addEventListener("click", function (event) {
+    // On the surface rather than on the tree, so an unplaced card behaves like any other: it is
+    // the same partial, so it has the same toggle, the same menu and the same card to click.
+    surface.addEventListener("click", function (event) {
         if (suppressNextClick) {
             suppressNextClick = false;
             return;
@@ -341,15 +361,66 @@
         });
     }
 
-    if (viewport) {
-        var panning = null;
+    // ---- panning and dragging ----------------------------------------------------------
+    //
+    // One pointer, two gestures, told apart by where it went down. Empty canvas pans the chart;
+    // a card begins a move — but only after it has travelled far enough to be a deliberate drag,
+    // because every click on a card starts with a pointerdown on a card and a move that could be
+    // triggered by a twitch would be the worst mutation on the screen to trigger by accident.
+    //
+    // Nothing commits here. A completed drag navigates to the move screen with the parent filled
+    // in, where the preview and the confirmation are the same ones the keyboard route gets.
 
-        viewport.addEventListener("pointerdown", function (event) {
-            if (!isChart() || event.target.closest("button, a, input")) {
+    var DragThreshold = 8;
+
+    {
+        var panning = null;
+        var dragging = null;
+
+        function endDrag() {
+            if (dragging && dragging.target) {
+                dragging.target.classList.remove("designer-drop-target");
+            }
+
+            if (dragging && dragging.started) {
+                dragging.node.classList.remove("designer-dragging");
+                surface.classList.remove("designer-is-dragging");
+                suppressNextClick = true;
+            }
+
+            dragging = null;
+        }
+
+        // On the surface, not on the chart's viewport: an unplaced card is a card, and the whole
+        // point of dragging one is that it starts in the side panel and ends on the tree. Panning
+        // is still the viewport's own business, because only the chart scrolls.
+        surface.addEventListener("pointerdown", function (event) {
+            if (event.target.closest("button, a, input, select, textarea, details, summary")) {
                 return;
             }
 
             suppressNextClick = false;
+
+            var card = event.target.closest(".designer-card");
+            var node = card ? card.closest(".designer-node") : null;
+
+            // Only a real unit, only when this viewer may move one. The structure's own card is
+            // not a thing that can be reparented.
+            if (node && canMove && !node.classList.contains("designer-node-structure")) {
+                dragging = {
+                    node: node,
+                    x: event.clientX,
+                    y: event.clientY,
+                    started: false,
+                    target: null
+                };
+
+                return;
+            }
+
+            if (!isChart() || !viewport || !viewport.contains(event.target)) {
+                return;
+            }
 
             panning = {
                 x: event.clientX,
@@ -362,7 +433,49 @@
             viewport.classList.add("is-panning");
         });
 
-        viewport.addEventListener("pointermove", function (event) {
+        // Tracked on the document, so a drag that leaves the panel it began in keeps going. A
+        // handler bound to the viewport loses the pointer the moment it crosses into the sidebar,
+        // which is the one journey this whole gesture exists for.
+        document.addEventListener("pointermove", function (event) {
+            if (dragging) {
+                var travelled = Math.abs(event.clientX - dragging.x) + Math.abs(event.clientY - dragging.y);
+
+                if (!dragging.started && travelled < DragThreshold) {
+                    return;
+                }
+
+                if (!dragging.started) {
+                    dragging.started = true;
+                    dragging.node.classList.add("designer-dragging");
+                    surface.classList.add("designer-is-dragging");
+                }
+
+                // elementFromPoint, because the card being dragged is not following the pointer —
+                // what is under it is whatever the drop would land on.
+                var over = document.elementFromPoint(event.clientX, event.clientY);
+                var card = over ? over.closest(".designer-card") : null;
+                var node = card ? card.closest(".designer-node") : null;
+
+                // Its own branch is not a destination: a unit cannot be dropped inside itself.
+                if (node && (node === dragging.node || dragging.node.contains(node))) {
+                    node = null;
+                }
+
+                if (dragging.target !== node) {
+                    if (dragging.target) {
+                        dragging.target.classList.remove("designer-drop-target");
+                    }
+
+                    dragging.target = node;
+
+                    if (node) {
+                        node.classList.add("designer-drop-target");
+                    }
+                }
+
+                return;
+            }
+
             if (!panning) {
                 return;
             }
@@ -379,17 +492,55 @@
             viewport.scrollTop = panning.top - dy;
         });
 
-        ["pointerup", "pointerleave", "pointercancel"].forEach(function (name) {
-            viewport.addEventListener(name, function () {
-                // pointerup runs before click, so this is in place by the time the card's click
-                // handler asks whether to ignore it.
-                if (panning && panning.moved) {
-                    suppressNextClick = true;
-                }
+        document.addEventListener("pointerup", function () {
+            if (dragging && dragging.started && dragging.target && moveUrl) {
+                var recordId = dragging.node.getAttribute("data-record-id");
+                var parentId = dragging.target.classList.contains("designer-node-structure")
+                    ? ""
+                    : dragging.target.getAttribute("data-record-id");
 
-                panning = null;
+                endDrag();
+
+                // To the preview, never straight to the write.
+                window.location.href = moveUrl + "?" + query({
+                    structureId: structureId,
+                    recordId: recordId,
+                    parentId: parentId,
+                    asAt: asAt
+                });
+
+                return;
+            }
+
+            endDrag();
+
+            if (panning && panning.moved) {
+                suppressNextClick = true;
+            }
+
+            panning = null;
+
+            if (viewport) {
                 viewport.classList.remove("is-panning");
-            });
+            }
+        });
+
+        document.addEventListener("pointercancel", function () {
+            endDrag();
+
+            panning = null;
+
+            if (viewport) {
+                viewport.classList.remove("is-panning");
+            }
+        });
+
+        // Escape abandons a drag in progress, which is the only way out of one that does not
+        // involve letting go somewhere and hoping.
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape" && dragging) {
+                endDrag();
+            }
         });
     }
 
