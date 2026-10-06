@@ -1,11 +1,15 @@
+using System.Globalization;
 using Microsoft.Extensions.Localization;
 using OrchardCore.AuditTrail.Services;
 using OrchardCore.AuditTrail.Services.Models;
+using OrchardCore.ContentFields.Fields;
 using OrchardCore.ContentManagement;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
+using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
+using WorkMate.Platform.Fields;
 using YesSql;
 
 namespace WorkMate.Dimensions.Internal.Graph;
@@ -16,6 +20,13 @@ internal sealed class DimensionService : IDimensionService
     private readonly ISession _session;
     private readonly IContentManager _contentManager;
     private readonly IDimensionTypeService _dimensionTypeService;
+
+    /// <summary>
+    /// Needed only to ask what is still hanging off a record on the day it would retire, which is
+    /// a question about every structure the record sits on rather than about one.
+    /// </summary>
+    private readonly IStructureService _structureService;
+
     private readonly IDimensionGraphService _graph;
     private readonly IEmployeeAssignmentService _assignments;
     private readonly IDimensionAuthorisation _authorisation;
@@ -35,6 +46,7 @@ internal sealed class DimensionService : IDimensionService
         ISession session,
         IContentManager contentManager,
         IDimensionTypeService dimensionTypeService,
+        IStructureService structureService,
         IDimensionGraphService graph,
         IEmployeeAssignmentService assignments,
         IDimensionAuthorisation authorisation,
@@ -46,6 +58,7 @@ internal sealed class DimensionService : IDimensionService
         _session = session;
         _contentManager = contentManager;
         _dimensionTypeService = dimensionTypeService;
+        _structureService = structureService;
         _graph = graph;
         _assignments = assignments;
         _authorisation = authorisation;
@@ -138,6 +151,97 @@ internal sealed class DimensionService : IDimensionService
         return DimensionResult.Success(ToNodeRef(item.ContentItemId, code, name, dimensionTypeId, effectiveRange));
     }
 
+    public async Task<DimensionResult<DimensionNodeRef>> AddUnitAsync(
+        string structureId,
+        string? parentRecordId,
+        string dimensionTypeId,
+        string code,
+        BilingualText name,
+        DateOnly effectiveFrom,
+        IReadOnlyList<DimensionAttributeValue>? attributes = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<DimensionNodeRef>();
+        }
+
+        var type = await _dimensionTypeService.GetAsync(dimensionTypeId, asAt: null, cancellationToken);
+
+        if (type is null)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(new DimensionError(
+                DimensionRule.UnknownReference,
+                dimensionTypeId,
+                S["There is no dimension type with the id '{0}' in this tenant.", dimensionTypeId]));
+        }
+
+        // Everything is checked before anything is written. A unit that exists but never reached
+        // its parent is precisely the half-finished state the unplaced panel reports, and the
+        // caller of one method should not be the one responsible for avoiding it.
+        var range = new EffectiveRange(effectiveFrom, null);
+
+        var errors = new List<DimensionError>(await _validator.ValidateRecordAsync(
+            recordId: null, dimensionTypeId, code, name, range, batch: null, cancellationToken));
+
+        errors.AddRange(ValidateAttributes(type, attributes));
+
+        if (errors.Any(error => !error.IsAdvisory))
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(errors);
+        }
+
+        var created = await CreateAsync(dimensionTypeId, code, name, range, batch: null, cancellationToken);
+
+        if (!created.Succeeded)
+        {
+            return created;
+        }
+
+        var recordId = created.Value!.RecordId;
+
+        if (attributes is { Count: > 0 })
+        {
+            await WriteAttributesAsync(recordId, type, attributes, cancellationToken);
+        }
+
+        var placed = await _graph.PlaceAsync(structureId, recordId, parentRecordId, effectiveFrom, cancellationToken);
+
+        if (!placed.Succeeded)
+        {
+            // The record was written and its placement was refused. Rather than leave a unit
+            // nobody asked for, it is taken back out: the graph rows first, then the content item.
+            // The validator ran over both before either was written, so arriving here means
+            // something changed underneath us, and reporting the placement's own errors is more
+            // use than a generic failure.
+            await _graph.RemoveAsync(recordId, cancellationToken);
+            await _contentManager.RemoveAsync((await _contentManager.GetAsync(recordId))!);
+
+            return placed.IsAuthorised
+                ? DimensionResult.Failed<DimensionNodeRef>(placed.Errors)
+                : DimensionResult.NotAuthorised<DimensionNodeRef>();
+        }
+
+        await RecordRecordChangeAsync(new DimensionRecordAuditEvent
+        {
+            RecordId = recordId,
+            Code = code,
+            Operation = DimensionRecordOperation.Added,
+            EffectiveFrom = effectiveFrom,
+            StructureId = structureId,
+            ParentRecordId = parentRecordId,
+            After = DimensionRecordNameState.Of(name),
+        });
+
+        // Advisories from both halves ride along: a parent that is not yet effective on the day
+        // the child starts is a warning, per the architecture's validation table, not a refusal.
+        return DimensionResult.Success(
+            (await GetAsync(recordId, effectiveFrom, cancellationToken))!,
+            [.. errors.Concat(placed.Errors).Where(error => error.IsAdvisory)]);
+    }
+
     public async Task<DimensionResult<DimensionNodeRef>> UpdateAsync(
         string recordId,
         string costCentreCode,
@@ -186,6 +290,8 @@ internal sealed class DimensionService : IDimensionService
             // when the period corrected is the current one.
             updatesCurrentName: periods => periods.Count > 0 && periods[^1].Range.Contains(withinPeriodContaining),
             S["There is no name in effect on {0} to correct.", withinPeriodContaining],
+            DimensionRecordOperation.NameCorrected,
+            withinPeriodContaining,
             cancellationToken);
 
     public Task<DimensionResult<DimensionNodeRef>> RenameAsync(
@@ -201,11 +307,184 @@ internal sealed class DimensionService : IDimensionService
             // current name once applied.
             updatesCurrentName: _ => true,
             S["The record had no name on {0}, so it cannot be renamed from then.", effectiveFrom],
+            DimensionRecordOperation.Renamed,
+            effectiveFrom,
             cancellationToken);
 
-    public async Task<DimensionResult<DimensionNodeRef>> RetireAsync(
+    public async Task<DimensionResult<RetirePlan>> PlanRetireAsync(
+        string structureId,
         string recordId,
         DateOnly effectiveDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<RetirePlan>();
+        }
+
+        var existing = await GetAsync(recordId, null, cancellationToken);
+
+        if (existing is null)
+        {
+            return DimensionResult.Failed<RetirePlan>(UnknownRecord(recordId));
+        }
+
+        return DimensionResult.Success(
+            await BuildRetirePlanAsync(structureId, recordId, effectiveDate, cancellationToken));
+    }
+
+    /// <summary>
+    /// The assessment, the counts and the children behind it, shared by the dry run and the write
+    /// so the two can never disagree about what is at stake.
+    /// </summary>
+    private async Task<RetirePlan> BuildRetirePlanAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveDate,
+        CancellationToken cancellationToken)
+    {
+        var assessment = await _validator.AssessDeletionAsync(recordId, cancellationToken);
+
+        // Asked as at the day the unit closes, not the day before it. The question is which units
+        // are left with nowhere to sit once it has gone, and that is a question about the first
+        // day it is gone: a unit opened on the same morning the parent closes would be invisible
+        // to a plan that looked at yesterday, and is exactly the unit most likely to be stranded.
+        //
+        // Safe to ask of a record that has not retired yet, which is the only time it is asked:
+        // its own range is still open here, so the closure still resolves everything under it.
+        var descendants = 0;
+        var employees = 0;
+
+        foreach (var structure in await _structureService.ListAsync(cancellationToken))
+        {
+            var page = await _graph.GetDescendantsAsync(
+                structure.StructureId, recordId, effectiveDate, skip: 0, take: 1, cancellationToken);
+
+            descendants += page.Total;
+
+            var counts = await _assignments.CountEmployeesAtAsync(
+                structure.StructureId, [recordId], effectiveDate, cancellationToken);
+
+            employees += counts.TryGetValue(recordId, out var count) ? count : 0;
+        }
+
+        var directChildren = await _graph.GetChildrenAsync(structureId, recordId, effectiveDate, cancellationToken);
+        var subtree = await SubtreeAsync(structureId, recordId, effectiveDate, cancellationToken);
+
+        var moveTargets = directChildren.Count == 0
+            ? []
+            : await ValidMoveTargetsAsync(structureId, recordId, directChildren, subtree, effectiveDate, cancellationToken);
+
+        return new RetirePlan(
+            recordId,
+            structureId,
+            effectiveDate,
+            assessment.Outcome,
+            assessment.Blockers,
+            descendants,
+            employees,
+            directChildren,
+            subtree,
+            moveTargets);
+    }
+
+    /// <summary>Everything under a node on a date, nearest first.</summary>
+    /// <remarks>
+    /// Paged out in full rather than counted, because a cascade has to close every one of them and
+    /// the preview has to show the whole subtree before it does. The page size is the whole point
+    /// of asking in a loop: an organisation with more units under one branch than fits in a single
+    /// page is exactly the one where closing it blind would do the most damage.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionNodeRef>> SubtreeAsync(
+        string structureId,
+        string recordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        const int PageSize = 200;
+
+        var all = new List<DimensionNodeRef>();
+
+        while (true)
+        {
+            var page = await _graph.GetDescendantsAsync(
+                structureId, recordId, asAt, all.Count, PageSize, cancellationToken);
+
+            all.AddRange(page.Items);
+
+            if (all.Count >= page.Total || page.Items.Count == 0)
+            {
+                break;
+            }
+        }
+
+        return [.. all.OrderBy(node => node.Depth).ThenBy(node => node.NameEn, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Where the children could go instead: every unit on the structure whose level permits all of
+    /// their types, minus the branch that is closing.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <see cref="IDimensionGraphService.GetPermittedChildTypeIdsAsync"/> — the same
+    /// rule the validator enforces, read from the parent's side — so the picker cannot offer a
+    /// target the write would then refuse. The service re-validates each move anyway; this is what
+    /// keeps the screen from presenting choices that were never going to work.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionNodeRef>> ValidMoveTargetsAsync(
+        string structureId,
+        string retiringRecordId,
+        IReadOnlyList<DimensionNodeRef> children,
+        IReadOnlyList<DimensionNodeRef> subtree,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var childTypeIds = children
+            .Select(child => child.DimensionTypeId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        // The closing branch is not a destination: its own units are about to have no parent
+        // themselves, and moving a child into its own subtree is a cycle.
+        var excluded = new HashSet<string>(StringComparer.Ordinal) { retiringRecordId };
+        excluded.UnionWith(subtree.Select(node => node.RecordId));
+
+        var candidates = new List<DimensionNodeRef>();
+        var roots = await _graph.GetRootsAsync(structureId, asAt, cancellationToken);
+
+        candidates.AddRange(roots);
+
+        foreach (var root in roots)
+        {
+            candidates.AddRange(await SubtreeAsync(structureId, root.RecordId, asAt, cancellationToken));
+        }
+
+        // A unit with no parent of its own is still a perfectly good parent for something else.
+        candidates.AddRange(await _graph.GetUnplacedAsync(structureId, asAt, cancellationToken));
+
+        var permitted = new List<DimensionNodeRef>();
+
+        foreach (var candidate in candidates
+            .DistinctBy(node => node.RecordId, StringComparer.Ordinal)
+            .Where(node => !excluded.Contains(node.RecordId)))
+        {
+            var permittedTypes = await _graph.GetPermittedChildTypeIdsAsync(
+                structureId, candidate.RecordId, asAt, cancellationToken);
+
+            if (childTypeIds.All(typeId => permittedTypes.Contains(typeId, StringComparer.Ordinal)))
+            {
+                permitted.Add(candidate);
+            }
+        }
+
+        return [.. permitted.OrderBy(node => node.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<DimensionResult<DimensionNodeRef>> RetireAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveDate,
+        ChildrenDisposition? childrenDisposition = null,
         CancellationToken cancellationToken = default)
     {
         if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
@@ -213,6 +492,114 @@ internal sealed class DimensionService : IDimensionService
             return DimensionResult.NotAuthorised<DimensionNodeRef>();
         }
 
+        // Re-planned here rather than trusted from the screen: the screen is not the authority,
+        // and a unit can gain a child between the preview and the confirmation.
+        var plan = await BuildRetirePlanAsync(structureId, recordId, effectiveDate, cancellationToken);
+
+        if (plan.HasChildrenToDecide && childrenDisposition is null)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(new DimensionError(
+                DimensionRule.ChildrenNeedDisposition,
+                recordId,
+                S["{0} units still sit under this one on {1}. Say what should happen to them before retiring it.",
+                    plan.DirectChildren.Count,
+                    effectiveDate]));
+        }
+
+        if (plan.HasChildrenToDecide &&
+            await DisposeOfChildrenAsync(plan, childrenDisposition!, cancellationToken) is { } refusal)
+        {
+            return refusal;
+        }
+
+        return await CloseRecordAsync(recordId, effectiveDate, cancellationToken);
+    }
+
+    /// <summary>
+    /// Carries out the decision about the children, or returns the reason it cannot. Runs before
+    /// the parent closes, so that a refusal leaves the organisation exactly as it was.
+    /// </summary>
+    private async Task<DimensionResult<DimensionNodeRef>?> DisposeOfChildrenAsync(
+        RetirePlan plan,
+        ChildrenDisposition disposition,
+        CancellationToken cancellationToken)
+    {
+        switch (disposition.Kind)
+        {
+            case ChildrenDispositionKind.MoveToParent:
+                foreach (var child in plan.DirectChildren)
+                {
+                    // The same date the parent closes, so there is no day on which the child sits
+                    // nowhere: its old placement runs to the day before and the new one starts here.
+                    var moved = await _graph.MoveAsync(
+                        plan.StructureId,
+                        child.RecordId,
+                        disposition.NewParentRecordId,
+                        plan.EffectiveDate,
+                        cancellationToken);
+
+                    if (!moved.Succeeded)
+                    {
+                        return moved.IsAuthorised
+                            ? DimensionResult.Failed<DimensionNodeRef>(moved.Errors)
+                            : DimensionResult.NotAuthorised<DimensionNodeRef>();
+                    }
+                }
+
+                return null;
+
+            case ChildrenDispositionKind.RetireCascade:
+                // Shallowest first, so each unit closes after the one above it: by the time a node
+                // is reached its ancestors are already capped, and the closure it writes on the way
+                // through is its final one rather than one that has to be written again.
+                foreach (var descendant in plan.Subtree.OrderBy(node => node.Depth))
+                {
+                    var closed = await CloseRecordAsync(
+                        descendant.RecordId, plan.EffectiveDate, cancellationToken, plan.RecordId);
+
+                    if (!closed.Succeeded)
+                    {
+                        return DimensionResult.Failed<DimensionNodeRef>(closed.Errors);
+                    }
+                }
+
+                return null;
+
+            default:
+                await _graph.MarkOrphanedByParentRetirementAsync(
+                    plan.StructureId,
+                    [.. plan.DirectChildren.Select(child => child.RecordId)],
+                    plan.RecordId,
+                    plan.EffectiveDate,
+                    cancellationToken);
+
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Closes a record with an end date, with no deletion assessment.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="RetireAsync"/> because a merge retires its source as part of
+    /// succeeding, and the references that would block a standalone retirement are the ones the
+    /// merge has just deliberately left behind: the children and employees it reassigned still
+    /// resolve through the source for prior periods, which the architecture requires. Asking the
+    /// deletion assessment about that is asking the wrong question — it is there to stop a user
+    /// closing a unit that something still depends on, not to stop an operation that has already
+    /// dealt with everything that depended on it.
+    /// </remarks>
+    /// <param name="cascadedFrom">
+    /// The unit whose retirement closed this one too, when it was not retired in its own right.
+    /// Recorded on the audit entry so that a unit closing on a date it was never named for can be
+    /// traced back to the decision that closed it.
+    /// </param>
+    private async Task<DimensionResult<DimensionNodeRef>> CloseRecordAsync(
+        string recordId,
+        DateOnly effectiveDate,
+        CancellationToken cancellationToken,
+        string? cascadedFrom = null)
+    {
         var item = await _contentManager.GetAsync(recordId);
 
         if (item is null)
@@ -242,6 +629,16 @@ internal sealed class DimensionService : IDimensionService
             part.DimensionTypeId,
             new EffectiveRange(part.EffectiveFrom, lastDay),
             cancellationToken);
+
+        await RecordRecordChangeAsync(new DimensionRecordAuditEvent
+        {
+            RecordId = recordId,
+            Code = part.Code,
+            Operation = DimensionRecordOperation.Retired,
+            EffectiveFrom = effectiveDate,
+            CascadedFromRecordId = cascadedFrom,
+            Before = new DimensionRecordNameState { NameEn = part.NameEn, NameAr = part.NameAr },
+        });
 
         return DimensionResult.Success((await GetAsync(recordId, part.EffectiveFrom, cancellationToken))!);
     }
@@ -342,6 +739,177 @@ internal sealed class DimensionService : IDimensionService
 
         return DimensionResult.Success(plan, [.. restoration.Errors]);
     }
+
+    /// <summary>
+    /// Checks the submitted attribute values against the schema the dimension type declares:
+    /// nothing it does not know about, nothing missing that it requires, and every value
+    /// convertible to the kind it was declared as.
+    /// </summary>
+    /// <remarks>
+    /// Returns errors rather than throwing, and names the attribute in each one, because these
+    /// reach the same place every other violation does — inline on the form, before anything is
+    /// written.
+    /// </remarks>
+    private List<DimensionError> ValidateAttributes(
+        DimensionTypeDocument type,
+        IReadOnlyList<DimensionAttributeValue>? attributes)
+    {
+        var errors = new List<DimensionError>();
+        var submitted = attributes ?? [];
+
+        foreach (var value in submitted)
+        {
+            var definition = type.AttributeSchema.FirstOrDefault(
+                attribute => string.Equals(attribute.Name, value.Name, StringComparison.Ordinal));
+
+            if (definition is null)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.AttributeSchema,
+                    value.Name,
+                    S["The dimension type '{0}' has no attribute called '{1}'.", type.Code, value.Name]));
+
+                continue;
+            }
+
+            if (value.IsEmpty)
+            {
+                continue;
+            }
+
+            if (!TryConvert(definition, value, out _))
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.AttributeSchema,
+                    value.Name,
+                    S["'{0}' is not a valid value for '{1}'.", value.Value ?? string.Empty, definition.Label.En]));
+            }
+        }
+
+        foreach (var definition in type.AttributeSchema.Where(attribute => attribute.IsRequired))
+        {
+            var provided = submitted.FirstOrDefault(
+                value => string.Equals(value.Name, definition.Name, StringComparison.Ordinal));
+
+            if (provided is null || provided.IsEmpty)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.AttributeSchema,
+                    definition.Name,
+                    S["'{0}' is required.", definition.Label.En]));
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Writes the attribute values onto the fields the dimension type declared, which live on a
+    /// content part named after the generated content type — see
+    /// <c>DimensionTypeService.WriteContentDefinitionAsync</c>.
+    /// </summary>
+    private async Task WriteAttributesAsync(
+        string recordId,
+        DimensionTypeDocument type,
+        IReadOnlyList<DimensionAttributeValue> attributes,
+        CancellationToken cancellationToken)
+    {
+        var item = await _contentManager.GetAsync(recordId);
+
+        if (item is null)
+        {
+            return;
+        }
+
+        foreach (var value in attributes.Where(attribute => !attribute.IsEmpty))
+        {
+            var definition = type.AttributeSchema.FirstOrDefault(
+                attribute => string.Equals(attribute.Name, value.Name, StringComparison.Ordinal));
+
+            if (definition is null || !TryConvert(definition, value, out var converted))
+            {
+                continue;
+            }
+
+            // Altered on the part by name: the part is the content type's own, declared when the
+            // dimension type wrote its definition, so there is no CLR type to name here.
+            item.Alter<ContentPart>(type.ContentTypeName, part =>
+            {
+                switch (converted)
+                {
+                    case BilingualText bilingual:
+                        part.Alter<BilingualTextField>(definition.Name, field => field.Set(bilingual));
+                        break;
+                    case decimal number:
+                        part.Alter<NumericField>(definition.Name, field => field.Value = number);
+                        break;
+                    case bool boolean:
+                        part.Alter<BooleanField>(definition.Name, field => field.Value = boolean);
+                        break;
+                    case DateTime date:
+                        part.Alter<DateField>(definition.Name, field => field.Value = date);
+                        break;
+                    default:
+                        part.Alter<TextField>(definition.Name, field => field.Text = (string)converted!);
+                        break;
+                }
+            });
+        }
+
+        await _contentManager.UpdateAsync(item);
+        await _session.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Turns the text that came off a form into the value the declared field kind holds, or says
+    /// it cannot. Dates and numbers are read invariantly for the same reason the designer's "as
+    /// at" is: the wire format does not change with the culture of whoever typed it.
+    /// </summary>
+    private static bool TryConvert(
+        DimensionAttributeDefinition definition,
+        DimensionAttributeValue value,
+        out object? converted)
+    {
+        var text = value.Value?.Trim() ?? string.Empty;
+
+        switch (definition.Kind)
+        {
+            case DimensionAttributeKind.BilingualText:
+                converted = new BilingualText(text, value.ValueAr?.Trim() ?? string.Empty);
+                return true;
+
+            case DimensionAttributeKind.Number:
+                var isNumber = decimal.TryParse(
+                    text, NumberStyles.Number, CultureInfo.InvariantCulture, out var number);
+                converted = isNumber ? number : null;
+                return isNumber;
+
+            case DimensionAttributeKind.Boolean:
+                // An unchecked checkbox posts nothing at all, so anything that arrives and is not
+                // a recognised false is true; a blank never reaches here.
+                converted = !string.Equals(text, "false", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(text, "0", StringComparison.Ordinal);
+                return true;
+
+            case DimensionAttributeKind.Date:
+                var isDate = IsoDate.TryParse(text, out var date);
+                converted = isDate ? date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : null;
+                return isDate;
+
+            default:
+                converted = text;
+                return true;
+        }
+    }
+
+    private Task RecordRecordChangeAsync(DimensionRecordAuditEvent payload) =>
+        _auditTrailManager.RecordEventAsync(new AuditTrailContext<DimensionRecordAuditEvent>(
+            DimensionAuditTrail.DimensionRecordChanged,
+            DimensionAuditTrail.Category,
+            payload.RecordId,
+            userId: null,
+            userName: null,
+            payload));
 
     private Task RecordMoveCancelledAsync(
         string structureId,
@@ -463,7 +1031,10 @@ internal sealed class DimensionService : IDimensionService
             }
         }
 
-        var retired = await RetireAsync(sourceRecordId, effectiveFrom, cancellationToken);
+        // Closed, not assessed: everything that referenced the source has just been reassigned to
+        // the target, and what still points at it is the prior-period history the merge is
+        // required to leave resolving through it. See CloseRecordAsync.
+        var retired = await CloseRecordAsync(sourceRecordId, effectiveFrom, cancellationToken);
 
         return retired.Succeeded
             ? DimensionResult.Success(plan)
@@ -509,6 +1080,8 @@ internal sealed class DimensionService : IDimensionService
         Func<IReadOnlyList<DimensionNamePeriod>, IReadOnlyList<DimensionNamePeriod>?> change,
         Func<IReadOnlyList<DimensionNamePeriod>, bool> updatesCurrentName,
         LocalizedString failureMessage,
+        DimensionRecordOperation operation,
+        DateOnly effectiveFrom,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -536,6 +1109,14 @@ internal sealed class DimensionService : IDimensionService
                     item.Get<DimensionRecordPart>(nameof(DimensionRecordPart))!.EffectiveFrom),
             };
 
+        // Captured before the change, because the audit entry's job is to say what it was as well
+        // as what it became, and the period being altered may not be the current one.
+        var nameBefore = document.NameOn(effectiveFrom)
+            ?? document.CurrentName
+            ?? new BilingualText(
+                item.Get<DimensionRecordPart>(nameof(DimensionRecordPart))!.NameEn,
+                item.Get<DimensionRecordPart>(nameof(DimensionRecordPart))!.NameAr);
+
         var wasCurrent = updatesCurrentName(document.Periods);
         var changed = change(document.Periods);
 
@@ -562,6 +1143,18 @@ internal sealed class DimensionService : IDimensionService
 
             await _contentManager.UpdateAsync(item);
         }
+
+        var recordPart = item.Get<DimensionRecordPart>(nameof(DimensionRecordPart))!;
+
+        await RecordRecordChangeAsync(new DimensionRecordAuditEvent
+        {
+            RecordId = recordId,
+            Code = recordPart.Code,
+            Operation = operation,
+            EffectiveFrom = effectiveFrom,
+            Before = DimensionRecordNameState.Of(nameBefore),
+            After = DimensionRecordNameState.Of(name),
+        });
 
         return DimensionResult.Success((await GetAsync(recordId, null, cancellationToken))!);
     }

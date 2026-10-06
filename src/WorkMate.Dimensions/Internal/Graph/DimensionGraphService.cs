@@ -23,6 +23,12 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     /// </summary>
     private readonly IStructureLookup _structureLookup;
 
+    /// <summary>
+    /// Read only, and only to ask whether a type nests inside itself when working out what may be
+    /// added under a parent. Same reasoning as <see cref="_structureLookup"/>.
+    /// </summary>
+    private readonly IDimensionTypeLookup _dimensionTypeLookup;
+
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IDimensionValidator _validator;
     private readonly IStringLocalizer S;
@@ -30,12 +36,14 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     public DimensionGraphService(
         ISession session,
         IStructureLookup structureLookup,
+        IDimensionTypeLookup dimensionTypeLookup,
         IDimensionAuthorisation authorisation,
         IDimensionValidator validator,
         IStringLocalizer<DimensionGraphService> stringLocalizer)
     {
         _session = session;
         _structureLookup = structureLookup;
+        _dimensionTypeLookup = dimensionTypeLookup;
         _authorisation = authorisation;
         _validator = validator;
         S = stringLocalizer;
@@ -533,6 +541,203 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return violations;
     }
 
+    public async Task<IReadOnlyList<string>> GetPermittedChildTypeIdsAsync(
+        string structureId,
+        string? parentRecordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
+
+        if (structure is null || structure.Levels.Count == 0)
+        {
+            return [];
+        }
+
+        var levels = structure.Levels.OrderBy(level => level.Ordinal).ToList();
+
+        if (parentRecordId is null)
+        {
+            // A root sits at the first level. Skipping does not apply upwards: there is nothing
+            // above the first level to skip past.
+            return [levels[0].DimensionTypeId];
+        }
+
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+
+        var parent = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index =>
+                index.ContentItemId == parentRecordId &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (parent is null)
+        {
+            return [];
+        }
+
+        var parentOrdinal = levels.FindIndex(level => level.DimensionTypeId == parent.DimensionTypeId);
+
+        if (parentOrdinal < 0)
+        {
+            // The parent's type is not a level of this structure at all, which the validator
+            // would refuse; offering anything here would only produce a form that cannot save.
+            return [];
+        }
+
+        var permitted = new List<string>();
+
+        var parentType = await _dimensionTypeLookup.GetAsync(parent.DimensionTypeId, cancellationToken);
+
+        if (parentType?.AllowsSelfNesting == true)
+        {
+            permitted.Add(parent.DimensionTypeId);
+        }
+
+        var deepest = structure.AllowSkipLevel ? levels.Count - 1 : Math.Min(parentOrdinal + 1, levels.Count - 1);
+
+        for (var ordinal = parentOrdinal + 1; ordinal <= deepest; ordinal++)
+        {
+            permitted.Add(levels[ordinal].DimensionTypeId);
+        }
+
+        return permitted;
+    }
+
+    public async Task MarkOrphanedByParentRetirementAsync(
+        string structureId,
+        IReadOnlyList<string> childRecordIds,
+        string formerParentId,
+        DateOnly retiredOn,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(childRecordIds);
+
+        foreach (var childRecordId in childRecordIds.Distinct(StringComparer.Ordinal))
+        {
+            var link = await LoadLinkAsync(structureId, childRecordId, cancellationToken)
+                ?? new DimensionLinkDocument { StructureId = structureId, RecordId = childRecordId };
+
+            link.OrphanedByParentRetirementOn = retiredOn;
+            link.OrphanedFromParentId = formerParentId;
+
+            await _session.SaveCheckedAsync(link, cancellationToken);
+        }
+    }
+
+    public async Task<IReadOnlyDictionary<string, OrphanedByParentRetirement>> GetOrphanedByParentRetirementAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var result = new Dictionary<string, OrphanedByParentRetirement>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return result;
+        }
+
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        // Through the index to the documents themselves: the two fields are not indexed, because
+        // nothing filters on them — this reads them off the handful of records the unplaced panel
+        // is showing.
+        var documents = await _session
+            .Query<DimensionLinkDocument, DimensionLinkIndex>(index =>
+                index.StructureId == structureId && index.ChildId.IsIn(ids))
+            .ListAsync(cancellationToken);
+
+        var marked = documents
+            .Where(document => document.StructureId == structureId
+                && document.OrphanedByParentRetirementOn is not null
+                && document.OrphanedFromParentId is { Length: > 0 })
+            .DistinctBy(document => document.RecordId, StringComparer.Ordinal)
+            .ToList();
+
+        if (marked.Count == 0)
+        {
+            return result;
+        }
+
+        // Undated, because every one of these parents is retired and some of them closed on the
+        // day they opened. Asking for them as at any particular date is how the badge ends up
+        // naming an id.
+        var parentIds = marked
+            .Select(document => document.OrphanedFromParentId!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var parents = (await _session
+                .QueryIndex<DimensionRecordPartIndex>(index =>
+                    index.ContentItemId.IsIn(parentIds) && index.Latest)
+                .ListAsync(cancellationToken))
+            .ToDictionary(row => row.ContentItemId, row => (row.NameEn, row.NameAr), StringComparer.Ordinal);
+
+        foreach (var document in marked)
+        {
+            var formerParentId = document.OrphanedFromParentId!;
+
+            parents.TryGetValue(formerParentId, out var name);
+
+            result[document.RecordId] = new OrphanedByParentRetirement(
+                formerParentId,
+                name.NameEn ?? formerParentId,
+                name.NameAr ?? string.Empty,
+                document.OrphanedByParentRetirementOn!.Value);
+        }
+
+        return result;
+    }
+
+    public async Task<DimensionResult<int>> PlaceAsync(
+        string structureId,
+        string recordId,
+        string? parentRecordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<int>();
+        }
+
+        var existing = await LoadLinkAsync(structureId, recordId, cancellationToken);
+
+        // The guard that keeps MoveDimensionRecords meaningful. Without it this would be a
+        // reparenting under the weaker permission, and the split specification section 4 draws
+        // between creating a record and reorganising the company would be decorative.
+        if (existing is not null && existing.Parents.Count > 0)
+        {
+            return DimensionResult.Failed<int>(new DimensionError(
+                DimensionRule.ImmutableOnceInUse,
+                recordId,
+                S["This unit is already placed on this structure. Moving it is a move, not a placement."]));
+        }
+
+        var errors = await _validator.ValidatePlacementAsync(
+            structureId, recordId, parentRecordId, effectiveFrom, cancellationToken);
+
+        if (errors.Any(error => !error.IsAdvisory))
+        {
+            return DimensionResult.Failed<int>(errors);
+        }
+
+        var range = await SelfRangeAsync(recordId, cancellationToken);
+        var link = existing ?? new DimensionLinkDocument { StructureId = structureId, RecordId = recordId };
+
+        link.Parents = [.. InsertLink(link.Parents, parentRecordId, effectiveFrom)];
+        ClearOrphanMark(link);
+
+        await _session.SaveCheckedAsync(link, cancellationToken);
+
+        return DimensionResult.Success(
+            await RecomputeSubtreeAsync(structureId, recordId, range, cancellationToken),
+            [.. errors]);
+    }
+
     public async Task<DimensionResult<int>> MoveAsync(
         string structureId,
         string recordId,
@@ -561,6 +766,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             ?? new DimensionLinkDocument { StructureId = structureId, RecordId = recordId };
 
         link.Parents = [.. InsertLink(link.Parents, newParentId, effectiveFrom)];
+        ClearOrphanMark(link);
 
         await _session.SaveCheckedAsync(link, cancellationToken);
 
@@ -1031,6 +1237,17 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         }
 
         return result.OrderBy(link => link.Range.From);
+    }
+
+    /// <summary>
+    /// Forgets that a record was ever orphaned by a retirement. Called whenever it gains a parent
+    /// again, because from that moment the badge would be describing something that is no longer
+    /// true — and a record moved to the top deliberately is unplaced on purpose, not stranded.
+    /// </summary>
+    private static void ClearOrphanMark(DimensionLinkDocument link)
+    {
+        link.OrphanedByParentRetirementOn = null;
+        link.OrphanedFromParentId = null;
     }
 
     private static IEnumerable<ParentLink> CloseAt(IReadOnlyList<ParentLink> links, DateOnly lastDay) =>

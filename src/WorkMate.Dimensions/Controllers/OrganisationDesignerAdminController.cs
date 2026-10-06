@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 using OrchardCore.Admin;
 using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Models;
@@ -9,24 +10,26 @@ using WorkMate.Dimensions.ViewModels;
 namespace WorkMate.Dimensions.Controllers;
 
 /// <summary>
-/// The organisation designer's read-only tree, as a chart or as a list: a structure's roots,
-/// lazily loaded children, search and its unplaced-records panel, all resolved as at a date.
-/// Every action reads through <see cref="IDimensionGraphService"/>, the only entry to the link and
-/// closure tables, the same as every other screen in this module; nothing here is computed from a
-/// table this controller reads directly.
+/// The organisation designer: a structure's tree as a chart or as a list, resolved as at a date,
+/// and the actions that change it — add a unit, rename one, retire one.
 /// </summary>
 /// <remarks>
-/// Read-only by design for now: move, merge, retire, rename and "add unit" are a later slice.
-/// Gated by <see cref="Permissions.ManageDimensionRecords"/> rather than a new permission, because
-/// specification section 4 names seven permissions and viewing the tree is not a reason for an
-/// eighth — it is the same day-to-day capability that already lets a caller create and change
-/// records through the generic content screens.
+/// Every read goes through <see cref="IDimensionGraphService"/> and every write through
+/// <see cref="IDimensionService"/>, the same services the API and the recipe steps call. Nothing
+/// here decides anything: the controller gathers what a form needs, hands it to the service, and
+/// shows what comes back. The validator's violations arrive as
+/// <see cref="DimensionError"/>s and are put straight into model state, so the screen shows them
+/// before the commit while the service re-checks on write and remains the authority.
 ///
-/// Resolving the axis as at a <em>past</em> date is a different question and section 4 does name a
-/// permission for it: <see cref="Permissions.ViewDimensionHistory"/>, "resolve the structure as at
-/// a past date rather than only as it is today". Every action here that takes a date enforces it,
-/// not only the screen that renders the control — <see cref="EffectiveDateAsync"/> is the one
-/// place that decision is made.
+/// Three permissions from specification section 4 are read here. Looking at the tree needs any of
+/// this module's structural permissions — see <see cref="IsAuthorisedAsync"/> — so that a reader
+/// such as the auditor role gets the chart with no action menus on it. Changing a unit needs
+/// <see cref="Permissions.ManageDimensionRecords"/>, checked on every action and again in the
+/// service. Resolving the tree as at a <em>past</em> date needs
+/// <see cref="Permissions.ViewDimensionHistory"/>, enforced in
+/// <see cref="EffectiveDateAsync"/> rather than only by hiding the control.
+///
+/// Move, merge and cancel-move are a later slice.
 /// </remarks>
 [Admin("Dimensions/Designer/{action}", "OrganisationDesigner{action}")]
 public sealed class OrganisationDesignerAdminController : Controller
@@ -35,29 +38,41 @@ public sealed class OrganisationDesignerAdminController : Controller
     private readonly IDimensionTypeService _dimensionTypeService;
     private readonly IDimensionGraphService _graphService;
     private readonly IEmployeeAssignmentService _assignmentService;
+    private readonly IDimensionService _dimensionService;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
+    private readonly IStringLocalizer S;
 
     public OrganisationDesignerAdminController(
         IStructureService structureService,
         IDimensionTypeService dimensionTypeService,
         IDimensionGraphService graphService,
         IEmployeeAssignmentService assignmentService,
+        IDimensionService dimensionService,
         IDimensionAuthorisation authorisation,
-        IAuthorizationService authorizationService)
+        IAuthorizationService authorizationService,
+        IStringLocalizer<OrganisationDesignerAdminController> stringLocalizer)
     {
         _structureService = structureService;
         _dimensionTypeService = dimensionTypeService;
         _graphService = graphService;
         _assignmentService = assignmentService;
+        _dimensionService = dimensionService;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
+        S = stringLocalizer;
     }
 
+    /// <param name="expand">
+    /// A unit whose branch should already be open on arrival. Set when returning from an action,
+    /// so that a unit just added is on screen rather than hidden inside a parent the user would
+    /// have to find and reopen.
+    /// </param>
     public async Task<IActionResult> Index(
         string? structureId,
         string? asAt,
         string? view,
+        string? expand,
         CancellationToken cancellationToken)
     {
         if (!await IsAuthorisedAsync())
@@ -87,7 +102,9 @@ public sealed class OrganisationDesignerAdminController : Controller
             AsAt = effective.Value,
             Today = await _authorisation.TodayAsync(),
             CanViewHistory = await CanViewHistoryAsync(),
+            CanEdit = await CanEditAsync(),
             ViewMode = ResolveViewMode(view),
+            ExpandRecordId = expand,
         };
 
         var selected = (structureId is not null
@@ -112,7 +129,50 @@ public sealed class OrganisationDesignerAdminController : Controller
         model.Roots = await ToViewModelsAsync(selected.StructureId, roots, typesById, effective.Value, cancellationToken);
         model.Unplaced = await ToViewModelsAsync(selected.StructureId, unplaced, typesById, effective.Value, cancellationToken);
 
+        await ExplainWhyUnplacedAsync(selected.StructureId, model.Unplaced, cancellationToken);
+
+        if (!string.IsNullOrEmpty(expand))
+        {
+            // The whole chain, root first, because the browser opens the branch by walking down
+            // it: every id after the first is only in the page once the one before it has been
+            // fetched. The server knows the chain; the browser would have to ask for it.
+            var ancestors = await _graphService.GetAncestorsAsync(
+                selected.StructureId, expand, effective, cancellationToken);
+
+            model.ExpandPath = [.. ancestors.Select(ancestor => ancestor.RecordId).Reverse(), expand];
+        }
+
         return View(model);
+    }
+
+    /// <summary>
+    /// Marks the unplaced records that got there by losing a parent, so the panel can say which
+    /// is which instead of describing every one of them as having arrived from outside.
+    /// </summary>
+    private async Task ExplainWhyUnplacedAsync(
+        string structureId,
+        List<DesignerNodeViewModel> unplaced,
+        CancellationToken cancellationToken)
+    {
+        if (unplaced.Count == 0)
+        {
+            return;
+        }
+
+        var orphaned = await _graphService.GetOrphanedByParentRetirementAsync(
+            structureId, [.. unplaced.Select(node => node.RecordId)], cancellationToken);
+
+        foreach (var node in unplaced)
+        {
+            if (!orphaned.TryGetValue(node.RecordId, out var reason))
+            {
+                continue;
+            }
+
+            node.OrphanedFromParentName = reason.FormerParentNameEn;
+            node.OrphanedFromParentNameAr = reason.FormerParentNameAr;
+            node.OrphanedOn = reason.RetiredOn.ToIso();
+        }
     }
 
     /// <summary>A node's immediate children as at a date, for either view to expand on demand.</summary>
@@ -187,6 +247,421 @@ public sealed class OrganisationDesignerAdminController : Controller
         }
 
         return Json(hits);
+    }
+
+    // ---- add a unit ---------------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> AddUnit(
+        string structureId,
+        string? parentId,
+        string? dimensionTypeId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        var model = new AddUnitViewModel
+        {
+            StructureId = structureId,
+            ParentRecordId = parentId,
+            DimensionTypeId = dimensionTypeId ?? string.Empty,
+            EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
+            AsAt = asAt ?? string.Empty,
+        };
+
+        return await PrepareAddUnitAsync(model, cancellationToken) is { } failure
+            ? failure
+            : View(model);
+    }
+
+    [HttpPost]
+    [ActionName(nameof(AddUnit))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddUnitPost(AddUnitViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        if (await PrepareAddUnitAsync(model, cancellationToken) is { } failure)
+        {
+            return failure;
+        }
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Enter the date this unit starts."].Value);
+
+            return View(nameof(AddUnit), model);
+        }
+
+        var result = await _dimensionService.AddUnitAsync(
+            model.StructureId,
+            model.ParentRecordId,
+            model.DimensionTypeId,
+            model.Code?.Trim() ?? string.Empty,
+            model.Name,
+            effectiveFrom,
+            model.ToAttributeValues(),
+            cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(AddUnit), model);
+        }
+
+        return RedirectToDesigner(model.StructureId, model.AsAt, model.ParentRecordId);
+    }
+
+    /// <summary>
+    /// Fills in everything the add-unit form shows but does not post back: the parent's name, the
+    /// types that may go under it, and that type's attribute inputs. Returns a result to send
+    /// instead when the request cannot be served at all.
+    /// </summary>
+    private async Task<IActionResult?> PrepareAddUnitAsync(
+        AddUnitViewModel model,
+        CancellationToken cancellationToken)
+    {
+        var structure = await _structureService.GetAsync(model.StructureId, cancellationToken);
+
+        if (structure is null)
+        {
+            return NotFound();
+        }
+
+        model.StructureNameEn = structure.Name.En;
+
+        if (model.ParentRecordId is not null)
+        {
+            var parent = await _dimensionService.GetAsync(model.ParentRecordId, null, cancellationToken);
+
+            if (parent is null)
+            {
+                return NotFound();
+            }
+
+            model.ParentNameEn = parent.NameEn;
+        }
+
+        var permittedIds = await _graphService.GetPermittedChildTypeIdsAsync(
+            model.StructureId, model.ParentRecordId, null, cancellationToken);
+
+        var types = (await _dimensionTypeService.ListAsync(includeRetired: false, cancellationToken: cancellationToken))
+            .ToDictionary(type => type.DimensionTypeId);
+
+        model.PermittedTypes =
+        [
+            .. permittedIds
+                .Where(types.ContainsKey)
+                .Select(id => new DimensionTypeChoiceViewModel(id, types[id].Name.En, types[id].Code)),
+        ];
+
+        // No choice to make when the structure permits exactly one type here, which is the usual
+        // case: a strict structure with no skipping has one level below any parent.
+        if (string.IsNullOrEmpty(model.DimensionTypeId) && model.PermittedTypes.Count == 1)
+        {
+            model.DimensionTypeId = model.PermittedTypes[0].DimensionTypeId;
+        }
+
+        if (!string.IsNullOrEmpty(model.DimensionTypeId)
+            && types.TryGetValue(model.DimensionTypeId, out var chosen))
+        {
+            MergeAttributeInputs(model, chosen);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Lines the posted attribute values up with the schema the type actually declares, in schema
+    /// order, keeping whatever the user had typed.
+    /// </summary>
+    /// <remarks>
+    /// Rebuilt from the schema rather than trusted from the form, so that a hand-edited post
+    /// cannot introduce an input for an attribute the type does not have, and so that a form
+    /// redrawn after a validation failure matches the schema even if the type was changed in
+    /// another tab in between.
+    /// </remarks>
+    private static void MergeAttributeInputs(AddUnitViewModel model, DimensionTypeDocument type)
+    {
+        var submitted = model.Attributes.ToDictionary(attribute => attribute.Name, StringComparer.Ordinal);
+
+        model.Attributes =
+        [
+            .. type.AttributeSchema.Select(definition =>
+            {
+                var input = UnitAttributeInputViewModel.Of(definition);
+
+                if (submitted.TryGetValue(definition.Name, out var posted))
+                {
+                    input.Value = posted.Value;
+                    input.ValueAr = posted.ValueAr;
+                }
+
+                return input;
+            }),
+        ];
+    }
+
+    // ---- rename a unit ------------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> Rename(
+        string structureId,
+        string recordId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        return View(new RenameUnitViewModel
+        {
+            StructureId = structureId,
+            RecordId = recordId,
+            Code = record.Code,
+            CurrentNameEn = record.NameEn,
+            CurrentNameAr = record.NameAr,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
+            AsAt = asAt ?? string.Empty,
+        });
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Rename))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RenamePost(RenameUnitViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(model.RecordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = record.Code;
+        model.CurrentNameEn = record.NameEn;
+        model.CurrentNameAr = record.NameAr;
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Enter the date this name applies from."].Value);
+
+            return View(nameof(Rename), model);
+        }
+
+        // The two renames are different operations on the record, not a flag on one: a correction
+        // rewrites the name in effect on that date, a substantive rename opens a new period from
+        // it. Architecture section 6.
+        var result = model.Kind == RenameKind.Corrective
+            ? await _dimensionService.CorrectNameAsync(model.RecordId, model.Name, effectiveFrom, cancellationToken)
+            : await _dimensionService.RenameAsync(model.RecordId, model.Name, effectiveFrom, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(Rename), model);
+        }
+
+        // Back onto the renamed unit, so the new name is on screen rather than inside a branch
+        // the user has to find and reopen to check the change took.
+        return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: model.RecordId);
+    }
+
+    // ---- retire a unit ------------------------------------------------------------------
+
+    [HttpGet]
+    public async Task<IActionResult> Retire(
+        string structureId,
+        string recordId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        var model = new RetireUnitViewModel
+        {
+            StructureId = structureId,
+            RecordId = recordId,
+            Code = record.Code,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
+            AsAt = asAt ?? string.Empty,
+            CanMoveChildren = await CanMoveAsync(),
+        };
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ActionName(nameof(Retire))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RetirePost(RetireUnitViewModel model, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        var record = await _dimensionService.GetAsync(model.RecordId, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = record.Code;
+        model.NameEn = record.NameEn;
+        model.NameAr = record.NameAr;
+        model.CanMoveChildren = await CanMoveAsync();
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveDate))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["Enter the date this unit closes."].Value);
+
+            return View(nameof(Retire), model);
+        }
+
+        var planned = await _dimensionService.PlanRetireAsync(
+            model.StructureId, model.RecordId, effectiveDate, cancellationToken);
+
+        if (!planned.Succeeded)
+        {
+            AddErrors(planned);
+
+            return View(nameof(Retire), model);
+        }
+
+        model.Plan = planned.Value;
+
+        // Shown before it happens, and only acted on once the user has seen this exact plan and
+        // said yes to it — the same dry-run-then-confirm shape as a level change, a move and a
+        // merge. What is still attached is a warning, not a refusal: closing a branch from the
+        // top is a legitimate thing to do, and retirement is what the architecture prescribes for
+        // a record that history still refers to.
+        if (!model.Confirmed)
+        {
+            return View(nameof(Retire), model);
+        }
+
+        // Children are the one thing that is not a warning. A parent closing over live units
+        // leaves them active with no place on the tree, so the screen will not commit until
+        // somebody has said which of the three things should happen to them.
+        if (model.Plan!.HasChildrenToDecide && model.ChildrenDisposition is null)
+        {
+            ModelState.AddModelError(
+                nameof(model.ChildrenDisposition),
+                S["Choose what happens to the units under this one."].Value);
+
+            return View(nameof(Retire), model);
+        }
+
+        var disposition = model.Plan.HasChildrenToDecide
+            ? Disposition(model)
+            : null;
+
+        var result = await _dimensionService.RetireAsync(
+            model.StructureId, model.RecordId, effectiveDate, disposition, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+
+            return View(nameof(Retire), model);
+        }
+
+        return RedirectToDesigner(model.StructureId, model.AsAt, parentOf: null);
+    }
+
+    /// <summary>
+    /// The choice the form carried, as the services understand it. An empty parent on a move means
+    /// the top of the structure, which is a real answer and not a missing one.
+    /// </summary>
+    private static ChildrenDisposition Disposition(RetireUnitViewModel model) =>
+        model.ChildrenDisposition switch
+        {
+            ChildrenDispositionKind.MoveToParent => ChildrenDisposition.MoveTo(
+                string.IsNullOrWhiteSpace(model.NewParentRecordId) ? null : model.NewParentRecordId),
+            ChildrenDispositionKind.RetireCascade => ChildrenDisposition.Cascade,
+            _ => ChildrenDisposition.Unplaced,
+        };
+
+    // ---- shared -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Back to the tree the action was started from, on the same structure and the same date.
+    /// </summary>
+    /// <param name="parentOf">
+    /// The branch to open on arrival, so a unit just added is on screen rather than hidden inside
+    /// a collapsed parent.
+    /// </param>
+    private RedirectToActionResult RedirectToDesigner(string structureId, string? asAt, string? parentOf) =>
+        RedirectToAction(nameof(Index), new
+        {
+            structureId,
+            asAt = string.IsNullOrEmpty(asAt) ? null : asAt,
+            expand = parentOf,
+        });
+
+    private void AddErrors<TValue>(DimensionResult<TValue> result)
+    {
+        if (!result.IsAuthorised)
+        {
+            ModelState.AddModelError(string.Empty, S["You do not have permission to do that."].Value);
+
+            return;
+        }
+
+        AddErrors(result.Errors);
+    }
+
+    private void AddErrors(IReadOnlyList<DimensionError> errors)
+    {
+        foreach (var error in errors.Where(error => !error.IsAdvisory))
+        {
+            ModelState.AddModelError(string.Empty, error.Message.Value);
+        }
     }
 
     /// <summary>
@@ -273,11 +748,52 @@ public sealed class OrganisationDesignerAdminController : Controller
         var childCounts = await _graphService.CountChildrenAsync(
             structureId, recordIds, asAt, cancellationToken);
 
-        return [.. nodes.Select(node => DesignerNodeViewModel.Of(node, typesById, employeeCounts, childCounts))];
+        var canEdit = await CanEditAsync();
+
+        return
+        [
+            .. nodes.Select(node => DesignerNodeViewModel.Of(
+                node, typesById, employeeCounts, childCounts, structureId, asAt.ToIso(), canEdit)),
+        ];
     }
 
-    private Task<bool> IsAuthorisedAsync() =>
+    /// <summary>
+    /// Who may look at the designer at all: anyone holding any of this module's structural
+    /// permissions.
+    /// </summary>
+    /// <remarks>
+    /// Viewing was gated on <see cref="Permissions.ManageDimensionRecords"/> while the screen was
+    /// read-only for everybody, which was defensible then and is not now. The brief for the
+    /// mutations requires that "users without edit permissions see the chart read-only with no
+    /// action menus", and that state is unreachable if seeing the chart needs the same permission
+    /// as changing it. The auditor role, which holds only
+    /// <see cref="Permissions.ViewDimensionHistory"/>, is exactly the reader that requirement
+    /// describes.
+    ///
+    /// Still no eighth permission: specification section 4 names seven and this uses four of them.
+    /// Reading is the union; writing is <see cref="CanEditAsync"/>, checked separately on every
+    /// action and again in the service.
+    /// </remarks>
+    private async Task<bool> IsAuthorisedAsync() =>
+        await _authorizationService.AuthorizeAsync(User, Permissions.ManageDimensionRecords)
+        || await _authorizationService.AuthorizeAsync(User, Permissions.ViewDimensionHistory)
+        || await _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords)
+        || await _authorizationService.AuthorizeAsync(User, Permissions.MergeDimensionRecords);
+
+    /// <summary>
+    /// Who may add, rename or retire a unit. The service checks this again on write; this is what
+    /// decides whether the screen offers the action at all.
+    /// </summary>
+    private Task<bool> CanEditAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ManageDimensionRecords);
+
+    /// <summary>
+    /// Who may send a unit to a different parent. Moving the children of a unit being retired is
+    /// still a move — it changes what every historical report under them resolves to — so the
+    /// option is only offered to somebody who could make the same move directly.
+    /// </summary>
+    private Task<bool> CanMoveAsync() =>
+        _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords);
 
     private Task<bool> CanViewHistoryAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ViewDimensionHistory);

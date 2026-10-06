@@ -44,6 +44,31 @@ internal sealed class DimensionLinkDocument
     /// </remarks>
     public DateOnly? OnAxisUntil { get; set; }
 
+    /// <summary>
+    /// The parent whose retirement left this record with nowhere to sit, and the date it happened,
+    /// when somebody chose deliberately to leave it that way.
+    /// </summary>
+    /// <remarks>
+    /// A record with no parent on a date looks the same from the closure whether it was never
+    /// placed or whether its parent closed underneath it, and those are not the same thing to a
+    /// person reading the unplaced panel: one is a record that arrived from an import and still
+    /// needs a home, the other is a unit that had one until last Tuesday. This is the only way to
+    /// tell them apart after the fact, because the link itself is not what changed — the parent's
+    /// own effective range is.
+    ///
+    /// Two plain fields rather than an index: nothing queries by them, the unplaced panel reads
+    /// them for the handful of records it is already loading, and adding a column to
+    /// <c>DimensionLinkIndex</c> would need a migration for something no query filters on.
+    ///
+    /// Cleared the moment the record is placed or moved again. Not cleared when the record itself
+    /// retires, because a retired record is not on the unplaced panel at all — it fails the "is it
+    /// effective on this date" test long before anything asks why it has no parent.
+    /// </remarks>
+    public DateOnly? OrphanedByParentRetirementOn { get; set; }
+
+    /// <inheritdoc cref="OrphanedByParentRetirementOn"/>
+    public string? OrphanedFromParentId { get; set; }
+
     /// <summary>The parent in effect on <paramref name="asAt"/>, or null if the node is a root then.</summary>
     public string? ParentOn(DateOnly asAt) =>
         OnAxisUntil is not null && asAt > OnAxisUntil

@@ -713,9 +713,6 @@ msgid "Unplaced records"
 msgstr "السجلات غير المنسوبة"
 
 #: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "Created outside this designer, with no parent in this structure yet. They cannot be reached by expanding the tree."
-msgstr "أُنشئت خارج هذا المصمم، ولا يوجد لها أصل على هذا الهيكل بعد. لا يمكن الوصول إليها بتوسيع الشجرة."
-
 #: Views/OrganisationDesignerAdmin/Index.cshtml
 msgid "Nothing unplaced in this structure."
 msgstr "لا توجد سجلات غير منسوبة على هذا الهيكل."
@@ -811,3 +808,221 @@ msgstr "الهيكل '{0}' موجود بالفعل بمحتوى مختلف: {1}.
 #: Recipes/DimensionRecordsRecipeStep.cs
 msgid "Record '{0}' already exists with different content: {1}."
 msgstr "السجل '{0}' موجود بالفعل بمحتوى مختلف: {1}."
+
+# Stage B: the organisation designer's mutations — add a unit, rename, retire.
+
+msgid "Actions"
+msgstr "إجراءات"
+
+msgid "Actions for this unit"
+msgstr "إجراءات هذه الوحدة"
+
+msgid "Add unit"
+msgstr "إضافة وحدة"
+
+msgid "Add a unit"
+msgstr "إضافة وحدة"
+
+msgid "Rename"
+msgstr "إعادة تسمية"
+
+msgid "Retire"
+msgstr "إيقاف"
+
+msgid "A new top-level unit of {0}."
+msgstr "وحدة جديدة في المستوى الأعلى من {0}."
+
+msgid "A new unit under {0}, in {1}."
+msgstr "وحدة جديدة تحت {0}، في {1}."
+
+msgid "Nothing can be added here: this unit is already at the deepest level this structure defines."
+msgstr "لا يمكن إضافة شيء هنا: هذه الوحدة في أعمق مستوى يحدده هذا الهيكل."
+
+msgid "Back to the designer"
+msgstr "العودة إلى المصمم"
+
+msgid "Kind of unit"
+msgstr "نوع الوحدة"
+
+msgid "This structure allows more than one kind of unit here."
+msgstr "يسمح هذا الهيكل بأكثر من نوع واحد من الوحدات هنا."
+
+msgid "Change kind"
+msgstr "تغيير النوع"
+
+msgid "Code"
+msgstr "الرمز"
+
+msgid "Letters, digits, hyphens and underscores. Unique in this tenant, and permanent."
+msgstr "حروف وأرقام وشرطات وشرطات سفلية. فريد في هذا المستأجر، ودائم."
+
+msgid "Name"
+msgstr "الاسم"
+
+msgid "Effective from"
+msgstr "ساري من"
+
+msgid "The day this unit starts existing. It will not appear on the tree before then."
+msgstr "اليوم الذي تبدأ فيه هذه الوحدة بالوجود. لن تظهر في الشجرة قبل ذلك."
+
+msgid "Details"
+msgstr "التفاصيل"
+
+msgid "Defined on this kind of unit in the Dimension types screen."
+msgstr "محددة على هذا النوع من الوحدات في شاشة أنواع الأبعاد."
+
+msgid "Enter the date this unit starts."
+msgstr "أدخل تاريخ بدء هذه الوحدة."
+
+msgid "Rename a unit"
+msgstr "إعادة تسمية وحدة"
+
+msgid "Currently {0}"
+msgstr "حاليًا {0}"
+
+msgid "New name"
+msgstr "الاسم الجديد"
+
+msgid "What kind of change is this?"
+msgstr "ما نوع هذا التغيير؟"
+
+msgid "The unit has been renamed"
+msgstr "أُعيدت تسمية الوحدة"
+
+msgid "It genuinely becomes this from the date below. Reports for earlier periods keep showing the old name, because that is what it was called then."
+msgstr "تصبح كذلك فعليًا من التاريخ أدناه. تستمر تقارير الفترات السابقة في إظهار الاسم القديم، لأنه ما كانت تُسمى به حينها."
+
+msgid "The old name was a mistake"
+msgstr "كان الاسم القديم خطأً"
+
+msgid "Correct it wherever it appears, including in earlier periods. Use this for a typo, not for a real change of name."
+msgstr "صحّحه أينما ظهر، بما في ذلك الفترات السابقة. استخدم هذا للخطأ المطبعي، لا لتغيير حقيقي في الاسم."
+
+msgid "For a renaming, the first day the new name applies. For a correction, any day inside the period being corrected."
+msgstr "لإعادة التسمية، أول يوم يسري فيه الاسم الجديد. للتصحيح، أي يوم داخل الفترة التي يجري تصحيحها."
+
+msgid "Save name"
+msgstr "حفظ الاسم"
+
+msgid "Enter the date this name applies from."
+msgstr "أدخل التاريخ الذي يسري منه هذا الاسم."
+
+msgid "Retire a unit"
+msgstr "إيقاف وحدة"
+
+msgid "Retiring closes the unit with an end date. It stops appearing on the tree and in pickers from that day, and every report for an earlier period still resolves through it."
+msgstr "الإيقاف يغلق الوحدة بتاريخ انتهاء. تتوقف عن الظهور في الشجرة وفي القوائم من ذلك اليوم، ويظل كل تقرير لفترة سابقة يُحتسب من خلالها."
+
+msgid "Retire from"
+msgstr "الإيقاف من"
+
+msgid "The first day the unit no longer applies. The day before is its last."
+msgstr "أول يوم لم تعد فيه الوحدة سارية. اليوم السابق له هو آخر أيامها."
+
+msgid "Check what this will do"
+msgstr "تحقّق مما سيفعله هذا"
+
+msgid "Retire unit"
+msgstr "إيقاف الوحدة"
+
+msgid "What this will do"
+msgstr "ما الذي سيفعله هذا"
+
+msgid "{0} will be closed on {1}."
+msgstr "ستُغلق {0} في {1}."
+
+msgid "{0} people are still placed here on that date."
+msgstr "لا يزال {0} من الأشخاص منسوبين هنا في ذلك التاريخ."
+
+msgid "Nothing is still attached to it on that date."
+msgstr "لا شيء مرتبط بها في ذلك التاريخ."
+
+msgid "Yes, retire this unit on the date above."
+msgstr "نعم، أوقف هذه الوحدة في التاريخ أعلاه."
+
+msgid "Enter the date this unit closes."
+msgstr "أدخل تاريخ إغلاق هذه الوحدة."
+
+msgid "You do not have permission to do that."
+msgstr "ليس لديك إذن للقيام بذلك."
+
+msgid "This unit is already placed on this structure. Moving it is a move, not a placement."
+msgstr "هذه الوحدة موضوعة بالفعل على هذا الهيكل. نقلها يُعد نقلًا، لا وضعًا."
+
+msgid "The dimension type '{0}' has no attribute called '{1}'."
+msgstr "نوع البعد '{0}' لا يحتوي على خاصية باسم '{1}'."
+
+msgid "'{0}' is not a valid value for '{1}'."
+msgstr "'{0}' ليست قيمة صالحة لـ '{1}'."
+
+msgid "'{0}' is required."
+msgstr "'{0}' مطلوب."
+
+msgid "Dimension record changed"
+msgstr "تغيّر سجل البعد"
+
+msgid "A unit was added to a structure, renamed or retired."
+msgstr "أُضيفت وحدة إلى هيكل أو أُعيدت تسميتها أو أُوقفت."
+
+# Retiring a unit that still has units under it: the three dispositions, and the unplaced
+# panel telling "never placed" apart from "its parent closed under it".
+
+msgid "Units with no parent in this structure on this date. They cannot be reached by expanding the tree."
+msgstr "وحدات بلا أصل في هذا الهيكل في هذا التاريخ. لا يمكن الوصول إليها بتوسيع الشجرة."
+
+msgid "Never placed in this structure."
+msgstr "لم تُوضع في هذا الهيكل قط."
+
+msgid "Parent retired"
+msgstr "أُوقف الأصل"
+
+msgid "{0} closed on {1}."
+msgstr "أُغلقت {0} في {1}."
+
+msgid "Units under this one"
+msgstr "الوحدات التابعة لهذه الوحدة"
+
+msgid "These sit directly under {0} on its last day. Retiring it leaves them with no parent unless you say otherwise."
+msgstr "تقع هذه مباشرةً تحت {0} في آخر أيامها. إيقافها يتركها بلا أصل ما لم تحدد غير ذلك."
+
+msgid "What happens to them?"
+msgstr "ما الذي يحدث لها؟"
+
+msgid "Move them to another parent"
+msgstr "نقلها إلى أصل آخر"
+
+msgid "They keep everything under them and move across on the same date, so no day passes with them out of the tree."
+msgstr "تحتفظ بكل ما تحتها وتنتقل في التاريخ نفسه، فلا يمر يوم واحد وهي خارج الشجرة."
+
+msgid "New parent"
+msgstr "الأصل الجديد"
+
+msgid "(top of the structure)"
+msgstr "(أعلى الهيكل)"
+
+msgid "Only units this structure's levels allow these to sit under are listed."
+msgstr "لا تُعرض إلا الوحدات التي تسمح مستويات هذا الهيكل بوضع هذه تحتها."
+
+msgid "Moving them to another parent needs permission to move dimension records, which you do not have."
+msgstr "نقلها إلى أصل آخر يتطلب إذن نقل سجلات الأبعاد، وهو غير متاح لك."
+
+msgid "Retire them as well"
+msgstr "إيقافها أيضًا"
+
+msgid "Closes all {0} units in this branch on the same date. Everything before it still resolves."
+msgstr "يغلق جميع الوحدات البالغ عددها {0} في هذا الفرع في التاريخ نفسه. ويظل كل ما قبله محتسبًا."
+
+msgid "Show the whole branch"
+msgstr "عرض الفرع كاملًا"
+
+msgid "Leave them with no parent"
+msgstr "تركها بلا أصل"
+
+msgid "They stay active and move to the unplaced panel, marked as having lost their parent, until somebody places or retires them."
+msgstr "تبقى فعّالة وتنتقل إلى لوحة غير المنسوبة، موسومة بأنها فقدت أصلها، إلى أن يضعها أحد أو يوقفها."
+
+msgid "Choose what happens to the units under this one."
+msgstr "اختر ما يحدث للوحدات التابعة لهذه الوحدة."
+
+msgid "{0} units still sit under this one on {1}. Say what should happen to them before retiring it."
+msgstr "لا تزال {0} وحدة تقع تحت هذه الوحدة في {1}. حدد ما ينبغي أن يحدث لها قبل إيقافها."

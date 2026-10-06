@@ -86,7 +86,11 @@
      data-children-url="@Url.Action("Children")"
      data-search-url="@Url.Action("Search")"
      data-view-cookie="@OrganisationDesignerViewModel.ViewModeCookieName"
-     data-employees-label="@T["{0} employees"].Value">
+     data-employees-label="@T["{0} employees"].Value"
+     data-expand-path="@string.Join(",", Model.ExpandPath)"
+     data-add-url="@Url.Action("AddUnit")"
+     data-rename-url="@Url.Action("Rename")"
+     data-retire-url="@Url.Action("Retire")">
 
     <div class="col-lg-8 col-xl-9">
         <div class="d-flex flex-wrap gap-2 align-items-end mb-2">
@@ -131,7 +135,7 @@
     <div class="col-lg-4 col-xl-3">
         <h2 class="fs-5">@T["Unplaced records"]</h2>
         <p class="text-muted small">
-            @T["Created outside this designer, with no parent in this structure yet. They cannot be reached by expanding the tree."]
+            @T["Units with no parent in this structure on this date. They cannot be reached by expanding the tree."]
         </p>
         @if (Model.Unplaced.Count == 0)
         {
@@ -146,6 +150,24 @@
                         <div dir="ltr" lang="en">@node.NameEn</div>
                         <div dir="rtl" lang="ar" class="text-muted small">@node.NameAr</div>
                         <div class="text-muted small">@node.DimensionTypeNameEn <code>@node.Code</code></div>
+                        @* Two reasons a unit has no parent, and they are not the same thing: one
+                           came from an import and has never been anywhere, the other was somewhere
+                           until its parent closed underneath it. Saying "created outside this
+                           designer" about the second is simply false. *@
+                        @if (node.IsOrphanedByParentRetirement)
+                        {
+                            <div class="designer-orphan-badge" data-designer-orphaned>
+                                <span class="badge text-bg-warning">@T["Parent retired"]</span>
+                                <span class="text-muted small">
+                                    @T["{0} closed on {1}.", node.OrphanedFromParentName!, node.OrphanedOn!]
+                                </span>
+                                <span class="text-muted small" dir="rtl" lang="ar">@node.OrphanedFromParentNameAr</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small">@T["Never placed in this structure."]</div>
+                        }
                     </li>
                 }
             </ul>
@@ -156,7 +178,7 @@
 @* The script clones this for every lazily loaded child. Rendered from the same partial as the
    roots above, with an empty model, so there is no second copy of a unit's markup to keep in step. *@
 <template id="designer-node-template">
-    @{ await Html.RenderPartialAsync("_DesignerNode", new DesignerNodeViewModel()); }
+    @{ await Html.RenderPartialAsync("_DesignerNode", Model.NodeTemplate); }
 </template>
 
 <script asp-name="workmate-organisation-designer" at="Foot"></script>

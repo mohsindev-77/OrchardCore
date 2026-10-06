@@ -105,7 +105,7 @@ public sealed class DimensionValidatorTenantTests
             // Architecture section 6: uniqueness holds "including against retired records",
             // because reusing a retired unit's code makes every historical report ambiguous
             // about which one it means.
-            var types = await DimensionGraphScenario.TypesAsync(services);
+            var (structure, types) = await StrictAxisAsync(services, "val-heldcode", allowSkipLevel: false);
             var records = services.GetRequiredService<IDimensionService>();
 
             var original = await records.CreateAsync(
@@ -114,7 +114,7 @@ public sealed class DimensionValidatorTenantTests
 
             original.Succeeded.Should().BeTrue();
 
-            (await records.RetireAsync(original.Value!.RecordId, new DateOnly(2025, 1, 1)))
+            (await records.RetireAsync(structure, original.Value!.RecordId, new DateOnly(2025, 1, 1)))
                 .Succeeded.Should().BeTrue();
 
             var reuse = await records.CreateAsync(
@@ -263,7 +263,7 @@ public sealed class DimensionValidatorTenantTests
             var parent = await DimensionGraphScenario.RecordAsync(services, types.Division, "vr-parent", Opened);
             var child = await DimensionGraphScenario.RecordAsync(services, types.Department, "vr-child", Opened);
 
-            (await records.RetireAsync(parent, new DateOnly(2025, 1, 1))).Succeeded.Should().BeTrue();
+            (await records.RetireAsync(structure, parent, new DateOnly(2025, 1, 1))).Succeeded.Should().BeTrue();
 
             var refused = await graph.MoveAsync(structure, child, parent, new DateOnly(2025, 6, 1));
 

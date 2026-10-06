@@ -168,6 +168,73 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The dimension types a new unit may be, if it is placed under
+    /// <paramref name="parentRecordId"/> on this structure.
+    /// </summary>
+    /// <param name="parentRecordId">The parent, or null for a root of the structure.</param>
+    /// <remarks>
+    /// The same rules <see cref="IDimensionValidator.ValidatePlacementAsync"/> enforces, read
+    /// forwards instead of backwards: the level below the parent's, every deeper level too when
+    /// the structure allows skipping, and the parent's own level when its type declares
+    /// self-nesting. It lives here rather than being worked out by the screen that offers the
+    /// choice, so that what the designer lets a user pick and what the validator accepts cannot
+    /// come to disagree.
+    ///
+    /// Empty means nothing may be added there — the parent is already at the deepest level, and
+    /// the caller should say so rather than offering a form that can only be refused.
+    /// </remarks>
+    Task<IReadOnlyList<string>> GetPermittedChildTypeIdsAsync(
+        string structureId,
+        string? parentRecordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records that these units were left with no parent on purpose, because
+    /// <paramref name="formerParentId"/> retired on <paramref name="retiredOn"/>.
+    /// </summary>
+    /// <remarks>
+    /// Changes nothing about where the records sit: they already have no parent from that date,
+    /// because the closure intersects every ancestor row with the ancestor's own effective range
+    /// and the parent's has just been capped. This only records <em>why</em>, so the designer can
+    /// say so instead of filing them under "never placed".
+    /// </remarks>
+    Task MarkOrphanedByParentRetirementAsync(
+        string structureId,
+        IReadOnlyList<string> childRecordIds,
+        string formerParentId,
+        DateOnly retiredOn,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For each of <paramref name="recordIds"/> that lost its parent to a retirement, which parent
+    /// and when. Records absent from the result were never placed, or were placed and are still.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, OrphanedByParentRetirement>> GetOrphanedByParentRetirementAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Puts a node on a structure for the first time, from <paramref name="effectiveFrom"/>.
+    /// </summary>
+    /// <param name="parentRecordId">The parent, or null to make the node a root of this structure.</param>
+    /// <remarks>
+    /// Refuses, rather than moving, if the node already has a parent link on this structure: a
+    /// first placement and a reparenting are different acts under different permissions, and this
+    /// one must not become a way to do the other. It checks
+    /// <see cref="Permissions.ManageDimensionRecords"/>, because placing a record that has never
+    /// been anywhere changes no historical resolution — see
+    /// <see cref="IDimensionService.AddUnitAsync"/>, which is the only intended caller.
+    /// </remarks>
+    Task<DimensionResult<int>> PlaceAsync(
+        string structureId,
+        string recordId,
+        string? parentRecordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reparents a node from <paramref name="effectiveFrom"/>, closing the old link the day
     /// before and rebuilding the closure for the moved subtree only.
     /// </summary>

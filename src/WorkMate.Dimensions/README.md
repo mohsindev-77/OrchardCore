@@ -282,8 +282,98 @@ use — no screen holds a privileged path:
   reveal it), and the unplaced-records panel (`GetUnplacedAsync`). Gated by
   `ManageDimensionRecords` rather than a new permission — viewing the tree is
   the same day-to-day capability that already lets a caller create and change
-  records, not a reason for an eighth permission. Move, merge, retire, rename
-  and "add unit" are a later slice; this controller does not write anything.
+  records, not a reason for an eighth permission — see "Who may do what" below.
+  Move, merge and cancel-move are a later slice.
+
+### The designer's actions: add a unit, rename, retire
+
+Every card carries an action menu, in both views, rendered by the server as a
+`<details>` element: it opens, closes and takes focus with no JavaScript, and
+each item is an ordinary link to an ordinary page with an ordinary form. Each
+form has an effective-date control defaulting to today, and nothing is written
+without one.
+
+- **Add unit** — `IDimensionService.AddUnitAsync`. One operation, not
+  create-then-place: the record and its placement are validated together and
+  written together, so a unit can never exist having failed to reach its parent.
+  The form offers only the dimension types that may sit under that parent
+  (`IDimensionGraphService.GetPermittedChildTypeIdsAsync`, the same rules
+  `ValidatePlacementAsync` enforces read forwards), and renders that type's
+  custom attributes from its schema — text, number, boolean, date and bilingual
+  alike. The structure's own card carries this action with no parent, which is
+  how a top-level unit is added.
+- **Rename** — the screen asks which of the two renames is meant, because
+  architecture section 6 says it must: a **substantive** rename
+  (`RenameAsync`) opens a new name period and leaves earlier reports reading as
+  they did; a **correction** (`CorrectNameAsync`) rewrites the name in effect on
+  the date given, so last year's report stops showing the typo. There is no
+  default that is right often enough to pick silently.
+- **Retire** — dry run, then confirm, the same shape as a level change, a move
+  and a merge. `PlanRetireAsync` reports what is still attached on the day the
+  unit would close: people placed at it, and whatever the deletion assessment
+  found referring to it. Those are warnings, not refusals — closing a branch
+  from the top is legitimate, and retirement is precisely what the architecture
+  prescribes for a record history still refers to. **Units underneath it are not
+  a warning**; see below. `RetireAsync` is the write.
+
+#### Retiring a unit that still has units under it
+
+Nothing about the links changes when a parent retires. The closure intersects
+every ancestor row with the ancestor's own effective range, so when the parent's
+range is capped its children simply stop resolving under it — still active, with
+nowhere on the tree to be, and nothing anywhere saying why. That is a legitimate
+end state and it used to happen silently, which is the defect this section exists
+for.
+
+`RetireAsync` now refuses (`DimensionRule.ChildrenNeedDisposition`) unless the
+caller says which of three things should happen, and the screen will not commit
+until somebody has chosen:
+
+| | What it does |
+| --- | --- |
+| **Move them** | Each direct child moves to one new parent on the same date, keeping its own subtree. No day passes with them out of the tree. Needs `MoveDimensionRecords` — reparenting is reparenting, whatever prompted it — so the option is not offered to someone who could not make the move directly. The picker lists only units whose level permits every child's type, from `GetPermittedChildTypeIdsAsync`, minus the branch that is closing. |
+| **Retire them too** | The whole subtree closes on the same date, shallowest first so each unit closes after the one above it. The preview shows every unit in the branch, not only the direct children. Each one audits with `CascadedFromRecordId` set, so a row of units closing on one day can be traced to one decision. |
+| **Leave them unplaced** | Nothing extra happens to the links — this is what the engine did anyway — but each child is marked with the parent and date on its `DimensionLinkDocument`, so the unplaced panel can say so. Cleared the moment the unit is placed or moved again. |
+
+The plan is built as at **the day the unit closes**, not the day before it: the
+question is which units are left with nowhere to sit once it has gone, and a unit
+opened on the same morning is invisible to a plan that looks at yesterday.
+
+The unplaced panel distinguishes the two reasons a unit has no parent — "never
+placed in this structure" for one that arrived from an import, and a **Parent
+retired** badge naming the parent and the date for one that lost it. The former
+parent's name is carried on `OrphanedByParentRetirement` rather than looked up by
+the caller, because a retired record does not resolve on any date the caller
+would naturally ask for, and one retired on the day it opened does not resolve on
+any date at all.
+
+All three record an audit entry under `DimensionRecordChanged`, naming the
+operation, the unit, the date it takes effect, and the name on either side of
+the change.
+
+#### Who may do what
+
+| | Permission |
+| --- | --- |
+| See the designer | any of `ManageDimensionRecords`, `ViewDimensionHistory`, `MoveDimensionRecords`, `MergeDimensionRecords` |
+| Add, rename, retire | `ManageDimensionRecords` |
+| Resolve a past date | `ViewDimensionHistory` |
+
+Viewing was gated on `ManageDimensionRecords` while the screen was read-only for
+everyone. It is not now: a reader has to be able to see a chart with no action
+menus on it, and that state is unreachable if seeing the tree needs the same
+permission as changing it. The auditor role, which holds only
+`ViewDimensionHistory`, is exactly that reader. Still seven permissions, not
+eight.
+
+**A first placement is not a move.** `AddUnitAsync` checks
+`ManageDimensionRecords`, and so does `IDimensionGraphService.PlaceAsync`, which
+refuses outright if the record already has a parent on that structure.
+`MoveDimensionRecords` exists because reparenting silently changes what every
+historical report resolves to; a brand-new unit has no history to change. If a
+first placement needed the move permission, the stock HR administrator role —
+which has `ManageDimensionRecords` without `MoveDimensionRecords` — could create
+a department and never put it anywhere.
 
 ### The designer's two views
 
@@ -300,6 +390,16 @@ children, computed on the server (`IDimensionGraphService.CountChildrenAsync`)
 before anything is fetched, and no control at all when the count is zero. Nothing
 the browser does afterwards changes which control a card has — a card's control
 never becomes a different, disabled one because of what has already been clicked.
+
+**Nothing on a card is cut off.** A long name wraps; a code is never abbreviated,
+because a code is an identifier people type, search for and read out to each
+other and half of one is worse than none. Rows stay level anyway: the script
+measures each depth and grows every card in it to the tallest, which CSS cannot
+do because the cards in a row are not siblings — each belongs to its own parent's
+list. Without the script the stylesheet's `min-block-size` keeps rows close to
+level and nothing is hidden either way. An earlier version gave every card one
+fixed height and an ellipsis to enforce it, which lined the rows up beautifully
+and turned "WorkMate Demo Organisation" into "WorkMate De…".
 
 **The whole card toggles, not only the control on it.** Reaching for the unit's
 name is what people do first, and a card that ignores it reads as a broken

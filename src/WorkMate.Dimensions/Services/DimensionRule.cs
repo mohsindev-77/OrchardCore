@@ -78,6 +78,14 @@ public enum DimensionRule
     /// </summary>
     ParentRetired,
 
+    /// <summary>
+    /// A retirement would leave units with no parent and nobody has said what should happen to
+    /// them. The counterpart of <see cref="ParentRetired"/> seen from the other end: that rule
+    /// stops a child being placed under a closed parent, this one stops a parent closing over a
+    /// live child by accident.
+    /// </summary>
+    ChildrenNeedDisposition,
+
     // Assignment rules. Enforced by IEmployeeAssignmentService.
 
     /// <summary>Two effective ranges overlap for one employee on one structure.</summary>

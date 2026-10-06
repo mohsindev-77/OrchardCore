@@ -26,6 +26,42 @@ public interface IDimensionService
         DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Adds a unit to a structure: creates the record and puts it in its place, as one operation.
+    /// </summary>
+    /// <param name="parentRecordId">The unit it sits under, or null for a root of the structure.</param>
+    /// <param name="attributes">
+    /// Values for the custom attributes the dimension type declares. Attributes the type does not
+    /// declare are rejected; attributes it declares and requires must be present.
+    /// </param>
+    /// <remarks>
+    /// One method rather than <see cref="CreateAsync"/> followed by <see cref="MoveAsync"/>,
+    /// for two reasons.
+    ///
+    /// The first is that the caller should not have to sequence them. A record created and then
+    /// left unplaced because the second call failed is exactly the half-finished state the
+    /// unplaced panel exists to reveal, and asking every caller to handle it correctly is asking
+    /// for it to be handled correctly nowhere. Both the record and the placement are validated
+    /// before either is written.
+    ///
+    /// The second is the permission. <see cref="Permissions.MoveDimensionRecords"/> exists because
+    /// reparenting silently changes what every historical report resolves to — that is the whole
+    /// argument in <see cref="Permissions"/>'s own remarks. A new unit's first placement changes
+    /// no history: there is no prior parent and nothing resolved under it yesterday. So this is
+    /// <see cref="Permissions.ManageDimensionRecords"/>, the permission for creating a record,
+    /// and the HR administrator who holds it can add a department without also being given the
+    /// power to reorganise the company. Moving that unit afterwards is still a move.
+    /// </remarks>
+    Task<DimensionResult<DimensionNodeRef>> AddUnitAsync(
+        string structureId,
+        string? parentRecordId,
+        string dimensionTypeId,
+        string code,
+        BilingualText name,
+        DateOnly effectiveFrom,
+        IReadOnlyList<Models.DimensionAttributeValue>? attributes = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Changes the fields that are not the name and not the placement.</summary>
     Task<DimensionResult<DimensionNodeRef>> UpdateAsync(
         string recordId,
@@ -59,12 +95,52 @@ public interface IDimensionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// What retiring a record on <paramref name="effectiveDate"/> would do, and what — if
+    /// anything — stops it, without doing any of it.
+    /// </summary>
+    /// <remarks>
+    /// Architecture section 6 makes retirement the middle of three outcomes: a record with no
+    /// references at all may be deleted outright, one referenced only by history is retired, and
+    /// one referenced by live data is refused "with the specific blockers listed so the user can
+    /// act. Never a generic failure message." This is how the screen gets that list before the
+    /// user commits, the same dry-run-then-confirm shape as a level change, a move and a merge.
+    /// <see cref="RetireAsync"/> runs the same assessment again on write.
+    /// </remarks>
+    /// <param name="structureId">
+    /// The structure whose children are being asked about. Retirement itself closes the record
+    /// everywhere — it is a property of the record, not of one structure — but "what sits under
+    /// it" is only a question a structure can answer, and the designer asks it from inside one.
+    /// </param>
+    Task<DimensionResult<RetirePlan>> PlanRetireAsync(
+        string structureId,
+        string recordId,
+        DateOnly effectiveDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Retires a record from <paramref name="effectiveDate"/>: it disappears from pickers and
     /// keeps resolving for historical queries.
     /// </summary>
+    /// <param name="childrenDisposition">
+    /// What happens to the units underneath. Required when there are any, refused when there are
+    /// any and it is null.
+    /// </param>
+    /// <remarks>
+    /// A parent closing over its live children is the defect this parameter exists for. Nothing
+    /// about the links changes when a parent retires — the closure stops resolving them because
+    /// every ancestor row is intersected with the ancestor's own effective range — so the children
+    /// simply fall out of the tree, still active, with nothing anywhere to say what happened. That
+    /// is a legitimate end state, but only as a decision somebody made: move them, close them with
+    /// their parent, or leave them and let the screen say so.
+    ///
+    /// Checked here as well as on the screen, because specification rule 5 puts the authority in
+    /// the service and because a recipe or an API client can retire a record too.
+    /// </remarks>
     Task<DimensionResult<DimensionNodeRef>> RetireAsync(
+        string structureId,
         string recordId,
         DateOnly effectiveDate,
+        ChildrenDisposition? childrenDisposition = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Reparents a record on one axis from an explicit date.</summary>

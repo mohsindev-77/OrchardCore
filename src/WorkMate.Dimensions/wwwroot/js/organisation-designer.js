@@ -23,6 +23,12 @@
     var viewCookie = surface.getAttribute("data-view-cookie");
     var employeesLabel = surface.getAttribute("data-employees-label") || "";
 
+    var actionUrls = {
+        add: surface.getAttribute("data-add-url"),
+        rename: surface.getAttribute("data-rename-url"),
+        retire: surface.getAttribute("data-retire-url")
+    };
+
     var viewport = surface.querySelector(".designer-chart-viewport");
     var canvas = surface.querySelector(".designer-chart-canvas");
     var zoomControls = document.getElementById("designer-zoom-controls");
@@ -70,6 +76,23 @@
         li.querySelector(".designer-toggle-count").textContent = String(children);
         li.querySelector(".designer-toggle-spacer").hidden = children > 0;
 
+        // The template's action links were rendered with no record on them, because there was no
+        // record to render. Pointed at this one, so a fetched card's menu goes where a
+        // server-rendered card's menu goes.
+        li.querySelectorAll("[data-designer-action]").forEach(function (link) {
+            var action = link.getAttribute("data-designer-action");
+            var base = actionUrls[action];
+
+            if (!base) {
+                return;
+            }
+
+            link.href = base + "?" + query(
+                action === "add"
+                    ? { structureId: structureId, parentId: node.recordId, asAt: asAt }
+                    : { structureId: structureId, recordId: node.recordId, asAt: asAt });
+        });
+
         return li;
     }
 
@@ -80,6 +103,62 @@
         children.hidden = !expanded;
         li.setAttribute("data-expanded", expanded ? "true" : "false");
         toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+
+        levelRows();
+    }
+
+    // Every card at one depth grows to the height of the tallest card at that depth, so a row
+    // reads as a row even though one card in it has a name that wrapped onto three lines.
+    //
+    // This cannot be done in CSS. The cards in a row are not siblings — each belongs to its own
+    // parent's list — so nothing in the cascade can see across them to the tallest, and the
+    // alternative of giving every card one fixed height is what cut the names off in the first
+    // place. Measuring is a progressive enhancement: without it the stylesheet's min-block-size
+    // keeps rows close to level and nothing is hidden either way.
+    function levelRows() {
+        if (!isChart()) {
+            return;
+        }
+
+        var byDepth = {};
+
+        tree.querySelectorAll(".designer-node").forEach(function (node) {
+            var card = node.querySelector(":scope > .designer-card");
+
+            if (!card || node.offsetParent === null) {
+                return;
+            }
+
+            var depth = 0;
+
+            for (var parent = node.parentElement; parent; parent = parent.parentElement) {
+                if (parent.classList && parent.classList.contains("designer-node")) {
+                    depth++;
+                }
+            }
+
+            // Released before measuring, or each pass would measure the height the previous pass
+            // imposed and the rows could only ever grow.
+            card.style.removeProperty("--designer-card-row-height");
+
+            (byDepth[depth] = byDepth[depth] || []).push(card);
+        });
+
+        Object.keys(byDepth).forEach(function (depth) {
+            var cards = byDepth[depth];
+            var tallest = 0;
+
+            // offsetHeight, not getBoundingClientRect: the canvas carries a CSS zoom, and a
+            // rectangle is reported scaled by it. Feeding a scaled height back in as a style
+            // would grow the cards a little more on every zoom step.
+            cards.forEach(function (card) {
+                tallest = Math.max(tallest, card.offsetHeight);
+            });
+
+            cards.forEach(function (card) {
+                card.style.setProperty("--designer-card-row-height", tallest + "px");
+            });
+        });
     }
 
     // Resolves once the node's children are in the DOM, fetching them on the first call only:
@@ -122,8 +201,9 @@
             return;
         }
 
-        // Anything genuinely interactive inside a card keeps its own click.
-        if (event.target.closest("a, input, select, textarea")) {
+        // Anything genuinely interactive inside a card keeps its own click — including the action
+        // menu, which opens and closes on its own and must not also expand the card it sits on.
+        if (event.target.closest("a, input, select, textarea, details, summary")) {
             return;
         }
 
@@ -194,6 +274,10 @@
         if (viewCookie) {
             document.cookie = viewCookie + "=" + view + ";path=/;max-age=31536000;samesite=lax";
         }
+
+        // The list hides nothing and needs no levelling; the chart, arriving from the list, has
+        // never been measured.
+        levelRows();
     }
 
     document.querySelectorAll("[data-designer-view]").forEach(function (link) {
@@ -343,15 +427,15 @@
         resultsList.hidden = false;
     }
 
-    // Walks the ancestor chain top-down, so every id after the first is already in the DOM by the
-    // time it is looked up. Works the same in both views: they are the same nodes.
-    function expandPath(hit) {
-        var ids = hit.ancestorRecordIds.concat([hit.recordId]);
+    // Walks a chain of ids top-down, so every id after the first is already in the DOM by the
+    // time it is looked up. Works the same in both views: they are the same nodes. Shared by
+    // search and by the return from an action, which both have to reveal one unit deep in a tree.
+    function revealPath(ids, done) {
         var index = 0;
 
         function next() {
             if (index >= ids.length) {
-                var target = findNode(hit.recordId);
+                var target = findNode(ids[ids.length - 1]);
 
                 if (target) {
                     target.scrollIntoView({ block: "center", inline: "center" });
@@ -361,15 +445,20 @@
                     }, 2000);
                 }
 
-                clearResults();
-                searchInput.value = "";
+                if (done) {
+                    done();
+                }
+
                 return;
             }
 
             var li = findNode(ids[index]);
 
             if (!li) {
-                clearResults();
+                if (done) {
+                    done();
+                }
+
                 return;
             }
 
@@ -381,6 +470,31 @@
         }
 
         next();
+    }
+
+    function expandPath(hit) {
+        revealPath(hit.ancestorRecordIds.concat([hit.recordId]), function () {
+            clearResults();
+            searchInput.value = "";
+        });
+    }
+
+    // Opening on a particular unit, because an action has just returned here and its result
+    // should be on screen rather than inside a branch the user has to find and reopen.
+    var expandPathOnLoad = (surface.getAttribute("data-expand-path") || "")
+        .split(",")
+        .filter(function (id) { return id.length > 0; });
+
+    if (expandPathOnLoad.length > 0) {
+        revealPath(expandPathOnLoad);
+    }
+
+    // The roots the server drew are a row like any other, and the fonts they are drawn in may not
+    // have arrived when the script runs.
+    levelRows();
+
+    if (document.fonts && document.fonts.ready) {
+        document.fonts.ready.then(levelRows);
     }
 
     if (searchInput && resultsList && searchUrl) {

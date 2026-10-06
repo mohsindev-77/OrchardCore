@@ -1,0 +1,64 @@
+@model RenameUnitViewModel
+@*
+    Renaming a unit. The screen's real job is the question at the bottom: a correction and a
+    renaming look identical on the form and mean opposite things to every historical report, and
+    the architecture is explicit that the designer asks rather than guesses.
+*@
+<h1>@T["Rename a unit"]</h1>
+
+<p class="text-muted">
+    @T["Currently {0}", Model.CurrentNameEn] <code>@Model.Code</code>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form method="post" asp-action="Rename">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="RecordId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["New name"].Value" required="true" />
+
+    <fieldset class="mb-3">
+        <legend class="form-label">@T["What kind of change is this?"]</legend>
+
+        <div class="form-check">
+            <input class="form-check-input" type="radio" id="Kind_Substantive"
+                   asp-for="Kind" value="@RenameKind.Substantive" />
+            <label class="form-check-label" for="Kind_Substantive">
+                @T["The unit has been renamed"]
+                <span class="d-block form-text">
+                    @T["It genuinely becomes this from the date below. Reports for earlier periods keep showing the old name, because that is what it was called then."]
+                </span>
+            </label>
+        </div>
+
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="radio" id="Kind_Corrective"
+                   asp-for="Kind" value="@RenameKind.Corrective" />
+            <label class="form-check-label" for="Kind_Corrective">
+                @T["The old name was a mistake"]
+                <span class="d-block form-text">
+                    @T["Correct it wherever it appears, including in earlier periods. Use this for a typo, not for a real change of name."]
+                </span>
+            </label>
+        </div>
+    </fieldset>
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <div class="form-text">
+            @T["For a renaming, the first day the new name applies. For a correction, any day inside the period being corrected."]
+        </div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary">@T["Save name"]</button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Cancel"]</a>
+    </div>
+</form>

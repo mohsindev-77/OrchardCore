@@ -82,6 +82,7 @@ public sealed class DimensionConfigurationTenantTests
                 DimensionAuditTrail.DimensionTypeChanged,
                 DimensionAuditTrail.StructureChanged,
                 DimensionAuditTrail.ContentDefinitionChanged,
+                DimensionAuditTrail.DimensionRecordChanged,
                 DimensionAuditTrail.MoveCancelled,
             ],
                 "an event that is recorded but not described is filed under a category the admin "

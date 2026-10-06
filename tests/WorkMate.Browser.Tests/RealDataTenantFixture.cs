@@ -43,16 +43,25 @@ public sealed class RealDataTenantFixture : WebApplicationFactory<Program>, IAsy
     public const string TestAdminUserName = "workmate-browser-probe";
     public const string TestAdminPassword = "Workmate!Probe1";
 
+    public const string ApplicationDataVariable = "WORKMATE_REAL_APPDATA";
+
     /// <summary>
-    /// The App_Data to copy. The developer's own by default; <c>WORKMATE_REAL_APPDATA</c> points it
-    /// somewhere else — at a snapshot taken before a tenant was changed, or at a copy of a
-    /// customer's data sent in with a bug report. Reproducing a defect sometimes means reproducing
-    /// it against data that no longer exists on the machine it was reported from.
+    /// The App_Data to copy, named by <c>WORKMATE_REAL_APPDATA</c>: a snapshot taken before a
+    /// tenant changed, or a copy of a customer's data sent in with a bug report.
     /// </summary>
-    private static readonly string RealApplicationData =
-        Environment.GetEnvironmentVariable("WORKMATE_REAL_APPDATA") is { Length: > 0 } configured
-            ? configured
-            : Path.Combine(RepositoryRoot(), "src", "WorkMate.Web", "App_Data");
+    /// <remarks>
+    /// Opt-in, with no default. Falling back to whatever is in <c>src/WorkMate.Web/App_Data</c>
+    /// was worse than useless: on a build agent and on a clean clone there is nothing there, and
+    /// on another developer's machine there is something there that these tests know nothing
+    /// about. Either way the suite would be reporting on a tenant nobody chose. Unset means
+    /// "nobody has offered me real data to reproduce against", and the honest response to that is
+    /// to stand down and say so.
+    /// </remarks>
+    private static readonly string? RealApplicationData =
+        Environment.GetEnvironmentVariable(ApplicationDataVariable) is { } configured
+            && !string.IsNullOrWhiteSpace(configured)
+                ? configured.Trim()
+                : null;
 
     /// <summary>The structure the designer tests drive, seeded by the shipped demo recipe.</summary>
     public const string DemoStructureCode = "demo-org";
@@ -79,11 +88,25 @@ public sealed class RealDataTenantFixture : WebApplicationFactory<Program>, IAsy
     /// </summary>
     public string BrowserChannel { get; private set; } = "chromium (bundled)";
 
+    /// <summary>
+    /// Why this suite cannot run from the environment alone, or null when it can. Static and
+    /// cheap, because <see cref="RealDataFactAttribute"/> asks it at discovery time, long before
+    /// any host exists.
+    /// </summary>
+    public static string? EnvironmentSkipReason =>
+        RealApplicationData is null
+            ? $"{ApplicationDataVariable} is not set, so there is no real tenant to reproduce against. "
+                + "Point it at a copy of an App_Data folder to run this suite."
+            : !Directory.Exists(Path.Combine(RealApplicationData, "Sites"))
+                ? $"{ApplicationDataVariable} is set to '{RealApplicationData}', which has no Sites folder, "
+                    + "so it is not an App_Data directory."
+                : null;
+
     public async Task InitializeAsync()
     {
-        if (!Directory.Exists(Path.Combine(RealApplicationData, "Sites")))
+        if (EnvironmentSkipReason is { } unavailable)
         {
-            SkipReason = $"No developer tenant to copy: {RealApplicationData} has no Sites folder.";
+            SkipReason = unavailable;
             return;
         }
 
@@ -351,7 +374,7 @@ public sealed class RealDataTenantFixture : WebApplicationFactory<Program>, IAsy
         var host = Path.Combine(RepositoryRoot(), "src", "WorkMate.Web");
 
         // Everything except the logs, which are large, irrelevant and written to constantly.
-        CopyDirectory(RealApplicationData, Path.Combine(_contentRoot, "App_Data"), skip: "logs");
+        CopyDirectory(RealApplicationData!, Path.Combine(_contentRoot, "App_Data"), skip: "logs");
 
         foreach (var folder in new[] { "Localization", "Recipes" })
         {
@@ -398,6 +421,11 @@ public sealed class RealDataTenantFixture : WebApplicationFactory<Program>, IAsy
 
     private static (long Length, DateTime LastWriteUtc)? RealDatabaseState()
     {
+        if (RealApplicationData is null)
+        {
+            return null;
+        }
+
         var database = new FileInfo(Path.Combine(RealApplicationData, "Sites", "Default", "OrchardCore.db"));
 
         return database.Exists ? (database.Length, database.LastWriteTimeUtc) : null;

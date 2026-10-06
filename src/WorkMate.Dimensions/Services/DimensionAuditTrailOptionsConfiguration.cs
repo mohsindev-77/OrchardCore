@@ -8,7 +8,7 @@ namespace WorkMate.Dimensions.Services;
 /// enable, disable and filter them alongside Orchard's own.
 /// </summary>
 /// <remarks>
-/// All four events are mandatory. Specification section 9 puts structure change and
+/// All five events are mandatory. Specification section 9 puts structure change and
 /// content-definition change on the list of WorkMate event types, and the point of auditing a
 /// structure change is that the structure is what every historical payroll and approval figure
 /// resolves against. Move cancelled is mandatory for the same reason the operation requires a
@@ -41,6 +41,12 @@ public sealed class DimensionAuditTrailOptionsConfiguration : IConfigureOptions<
                 DimensionAuditTrail.ContentDefinitionChanged,
                 S => S["Content definition changed"],
                 S => S["A content type was created or altered on behalf of a dimension type."],
+                enableByDefault: true,
+                isMandatory: true)
+            .WithEvent(
+                DimensionAuditTrail.DimensionRecordChanged,
+                S => S["Dimension record changed"],
+                S => S["A unit was added to a structure, renamed or retired."],
                 enableByDefault: true,
                 isMandatory: true)
             .WithEvent(

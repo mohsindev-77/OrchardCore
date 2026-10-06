@@ -85,11 +85,27 @@ public sealed class OrganisationDesignerBrowserTests
 
         await page.GotoAsync("/Admin/Dimensions/Designer/Index?view=Chart");
 
-        // Both divisions have two departments, and both say so before anything is fetched.
-        await Assertions.Expect(Toggle(page, "Sales")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex("2"));
-        await Assertions.Expect(Toggle(page, "Operations")).ToHaveTextAsync(new System.Text.RegularExpressions.Regex("2"));
+        // The count is on the control before anything has been fetched, and it is the number of
+        // cards that then appear. Asserted against what opening it actually produces rather than
+        // against a number from the demo recipe, because other tests in this collection add and
+        // retire units of their own — and a count that only matches a fixture is not the promise
+        // the control is making.
+        foreach (var division in new[] { "Sales", "Operations" })
+        {
+            // The count only, not the chevron beside it.
+            var claimed = int.Parse(
+                (await Toggle(page, division).Locator(".designer-toggle-count").InnerTextAsync()).Trim(),
+                System.Globalization.CultureInfo.InvariantCulture);
 
-        await Toggle(page, "Sales").ClickAsync();
+            claimed.Should().BeGreaterThan(0);
+
+            await Toggle(page, division).ClickAsync();
+
+            await Assertions.Expect(
+                Node(page, division).Locator("> .designer-children > .designer-node"))
+                .ToHaveCountAsync(claimed);
+        }
+
         await Toggle(page, "Retail").ClickAsync();
 
         // A section has nothing under it, so it shows no control at all rather than a different one.
@@ -167,6 +183,105 @@ public sealed class OrganisationDesignerBrowserTests
     }
 
     /// <summary>
+    /// What makes a drawing of a hierarchy readable: every card at the same level starts at the
+    /// same height, and a line between two cards always has a card at both ends.
+    /// </summary>
+    /// <remarks>
+    /// Both failed on the fully expanded demo tree. Cards sat at different heights because each
+    /// branch's children began directly under its own parent's card, and parents are not all the
+    /// same height; and a leaf drew the connector stem that a parent draws down to its children,
+    /// leaving a line hanging off the bottom of a card with nothing under it.
+    ///
+    /// Measured rather than eyeballed, in the browser's own layout, because this is geometry: the
+    /// markup and the stylesheet were each defensible on their own and the drawing was still wrong.
+    /// </remarks>
+    [Fact]
+    public async Task EveryCardInARowStartsAtTheSameHeightAndNoLeafTrailsAConnector()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+        var problems = Watch(page);
+
+        await page.GotoAsync("/Admin/Dimensions/Designer/Index?view=Chart");
+        await ExpandEverythingAsync(page);
+
+        var cards = await MeasureCardsAsync(page);
+
+        cards.Should().HaveCountGreaterThan(10, "the demo organisation is three levels deep");
+
+        foreach (var row in cards.GroupBy(card => card.Depth))
+        {
+            var tops = row.Select(card => card.Top).Distinct().ToList();
+
+            tops.Should().ContainSingle(
+                "every card at depth {0} must start at the same height, but these did not: {1}",
+                row.Key,
+                string.Join(", ", row.Select(card => $"{card.Name} at {card.Top}")));
+        }
+
+        foreach (var leaf in cards.Where(card => card.ChildCount == 0))
+        {
+            leaf.ChildrenDisplay.Should().Be(
+                "none",
+                "{0} has nothing under it, so it must not draw a connector below its card", leaf.Name);
+        }
+
+        cards.Select(card => card.TextAlign).Distinct().Should().ContainSingle(
+            "every card is laid out the same way, whether or not it has children");
+
+        problems.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Nothing on a card is cut off. A code is an identifier people type, search for and read out
+    /// to each other, so half of one is worse than none; a name that does not fit wraps.
+    /// </summary>
+    /// <remarks>
+    /// Measured against each element's own scroll size, which is how the browser reports text it
+    /// has had to clip. An earlier version gave every card one fixed height and an ellipsis to
+    /// enforce it, which lined the rows up beautifully and turned "WorkMate Demo Organisation"
+    /// into "WorkMate De…".
+    /// </remarks>
+    [Fact]
+    public async Task NoCardClipsItsNameOrItsCode()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync("/Admin/Dimensions/Designer/Index?view=Chart");
+        await ExpandEverythingAsync(page);
+
+        var clipped = await page.EvaluateAsync<string[]>(
+            """
+            () => {
+                const clipped = [];
+
+                for (const element of document.querySelectorAll(
+                    '.designer-card-name, .designer-card-name-ar, .designer-card-code')) {
+                    // A pixel of slack: sub-pixel text metrics round against us otherwise.
+                    if (element.scrollWidth > element.clientWidth + 1 ||
+                        element.scrollHeight > element.clientHeight + 1) {
+                        clipped.push(element.className + ' "' + element.textContent.trim() + '"');
+                    }
+                }
+
+                return clipped;
+            }
+            """);
+
+        clipped.Should().BeEmpty("every name and code on the chart must be readable in full");
+
+        // And the rows are still rows, even though the cards are free to grow.
+        foreach (var row in (await MeasureCardsAsync(page)).GroupBy(card => card.Depth))
+        {
+            row.Select(card => card.Top).Distinct().Should().ContainSingle(
+                "cards at depth {0} grow to the tallest in the row rather than drifting apart: {1}",
+                row.Key,
+                string.Join(", ", row.Select(card => $"{card.Name} at {card.Top}")));
+        }
+    }
+
+    /// <summary>
     /// The chart under Arabic: the page reads right to left and the cards carry Arabic names.
     /// </summary>
     [Fact]
@@ -186,6 +301,80 @@ public sealed class OrganisationDesignerBrowserTests
         {
             HasTextString = "المبيعات",
         }).First).ToBeVisibleAsync();
+    }
+
+    /// <summary>Opens every branch, so the assertions see the whole tree rather than its top.</summary>
+    private static async Task ExpandEverythingAsync(IPage page)
+    {
+        const string collapsed = ".designer-node[data-expanded='false']:not([data-child-count='0'])";
+
+        // Bounded, because a bug that reopened what it just closed would otherwise hang the suite
+        // rather than fail it. The demo tree is three levels of a dozen units.
+        for (var round = 0; round < 40; round++)
+        {
+            var next = page.Locator(collapsed).First;
+
+            if (await page.Locator(collapsed).CountAsync() == 0)
+            {
+                return;
+            }
+
+            await next.Locator(".designer-toggle").First.ClickAsync();
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+        }
+
+        throw new InvalidOperationException("The tree would not stay open.");
+    }
+
+    /// <summary>
+    /// Where every card actually ended up, measured in the browser. Positions are relative to the
+    /// chart canvas, not the window, so panning or scrolling cannot move them.
+    /// </summary>
+    private static async Task<IReadOnlyList<MeasuredCard>> MeasureCardsAsync(IPage page) =>
+        await page.EvaluateAsync<MeasuredCard[]>(
+            """
+            () => {
+                const canvas = document.querySelector('.designer-chart-canvas').getBoundingClientRect();
+
+                return [...document.querySelectorAll('.designer-node')].map(node => {
+                    let depth = 0;
+                    for (let p = node.parentElement; p; p = p.parentElement) {
+                        if (p.classList && p.classList.contains('designer-node')) { depth++; }
+                    }
+
+                    const card = node.querySelector(':scope > .designer-card');
+                    const children = node.querySelector(':scope > .designer-children');
+                    const box = card.getBoundingClientRect();
+
+                    return {
+                        name: card.querySelector('.designer-card-name').textContent.trim(),
+                        depth: depth,
+                        top: Math.round(box.top - canvas.top),
+                        childCount: Number(node.getAttribute('data-child-count')),
+                        childrenDisplay: children ? getComputedStyle(children).display : 'none',
+                        textAlign: getComputedStyle(card).textAlign
+                    };
+                });
+            }
+            """);
+
+    /// <summary>
+    /// Settable properties and a parameterless constructor, which is what Playwright's deserialiser
+    /// needs; a positional record cannot be built from a JSON object here.
+    /// </summary>
+    private sealed class MeasuredCard
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public int Depth { get; set; }
+
+        public int Top { get; set; }
+
+        public int ChildCount { get; set; }
+
+        public string ChildrenDisplay { get; set; } = string.Empty;
+
+        public string TextAlign { get; set; } = string.Empty;
     }
 
     /// <summary>One unit's card, found by the English name on it.</summary>

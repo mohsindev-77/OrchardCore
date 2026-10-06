@@ -199,7 +199,14 @@ public sealed class DimensionCancelMoveTenantTests
             // The old parent closes after the move but before the cancellation is attempted.
             // Restoring the record under it would leave a live unit under a closed one with no
             // end date, which is not a dating mistake worth only a warning.
-            (await records.RetireAsync(scenario.OldParent, new DateOnly(2025, 6, 1))).Succeeded.Should().BeTrue();
+            // The record is still under the old parent on the day it closes — the move is a year
+            // later — so this retirement has to say what happens to it. Leaving it unplaced is
+            // what keeps the link in place for the cancellation to try to restore.
+            (await records.RetireAsync(
+                scenario.Structure,
+                scenario.OldParent,
+                new DateOnly(2025, 6, 1),
+                ChildrenDisposition.Unplaced)).Succeeded.Should().BeTrue();
 
             var refused = await records.CancelMoveAsync(
                 scenario.Structure, scenario.Record, MoveDay, "testing a restoration onto a retired parent");

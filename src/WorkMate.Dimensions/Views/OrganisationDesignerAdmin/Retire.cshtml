@@ -1,0 +1,175 @@
+@model RetireUnitViewModel
+@*
+    Retiring a unit, in the same dry-run-then-confirm shape as a level change, a move and a merge:
+    pick the date, see what it would do, then confirm. The plan is only present once the date has
+    been posted once, so the first view of this page is just the date.
+*@
+<h1>@T["Retire a unit"]</h1>
+
+<p class="text-muted">
+    <span dir="ltr" lang="en">@Model.NameEn</span>
+    <span dir="rtl" lang="ar">@Model.NameAr</span>
+    <code>@Model.Code</code>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<p>
+    @T["Retiring closes the unit with an end date. It stops appearing on the tree and in pickers from that day, and every report for an earlier period still resolves through it."]
+</p>
+
+<form method="post" asp-action="Retire">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="RecordId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Retire from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <div class="form-text">@T["The first day the unit no longer applies. The day before is its last."]</div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @if (Model.Plan is { } plan)
+    {
+        <div class="alert @(plan.LeavesSomethingBehind ? "alert-warning" : "alert-info")">
+            <p class="mb-1 fw-semibold">@T["What this will do"]</p>
+            <ul class="mb-0">
+                <li>@T["{0} will be closed on {1}.", Model.NameEn, Model.EffectiveFrom]</li>
+                @if (plan.EmployeesAffected > 0)
+                {
+                    <li>@T["{0} people are still placed here on that date.", plan.EmployeesAffected]</li>
+                }
+                @foreach (var blocker in plan.Blockers)
+                {
+                    <li>@blocker.Message</li>
+                }
+                @if (!plan.LeavesSomethingBehind)
+                {
+                    <li>@T["Nothing is still attached to it on that date."]</li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (Model.Plan is { HasChildrenToDecide: true } withChildren)
+    {
+        @* The units that would be left behind, and the decision about them. This is the only
+           part of the screen that is not a warning: a parent closing over live units has to be
+           answered for, because they stay active with nowhere on the tree to be. *@
+        <h2 class="fs-5">@T["Units under this one"]</h2>
+
+        <p class="text-muted">
+            @T["These sit directly under {0} on its last day. Retiring it leaves them with no parent unless you say otherwise.", Model.NameEn]
+        </p>
+
+        <ul class="list-group mb-3">
+            @foreach (var child in withChildren.DirectChildren)
+            {
+                <li class="list-group-item">
+                    <span dir="ltr" lang="en">@child.NameEn</span>
+                    <span dir="rtl" lang="ar" class="text-muted">@child.NameAr</span>
+                    <code>@child.Code</code>
+                </li>
+            }
+        </ul>
+
+        <fieldset class="mb-3">
+            <legend class="form-label">@T["What happens to them?"]</legend>
+
+            @if (Model.CanMoveChildren)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" id="Disposition_Move"
+                           asp-for="ChildrenDisposition" value="@ChildrenDispositionKind.MoveToParent" />
+                    <label class="form-check-label" for="Disposition_Move">
+                        @T["Move them to another parent"]
+                        <span class="d-block form-text">
+                            @T["They keep everything under them and move across on the same date, so no day passes with them out of the tree."]
+                        </span>
+                    </label>
+                </div>
+
+                <div class="ms-4 mb-2" style="max-width: 24rem;">
+                    <label class="form-label small" asp-for="NewParentRecordId">@T["New parent"]</label>
+                    <select class="form-select form-select-sm" asp-for="NewParentRecordId">
+                        <option value="">@T["(top of the structure)"]</option>
+                        @foreach (var target in withChildren.ValidMoveTargets)
+                        {
+                            <option value="@target.RecordId">@target.NameEn (@target.Code)</option>
+                        }
+                    </select>
+                    <div class="form-text">@T["Only units this structure's levels allow these to sit under are listed."]</div>
+                </div>
+            }
+            else
+            {
+                <p class="form-text">
+                    @T["Moving them to another parent needs permission to move dimension records, which you do not have."]
+                </p>
+            }
+
+            <div class="form-check">
+                <input class="form-check-input" type="radio" id="Disposition_Cascade"
+                       asp-for="ChildrenDisposition" value="@ChildrenDispositionKind.RetireCascade" />
+                <label class="form-check-label" for="Disposition_Cascade">
+                    @T["Retire them as well"]
+                    <span class="d-block form-text">
+                        @T["Closes all {0} units in this branch on the same date. Everything before it still resolves.", withChildren.Subtree.Count]
+                    </span>
+                </label>
+            </div>
+
+            @if (withChildren.Subtree.Count > withChildren.DirectChildren.Count)
+            {
+                <details class="ms-4 mb-2">
+                    <summary class="small">@T["Show the whole branch"]</summary>
+                    <ul class="list-group list-group-flush small">
+                        @foreach (var node in withChildren.Subtree)
+                        {
+                            @* An indent that shows how deep in the branch each unit is, so a
+                               cascade reads as a shape rather than a flat list of names. *@
+                            <li class="list-group-item" style="padding-inline-start: @(0.75 + (node.Depth * 0.75))rem;">
+                                <span dir="ltr" lang="en">@node.NameEn</span>
+                                <code>@node.Code</code>
+                            </li>
+                        }
+                    </ul>
+                </details>
+            }
+
+            <div class="form-check">
+                <input class="form-check-input" type="radio" id="Disposition_Unplaced"
+                       asp-for="ChildrenDisposition" value="@ChildrenDispositionKind.LeaveUnplaced" />
+                <label class="form-check-label" for="Disposition_Unplaced">
+                    @T["Leave them with no parent"]
+                    <span class="d-block form-text">
+                        @T["They stay active and move to the unplaced panel, marked as having lost their parent, until somebody places or retires them."]
+                    </span>
+                </label>
+            </div>
+
+            <span asp-validation-for="ChildrenDisposition" class="text-danger"></span>
+        </fieldset>
+    }
+
+    @if (Model.Plan is not null)
+    {
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" asp-for="Confirmed" value="true" />
+            <label class="form-check-label" asp-for="Confirmed">
+                @T["Yes, retire this unit on the date above."]
+            </label>
+        </div>
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn @(Model.Plan is null ? "btn-outline-secondary" : "btn-danger")">
+            @(Model.Plan is null ? T["Check what this will do"] : T["Retire unit"])
+        </button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Cancel"]</a>
+    </div>
+</form>

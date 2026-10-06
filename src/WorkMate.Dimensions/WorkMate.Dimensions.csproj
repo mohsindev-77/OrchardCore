@@ -21,6 +21,10 @@
     -->
     <PackageReference Include="OrchardCore.Infrastructure.Abstractions" />
     <PackageReference Include="OrchardCore.AuditTrail.Abstractions" />
+    <!-- The CLR field types a dimension type's custom attributes are written to: TextField,
+         NumericField, BooleanField, DateField. The definitions were always written by name; adding
+         a unit through the designer is the first path that has to set their values. -->
+    <PackageReference Include="OrchardCore.ContentFields" />
     <PackageReference Include="OrchardCore.Title" />
     <!--
       Admin.Abstractions: the [Admin] route attribute the three admin controllers carry.

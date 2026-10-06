@@ -276,7 +276,7 @@ public sealed class DimensionClosureTenantTests
 
             var closes = new DateOnly(2025, 10, 1);
 
-            (await records.RetireAsync(department, closes)).Succeeded.Should().BeTrue();
+            (await records.RetireAsync(structure, department, closes)).Succeeded.Should().BeTrue();
 
             (await graph.IsUnderAsync(structure, department, division, closes.AddDays(-1))).Should().BeTrue(
                 "a retired unit still resolves for the period it existed");

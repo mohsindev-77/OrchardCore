@@ -160,6 +160,120 @@ public sealed record CancelledMoveRestoration(
 /// cancelling a move is never a silent delete, and the report a human signs off and the reason
 /// they gave for it must describe exactly what happened, not an approximation of it.
 /// </remarks>
+/// <summary>
+/// What retiring a record would do, and what stops it: the deletion assessment's verdict, the
+/// blockers behind it, and what is still hanging off the record on the day it would close.
+/// </summary>
+/// <param name="Outcome">
+/// What <see cref="IDimensionValidator.AssessDeletionAsync"/> says about <em>deleting</em> this
+/// record. Retirement is not refused on the strength of it: architecture section 6 makes
+/// retirement precisely the answer for a record that cannot be deleted because something refers
+/// to it — "the record is closed with an end date, disappears from pickers, and continues to
+/// resolve for historical queries". The outcome is here so the screen can say what is still
+/// attached, not so it can say no.
+/// </param>
+/// <param name="Blockers">
+/// What refers to the record, each one naming it. Shown as a warning before the user confirms.
+/// </param>
+/// <param name="DescendantCount">
+/// Units still sitting under this one on the retirement date, across the structure being viewed.
+/// Not a blocker — a customer may legitimately close a branch from the top — but it is the number
+/// that most often means somebody picked the wrong card, so the screen says it before committing.
+/// </param>
+/// <param name="EmployeesAffected">People still placed at the record on that date.</param>
+/// <param name="StructureId">The structure the children question is being asked about.</param>
+/// <param name="DirectChildren">
+/// The units sitting directly under this one on its last day, which is what the person retiring it
+/// has to decide about. Deeper descendants are not listed here: they keep the parent they have.
+/// </param>
+/// <param name="Subtree">
+/// Everything under the unit on its last day, at every depth, nearest first — what a cascade would
+/// close. Empty when there is nothing underneath.
+/// </param>
+/// <param name="ValidMoveTargets">
+/// The units the children could be moved to instead, by the structure's own level rules. Excludes
+/// the unit being retired and everything already under it, because moving a child into its own
+/// branch is either a cycle or a placement that is about to close with the rest of it.
+/// </param>
+public sealed record RetirePlan(
+    string RecordId,
+    string StructureId,
+    DateOnly EffectiveDate,
+    DeletionOutcome Outcome,
+    IReadOnlyList<DimensionError> Blockers,
+    int DescendantCount,
+    int EmployeesAffected,
+    IReadOnlyList<DimensionNodeRef> DirectChildren,
+    IReadOnlyList<DimensionNodeRef> Subtree,
+    IReadOnlyList<DimensionNodeRef> ValidMoveTargets)
+{
+    /// <summary>
+    /// Whether something live still refers to the record. Not a refusal — a reason to say so
+    /// plainly before the user commits.
+    /// </summary>
+    public bool HasLiveReferences => Outcome == DeletionOutcome.Blocked;
+
+    /// <summary>Whether anything is still attached, which is what the confirmation warns about.</summary>
+    public bool LeavesSomethingBehind => DescendantCount > 0 || EmployeesAffected > 0 || Blockers.Count > 0;
+
+    /// <summary>
+    /// Whether retiring this unit would leave units with no parent, which is the question the
+    /// person doing it has to answer before it can go ahead.
+    /// </summary>
+    public bool HasChildrenToDecide => DirectChildren.Count > 0;
+}
+
+/// <summary>What happens to the units under a unit that is being retired.</summary>
+public enum ChildrenDispositionKind
+{
+    /// <summary>They move to another parent on the same date, keeping their own subtrees.</summary>
+    MoveToParent,
+
+    /// <summary>They are retired too, with everything under them, on the same date.</summary>
+    RetireCascade,
+
+    /// <summary>
+    /// They are deliberately left with no parent, and say so until somebody places or retires them.
+    /// </summary>
+    LeaveUnplaced,
+}
+
+/// <summary>
+/// The decision about a retiring unit's children, made before the retirement is committed.
+/// </summary>
+/// <remarks>
+/// There is no default and no null-means-this. Leaving children with no parent is a legitimate
+/// answer, but it is an answer somebody has to give: the whole defect this type exists for was a
+/// retirement quietly choosing it on the user's behalf and leaving units stranded with nothing on
+/// screen to say why.
+/// </remarks>
+public sealed record ChildrenDisposition(ChildrenDispositionKind Kind, string? NewParentRecordId = null)
+{
+    /// <summary>Move every child under <paramref name="newParentRecordId"/>, or to the top when null.</summary>
+    public static ChildrenDisposition MoveTo(string? newParentRecordId) =>
+        new(ChildrenDispositionKind.MoveToParent, newParentRecordId);
+
+    public static ChildrenDisposition Cascade { get; } = new(ChildrenDispositionKind.RetireCascade);
+
+    public static ChildrenDisposition Unplaced { get; } = new(ChildrenDispositionKind.LeaveUnplaced);
+}
+
+/// <summary>
+/// Why a record has no parent: it had one and that one retired. Absent for a record that was
+/// simply never placed.
+/// </summary>
+/// <param name="FormerParentNameEn">
+/// The parent's name, carried here rather than looked up by the caller. A retired record does not
+/// resolve on any date the caller would naturally ask for — and one retired on the day it opened
+/// does not resolve on any date at all — so a caller doing its own lookup ends up showing a
+/// content item id to the person reading the badge.
+/// </param>
+public sealed record OrphanedByParentRetirement(
+    string FormerParentId,
+    string FormerParentNameEn,
+    string FormerParentNameAr,
+    DateOnly RetiredOn);
+
 public sealed record CancelMovePlan(
     string StructureId,
     string RecordId,

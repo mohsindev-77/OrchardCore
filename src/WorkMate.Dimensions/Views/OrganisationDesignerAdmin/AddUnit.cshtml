@@ -1,0 +1,157 @@
+@model AddUnitViewModel
+@*
+    Adding a unit to a structure. An ordinary page with an ordinary form, not a dialog: it is
+    reached by a link from the card's action menu and it works with no script at all, which is
+    what "server-rendered with progressive enhancement" means here.
+
+    The type is chosen first when there is a choice to make, because the custom attributes below
+    are that type's and nothing else can be drawn until it is known.
+*@
+<h1>@T["Add a unit"]</h1>
+
+<p class="text-muted">
+    @if (Model.ParentRecordId is null)
+    {
+        @T["A new top-level unit of {0}.", Model.StructureNameEn]
+    }
+    else
+    {
+        @T["A new unit under {0}, in {1}.", Model.ParentNameEn, Model.StructureNameEn]
+    }
+</p>
+
+@if (Model.PermittedTypes.Count == 0)
+{
+    <div class="alert alert-warning">
+        @T["Nothing can be added here: this unit is already at the deepest level this structure defines."]
+    </div>
+    <a class="btn btn-secondary"
+       asp-action="Index"
+       asp-route-structureId="@Model.StructureId"
+       asp-route-asAt="@Model.AsAt">@T["Back to the designer"]</a>
+    return;
+}
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+@* Changing the type reloads the form with that type's attributes on it. A GET, so it is the same
+   request the action menu makes and nothing is written on the way. *@
+<form method="get" class="mb-4">
+    <input type="hidden" name="structureId" value="@Model.StructureId" />
+    <input type="hidden" name="parentId" value="@Model.ParentRecordId" />
+    <input type="hidden" name="asAt" value="@Model.AsAt" />
+
+    <div class="mb-3" style="max-width: 24rem;">
+        <label class="form-label" for="dimensionTypeId">@T["Kind of unit"]</label>
+        <select class="form-select" id="dimensionTypeId" name="dimensionTypeId"
+                disabled="@(Model.PermittedTypes.Count == 1)" data-designer-autosubmit>
+            @foreach (var type in Model.PermittedTypes)
+            {
+                <option value="@type.DimensionTypeId" selected="@(type.DimensionTypeId == Model.DimensionTypeId)">
+                    @type.NameEn
+                </option>
+            }
+        </select>
+        @if (Model.PermittedTypes.Count > 1)
+        {
+            <div class="form-text">@T["This structure allows more than one kind of unit here."]</div>
+        }
+    </div>
+
+    @if (Model.PermittedTypes.Count > 1)
+    {
+        <button type="submit" class="btn btn-outline-secondary btn-sm">@T["Change kind"]</button>
+    }
+</form>
+
+<form method="post" asp-action="AddUnit">
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="ParentRecordId" />
+    <input type="hidden" asp-for="DimensionTypeId" />
+    <input type="hidden" asp-for="AsAt" />
+
+    <div class="mb-3" style="max-width: 24rem;">
+        <label class="form-label" asp-for="Code">@T["Code"]</label>
+        <input class="form-control" asp-for="Code" dir="ltr" autocomplete="off" />
+        <div class="form-text">@T["Letters, digits, hyphens and underscores. Unique in this tenant, and permanent."]</div>
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"].Value" required="true" />
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <div class="form-text">@T["The day this unit starts existing. It will not appear on the tree before then."]</div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @if (Model.Attributes.Count > 0)
+    {
+        <h2 class="fs-5 mt-4">@T["Details"]</h2>
+        <p class="text-muted small">@T["Defined on this kind of unit in the Dimension types screen."]</p>
+    }
+
+    @* Every statement here stays at markup level with an @ on it. The literal-string gate blanks
+       markup-level Razor keywords and bare statements ending in a semicolon, but reads a nested
+       bare "foreach (...)" or "if (...)" as prose and reports the whole line. Enumerable.Range for
+       the same reason: a counting loop's "index < count" scans as markup. *@
+    @foreach (var index in Enumerable.Range(0, Model.Attributes.Count))
+    {
+        var input = Model.Attributes[index];
+
+        <input type="hidden" asp-for="Attributes[index].Name" />
+        <input type="hidden" asp-for="Attributes[index].Kind" />
+        <input type="hidden" asp-for="Attributes[index].LabelEn" />
+        <input type="hidden" asp-for="Attributes[index].LabelAr" />
+        <input type="hidden" asp-for="Attributes[index].IsRequired" />
+
+        @if (input.Kind == DimensionAttributeKind.BilingualText)
+        {
+            <workmate-bilingual for-en="Attributes[index].Value"
+                                for-ar="Attributes[index].ValueAr"
+                                label="@input.LabelEn"
+                                required="@input.IsRequired" />
+        }
+        else if (input.Kind == DimensionAttributeKind.Boolean)
+        {
+            <div class="mb-3 form-check">
+                @* value="true" with a hidden "false" behind it, so that clearing the box posts
+                   something: an unchecked box posts nothing at all. *@
+                <input type="hidden" asp-for="Attributes[index].Value" value="false" />
+                <input class="form-check-input" type="checkbox"
+                       id="@($"Attributes_{index}__Value")"
+                       name="@($"Attributes[{index}].Value")" value="true"
+                       checked="@(string.Equals(input.Value, "true", StringComparison.OrdinalIgnoreCase))" />
+                <label class="form-check-label" for="@($"Attributes_{index}__Value")">@input.LabelEn</label>
+                <span class="text-muted small" dir="rtl" lang="ar">@input.LabelAr</span>
+            </div>
+        }
+        else
+        {
+            <div class="mb-3" style="max-width: 24rem;">
+                <label class="form-label" asp-for="Attributes[index].Value">
+                    @input.LabelEn
+                    <span class="text-danger" aria-hidden="true" hidden="@(input.IsRequired ? null : "hidden")">*</span>
+                </label>
+                <input class="form-control"
+                       type="@(input.Kind == DimensionAttributeKind.Number ? "number"
+                           : input.Kind == DimensionAttributeKind.Date ? "date" : "text")"
+                       step="@(input.Kind == DimensionAttributeKind.Number ? "any" : null)"
+                       asp-for="Attributes[index].Value"
+                       required="@input.IsRequired" />
+                <span class="text-muted small" dir="rtl" lang="ar">@input.LabelAr</span>
+            </div>
+        }
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary">@T["Add unit"]</button>
+        <a class="btn btn-link"
+           asp-action="Index"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAt">@T["Cancel"]</a>
+    </div>
+</form>
+
+<script asp-name="workmate-organisation-designer" at="Foot"></script>

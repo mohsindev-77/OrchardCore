@@ -21,6 +21,83 @@ public sealed class DimensionTypeAuditEvent
     public DimensionTypeState After { get; set; } = new();
 }
 
+/// <summary>
+/// Which record-level operation an audit entry records. Serialised by name.
+/// </summary>
+public enum DimensionRecordOperation
+{
+    /// <summary>A unit was created and placed on a structure in one act.</summary>
+    Added,
+
+    /// <summary>A corrective rename: the record was always called this and the old text was wrong.</summary>
+    NameCorrected,
+
+    /// <summary>A substantive rename: the record became something else on a date.</summary>
+    Renamed,
+
+    /// <summary>The record was closed with an end date.</summary>
+    Retired,
+}
+
+/// <summary>
+/// What a <see cref="DimensionAuditTrail.DimensionRecordChanged"/> event carries.
+/// </summary>
+/// <remarks>
+/// The question an auditor asks of a unit is "what was it called in March, and who changed that",
+/// so the payload is the dated shape of the change rather than a field-by-field diff: the
+/// operation, the date it takes effect from, and the name on either side of it. A plain class,
+/// like the others here, because Orchard serialises it.
+/// </remarks>
+public sealed class DimensionRecordAuditEvent
+{
+    public string RecordId { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+
+    public DimensionRecordOperation Operation { get; set; }
+
+    /// <summary>The date the change takes effect, which is never implied and never today by default.</summary>
+    public DateOnly EffectiveFrom { get; set; }
+
+    /// <summary>The structure the unit was added to. Set on <see cref="DimensionRecordOperation.Added"/> only.</summary>
+    public string? StructureId { get; set; }
+
+    /// <summary>The parent it was placed under, or null for a root. Added only.</summary>
+    public string? ParentRecordId { get; set; }
+
+    /// <summary>
+    /// The unit whose retirement closed this one as well, when it was not retired in its own
+    /// right. Null for a unit somebody retired directly.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a cascade leaves a row of units all closing on the same day with nothing to
+    /// say they were one decision — which is exactly the question an auditor asks when a whole
+    /// branch disappears at once.
+    /// </remarks>
+    public string? CascadedFromRecordId { get; set; }
+
+    /// <summary>What it was called before, or null when this event created it.</summary>
+    public DimensionRecordNameState? Before { get; set; }
+
+    /// <summary>What it is called after. Null on a retirement, which changes no name.</summary>
+    public DimensionRecordNameState? After { get; set; }
+}
+
+/// <summary>A record's bilingual name at one point in an audit entry.</summary>
+public sealed class DimensionRecordNameState
+{
+    public string NameEn { get; set; } = string.Empty;
+
+    public string NameAr { get; set; } = string.Empty;
+
+    public static DimensionRecordNameState Of(WorkMate.Core.BilingualText name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        return new DimensionRecordNameState { NameEn = name.En, NameAr = name.Ar };
+    }
+}
+
 /// <summary>What a <see cref="DimensionAuditTrail.StructureChanged"/> event carries.</summary>
 public sealed class StructureAuditEvent
 {

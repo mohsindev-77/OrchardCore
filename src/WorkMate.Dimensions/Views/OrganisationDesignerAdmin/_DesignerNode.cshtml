@@ -30,9 +30,44 @@
         @* Keeps a childless card's text aligned with every other card's, without pretending there
            is something to expand. *@
         <span class="designer-toggle-spacer" aria-hidden="true" hidden="@(Model.ChildCount > 0 ? "hidden" : null)"></span>
+        @if (Model.CanEdit)
+        {
+            @* <details>, not a scripted dropdown: it opens, closes and is keyboard-reachable with
+               no JavaScript at all, and the actions inside it are ordinary links to ordinary
+               pages. A reader without ManageDimensionRecords gets the same card with no menu on
+               it — the server does not render one, rather than hiding one with CSS. *@
+            <details class="designer-actions">
+                <summary class="designer-actions-toggle" title="@T["Actions"]">
+                    <span aria-hidden="true">⋯</span>
+                    <span class="visually-hidden">@T["Actions for this unit"]</span>
+                </summary>
+                <div class="designer-actions-menu">
+                    <a class="designer-action" data-designer-action="add"
+                       asp-action="AddUnit"
+                       asp-route-structureId="@Model.StructureId"
+                       asp-route-parentId="@(Model.IsStructure ? null : Model.RecordId)"
+                       asp-route-asAt="@Model.AsAtIso">@T["Add unit"]</a>
+                    @if (!Model.IsStructure)
+                    {
+                        <a class="designer-action" data-designer-action="rename"
+                           asp-action="Rename"
+                           asp-route-structureId="@Model.StructureId"
+                           asp-route-recordId="@Model.RecordId"
+                           asp-route-asAt="@Model.AsAtIso">@T["Rename"]</a>
+                        <a class="designer-action" data-designer-action="retire"
+                           asp-action="Retire"
+                           asp-route-structureId="@Model.StructureId"
+                           asp-route-recordId="@Model.RecordId"
+                           asp-route-asAt="@Model.AsAtIso">@T["Retire"]</a>
+                    }
+                </div>
+            </details>
+        }
         <div class="designer-card-body">
-            <div class="designer-card-name" dir="ltr" lang="en">@Model.NameEn</div>
-            <div class="designer-card-name-ar" dir="rtl" lang="ar">@Model.NameAr</div>
+            @* title, because the chart gives every card the same fixed size and cuts anything that
+               does not fit; the full name stays one hover away rather than being lost. *@
+            <div class="designer-card-name" dir="ltr" lang="en" title="@Model.NameEn">@Model.NameEn</div>
+            <div class="designer-card-name-ar" dir="rtl" lang="ar" title="@Model.NameAr">@Model.NameAr</div>
             @if (Model.IsStructure)
             {
                 <div class="designer-card-meta">

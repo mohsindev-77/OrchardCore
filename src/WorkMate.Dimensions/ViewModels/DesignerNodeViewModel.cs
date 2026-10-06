@@ -67,12 +67,53 @@ public sealed class DesignerNodeViewModel
     /// </summary>
     public List<DesignerNodeViewModel> Children { get; set; } = [];
 
+    /// <summary>
+    /// Whether this card carries an action menu. False for every card when the viewer holds no
+    /// edit permission, so the menu is never rendered rather than rendered and hidden.
+    /// </summary>
+    public bool CanEdit { get; set; }
+
+    /// <summary>The structure the card belongs to, which every action link needs.</summary>
+    public string StructureId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The date the tree is being shown as at, ISO-8601, so an action returns to the same view.
+    /// </summary>
+    public string AsAtIso { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The name of the parent whose retirement left this unit with nowhere to sit, when that is
+    /// why it has none. Null for a unit that was simply never placed.
+    /// </summary>
+    /// <remarks>
+    /// The unplaced panel reads the same from the closure either way — no parent is no parent —
+    /// and the two mean entirely different things to the person looking at it. One arrived from an
+    /// import and has never been put anywhere; the other was somewhere until its parent closed
+    /// underneath it, which somebody decided and which this says out loud.
+    /// </remarks>
+    public string? OrphanedFromParentName { get; set; }
+
+    /// <inheritdoc cref="OrphanedFromParentName"/>
+    public string? OrphanedFromParentNameAr { get; set; }
+
+    /// <summary>The date that parent retired, ISO-8601.</summary>
+    public string? OrphanedOn { get; set; }
+
+    /// <summary>Whether this unit lost its parent to a retirement rather than never having had one.</summary>
+    public bool IsOrphanedByParentRetirement => OrphanedOn is not null;
+
     public static DesignerNodeViewModel Of(
         DimensionNodeRef node,
         IReadOnlyDictionary<string, DimensionTypeDocument> typesById,
         IReadOnlyDictionary<string, int>? employeeCounts = null,
-        IReadOnlyDictionary<string, int>? childCounts = null) => new()
+        IReadOnlyDictionary<string, int>? childCounts = null,
+        string structureId = "",
+        string asAtIso = "",
+        bool canEdit = false) => new()
     {
+        StructureId = structureId,
+        AsAtIso = asAtIso,
+        CanEdit = canEdit,
         ChildCount = childCounts is not null && childCounts.TryGetValue(node.RecordId, out var children) ? children : 0,
         RecordId = node.RecordId,
         Code = node.Code,

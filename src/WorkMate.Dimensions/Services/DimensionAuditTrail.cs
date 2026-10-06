@@ -34,6 +34,21 @@ public static class DimensionAuditTrail
     public const string ContentDefinitionChanged = "ContentDefinitionChanged";
 
     /// <summary>
+    /// A dimension record was added, renamed or retired.
+    /// </summary>
+    /// <remarks>
+    /// One event covering the three, with the operation named in the payload, rather than three
+    /// event types. Specification section 9 lists "structure change" as the event type, and an
+    /// auditor's question is almost always "what happened to this unit", which one event name
+    /// answers in one filter. The payload carries before and after, so which operation it was is
+    /// never in doubt.
+    ///
+    /// Moves and merges will record under this name too when they land; a cancellation keeps its
+    /// own name below, because it is the one operation that demands a stated reason.
+    /// </remarks>
+    public const string DimensionRecordChanged = "DimensionRecordChanged";
+
+    /// <summary>
     /// A move was cancelled: the link it created was removed and the placement it displaced was
     /// restored. Its own event, not folded into a general "record changed" entry, because a
     /// cancellation is the one record-level operation this module requires a reason for and must

@@ -36,6 +36,7 @@
       binding is expressed as TitlePartSettings.Pattern with TitlePartOptions.GeneratedDisabled.
       The feature itself is already enabled by the base recipe.
     -->
+    <PackageVersion Include="OrchardCore.ContentFields" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Title" Version="$(OrchardCoreVersion)" />
     <!--
       Test-only. OrchardCore.Settings gives tests the concrete ISite implementation; the rest

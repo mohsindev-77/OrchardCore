@@ -47,6 +47,31 @@ public sealed class OrganisationDesignerViewModel
     /// </summary>
     public bool CanViewHistory { get; set; }
 
+    /// <summary>
+    /// Whether the viewer may add, rename or retire a unit — specification section 4's
+    /// <c>ManageDimensionRecords</c>. Without it the chart is the same chart, drawn from the same
+    /// markup, with no action menu on any card: a reader is not shown doors that are locked.
+    /// </summary>
+    public bool CanEdit { get; set; }
+
+    /// <summary>
+    /// A unit whose branch should already be open when the page loads, so that the result of an
+    /// action is on screen instead of hidden inside a collapsed parent.
+    /// </summary>
+    /// <remarks>
+    /// Opened by the script, not rendered open by the server: the branch may be several levels
+    /// down and its children are fetched on demand, which is the same walk the search already
+    /// does. Without script the branch is simply closed, and the unit is one click away rather
+    /// than invisible.
+    /// </remarks>
+    public string? ExpandRecordId { get; set; }
+
+    /// <summary>
+    /// <see cref="ExpandRecordId"/>'s ancestors, root first, with the unit itself last — the chain
+    /// the browser walks down to open the branch, each step fetched before the next is looked for.
+    /// </summary>
+    public IReadOnlyList<string> ExpandPath { get; set; } = [];
+
     public DesignerViewMode ViewMode { get; set; } = DesignerViewMode.Chart;
 
     public List<DesignerNodeViewModel> Roots { get; set; } = [];
@@ -69,5 +94,23 @@ public sealed class OrganisationDesignerViewModel
         Code = SelectedStructureCode,
         ChildCount = Roots.Count,
         Children = Roots,
+        StructureId = SelectedStructureId ?? string.Empty,
+        AsAtIso = AsAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+
+        // The structure's own card carries one action: adding a top-level unit. Without it an
+        // empty structure could never be filled in from the designer at all.
+        CanEdit = CanEdit,
+    };
+
+    /// <summary>
+    /// The empty node the script clones for every lazily loaded child. It carries the page's
+    /// context — structure, date, whether to draw an action menu — because a cloned card has to
+    /// be indistinguishable from a server-rendered one, menu included.
+    /// </summary>
+    public DesignerNodeViewModel NodeTemplate => new()
+    {
+        StructureId = SelectedStructureId ?? string.Empty,
+        AsAtIso = AsAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+        CanEdit = CanEdit,
     };
 }

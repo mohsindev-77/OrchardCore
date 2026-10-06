@@ -33,7 +33,7 @@ public sealed class RealDataDesignerBrowserTests
     /// person reaches for: the little control, and the card itself. The card is how most people
     /// try first, and until this test existed it did nothing at all.
     /// </summary>
-    [Theory]
+    [RealDataTheory]
     [InlineData("Chart", "en", "control")]
     [InlineData("Chart", "en", "card")]
     [InlineData("Chart", "ar", "control")]
@@ -47,6 +47,8 @@ public sealed class RealDataDesignerBrowserTests
     {
         if (_tenant.SkipReason is not null)
         {
+            // The attribute already skipped this for a missing environment variable; this covers
+            // the case it cannot see at discovery, which is data that holds no demo organisation.
             return;
         }
 
@@ -81,11 +83,13 @@ public sealed class RealDataDesignerBrowserTests
     /// without even asking the server. Rendering new HTML against a month-old script is the failure
     /// that looks exactly like "the server code is fine and nothing works".
     /// </summary>
-    [Fact]
+    [RealDataFact]
     public async Task TheDesignersScriptAndStylesheetCarryAVersionTokenSoARebuildReachesTheBrowser()
     {
         if (_tenant.SkipReason is not null)
         {
+            // The attribute already skipped this for a missing environment variable; this covers
+            // the case it cannot see at discovery, which is data that holds no demo organisation.
             return;
         }
 
@@ -113,13 +117,15 @@ public sealed class RealDataDesignerBrowserTests
     /// culture-sensitive parse anywhere in the round trip would silently resolve the tree as at a
     /// different day for an Arabic user than for an English one.
     /// </summary>
-    [Theory]
+    [RealDataTheory]
     [InlineData("en")]
     [InlineData("ar")]
     public async Task TheDateTheBrowserSendsIsTheDateThePageShowsInEitherCulture(string culture)
     {
         if (_tenant.SkipReason is not null)
         {
+            // The attribute already skipped this for a missing environment variable; this covers
+            // the case it cannot see at discovery, which is data that holds no demo organisation.
             return;
         }
 
