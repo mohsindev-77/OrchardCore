@@ -1,0 +1,27 @@
+@model DimensionsDeploymentStepViewModel
+@*
+    What an export of this tenant's dimensions carries. The three are not independent — a structure
+    names its types and a record names both — so the driver refuses the combinations that could not
+    import rather than letting a file be produced that fails on arrival.
+*@
+<fieldset class="mb-3">
+    <legend class="fs-6">@T["What to export"]</legend>
+
+    <div class="form-check">
+        <input asp-for="IncludeTypes" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeTypes" class="form-check-label">@T["Dimension types, with their attribute schemas"]</label>
+    </div>
+
+    <div class="form-check">
+        <input asp-for="IncludeStructures" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeStructures" class="form-check-label">@T["Structures: their types, root types, containment rules and flags"]</label>
+    </div>
+
+    <div class="form-check">
+        <input asp-for="IncludeRecords" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeRecords" class="form-check-label">@T["Units, with their full dated placement and name history"]</label>
+        <div class="form-text">@T["Every move on record, including the ones that took a unit off the tree, and every unit that has been retired."]</div>
+    </div>
+
+    <span asp-validation-for="IncludeRecords" class="text-danger"></span>
+</fieldset>

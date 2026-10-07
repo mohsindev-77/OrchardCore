@@ -1,4 +1,5 @@
 using WorkMate.Core;
+using WorkMate.Dimensions.Models;
 
 namespace WorkMate.Dimensions.Services;
 
@@ -208,6 +209,36 @@ public interface IDimensionService
         string sourceRecordId,
         string targetRecordId,
         DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every record of one dimension type, undated, for an export or a bulk read.
+    /// </summary>
+    /// <remarks>
+    /// Undated and including retired records on purpose, which is why it is not the designer's
+    /// read path: an export has to carry the units history resolves through, and a unit retired
+    /// last March is exactly one of those. A screen asks <see cref="GetAsync"/> or the graph
+    /// service, both of which answer as at a date.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every period this record has been called something, earliest first.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetAsync"/> answers "what was it called on this date", which is what a screen
+    /// needs. This answers "what has it ever been called", which is what an export needs: a
+    /// substantive rename is a dated fact about the record, and an export that carried only the
+    /// current name would silently flatten the history on the way into the next tenant — every
+    /// report for an earlier period would then resolve to the new name, which is the exact defect
+    /// the two kinds of rename exist to prevent.
+    ///
+    /// Empty for a record with no history document, which is a record that has never been renamed.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNamePeriod>> GetNameHistoryAsync(
+        string recordId,
         CancellationToken cancellationToken = default);
 
     /// <summary>The record, or null. <paramref name="asAt"/> defaults to today.</summary>

@@ -133,8 +133,10 @@ public sealed class DimensionConfigurationTenantTests
             var definitions = services
                 .GetRequiredService<OrchardCore.ContentManagement.Metadata.IContentDefinitionManager>();
 
+            // Its own code: base.recipe.json now seeds "cost-centre" on every tenant, and this
+            // test is about what CreateAsync generates rather than about that seeded type.
             var created = await types.CreateAsync(
-                "cost-centre",
+                "cost-centre-generated",
                 new BilingualText("Cost centre", "مركز التكلفة"),
                 [
                     new DimensionAttributeDefinition(
@@ -146,7 +148,7 @@ public sealed class DimensionConfigurationTenantTests
 
             created.Succeeded.Should().BeTrue();
 
-            var definition = await definitions.GetTypeDefinitionAsync("CostCentre");
+            var definition = await definitions.GetTypeDefinitionAsync("CostCentreGenerated");
 
             definition.Should().NotBeNull("the content type is named for the code");
 
@@ -162,11 +164,11 @@ public sealed class DimensionConfigurationTenantTests
 
             parts.Should().Contain("DimensionRecordPart");
             parts.Should().Contain("TitlePart");
-            parts.Should().Contain("CostCentre", "the type's own fields go on a part named for it");
+            parts.Should().Contain("CostCentreGenerated", "the type's own fields go on a part named for it");
 
             // The attribute schema's field, on the type's own part and of the field type the
             // kind maps to.
-            var ownPart = definition.Parts.Single(part => part.PartDefinition.Name == "CostCentre");
+            var ownPart = definition.Parts.Single(part => part.PartDefinition.Name == "CostCentreGenerated");
 
             ownPart.PartDefinition.Fields.Should().ContainSingle()
                 .Which.Name.Should().Be("GlPrefix");
@@ -215,21 +217,19 @@ public sealed class DimensionConfigurationTenantTests
 
             division.Succeeded.Should().BeTrue();
 
-            var first = await structures.CreateAsync(
-                "organisation",
-                new BilingualText("Organisation", "الهيكل التنظيمي"),
-                [division.Value!.DimensionTypeId],
-                allowSkipLevel: false,
-                isStrict: true,
-                isPrimaryOrganisation: true);
+            // The base recipe already seeds a primary "organisation" structure on every tenant, so
+            // the clash this test is about is with that one. Building a first claimant here would
+            // only prove that two structures this test created cannot both claim it; a tenant's
+            // real second claimant is competing with the one the platform put there.
+            var alreadyPrimary = await structures.GetPrimaryOrganisationAsync();
 
-            first.Succeeded.Should().BeTrue(
-                string.Join("; ", first.Errors.Select(error => error.Message.Value)));
+            alreadyPrimary.Should().NotBeNull("base.recipe.json seeds the primary organisation axis");
+            alreadyPrimary!.Code.Should().Be("organisation");
 
             var second = await structures.CreateAsync(
                 "location",
                 new BilingualText("Location", "الموقع"),
-                [division.Value.DimensionTypeId],
+                [division.Value!.DimensionTypeId],
                 allowSkipLevel: false,
                 isStrict: true,
                 isPrimaryOrganisation: true);

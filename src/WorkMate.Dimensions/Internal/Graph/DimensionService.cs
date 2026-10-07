@@ -1066,6 +1066,57 @@ internal sealed class DimensionService : IDimensionService
             : DimensionResult.Failed<MergePlan>(retired.Errors);
     }
 
+    public async Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ViewDimensionHistory) &&
+            !await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return [];
+        }
+
+        // Latest only, and undated: one row per record whatever its effective range, which is what
+        // an export needs. Filtering to today here would silently drop every retired unit, and a
+        // retired unit is what every historical report resolves through.
+        var rows = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index =>
+                index.DimensionTypeId == dimensionTypeId && index.Latest)
+            .ListAsync(cancellationToken);
+
+        return
+        [
+            .. rows
+                .Select(row => ToNodeRef(
+                    row.ContentItemId,
+                    row.Code,
+                    new BilingualText(row.NameEn, row.NameAr),
+                    row.DimensionTypeId,
+                    new EffectiveRange(
+                        EffectiveDates.FromColumn(row.EffectiveFrom),
+                        EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive))))
+                .OrderBy(record => record.Code, StringComparer.Ordinal),
+        ];
+    }
+
+    public async Task<IReadOnlyList<DimensionNamePeriod>> GetNameHistoryAsync(
+        string recordId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // No document means no rename has ever happened: the record has had one name since it
+        // opened, and the record itself already carries it. An export reads that as "nothing to
+        // say about this record's history" rather than as a missing period.
+        var document = await LoadNameHistoryAsync(recordId, cancellationToken);
+
+        return document is null
+            ? []
+            : [.. document.Periods.OrderBy(period => period.Range.From)];
+    }
+
     public async Task<DimensionNodeRef?> GetAsync(
         string recordId,
         DateOnly? asAt = null,

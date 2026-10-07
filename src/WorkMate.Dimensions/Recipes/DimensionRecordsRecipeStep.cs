@@ -153,10 +153,20 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
 
             foreach (var record in toCreate)
             {
+                // Created with the name it opened under, not the one it currently holds, when the
+                // row carries a history: the renames below walk it forward from there. Creating it
+                // with the latest name and then renaming to the same thing would leave the earlier
+                // periods carrying a name the record did not have then.
+                var opening = record.NameHistory.Count > 0
+                    ? record.NameHistory.OrderBy(period => period.EffectiveFrom).First()
+                    : null;
+
                 var created = await _dimensionService.CreateAsync(
                     typeIdByRecord[record],
                     record.Code,
-                    new BilingualText(record.NameEn, record.NameAr),
+                    opening is null
+                        ? new BilingualText(record.NameEn, record.NameAr)
+                        : new BilingualText(opening.NameEn, opening.NameAr),
                     new EffectiveRange(record.EffectiveFrom, record.EffectiveTo));
 
                 if (!created.Succeeded)
@@ -198,6 +208,31 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                             moved.Errors.Count > 0
                                 ? moved.Errors.Select(error => error.Message.Value)
                                 : [S["'{0}' could not be placed.", record.Code].Value]);
+
+                        return;
+                    }
+                }
+
+                // The renames, after the placements and in date order. Each is applied as the
+                // substantive rename it was, so the imported record ends up with the same dated
+                // periods rather than with one period carrying the latest name. The first period
+                // is the name the record was created with and is already in place.
+                foreach (var period in record.NameHistory
+                    .OrderBy(period => period.EffectiveFrom)
+                    .Skip(1))
+                {
+                    var renamed = await _dimensionService.RenameAsync(
+                        recordIdByCode[record.Code],
+                        new BilingualText(period.NameEn, period.NameAr),
+                        period.EffectiveFrom);
+
+                    if (!renamed.Succeeded)
+                    {
+                        RecipeStepFailures.Throw(
+                            context,
+                            renamed.Errors.Count > 0
+                                ? renamed.Errors.Select(error => error.Message.Value)
+                                : [S["'{0}' could not be renamed.", record.Code].Value]);
 
                         return;
                     }
@@ -301,8 +336,40 @@ internal sealed class DimensionRecordStepEntry
 
     public DateOnly? EffectiveTo { get; set; }
 
-    /// <summary>Where this record sits, if anywhere. Empty for a deliberately unplaced record.</summary>
+    /// <summary>
+    /// Where this record has sat, over time. Empty for a record that has never been placed.
+    /// </summary>
+    /// <remarks>
+    /// A list of dated decisions, not a single current placement: a record that moved in March and
+    /// again in June has two entries, and one taken off the tree has an entry naming no parent. An
+    /// import applies them in order through the same <c>MoveAsync</c> a person's move goes through,
+    /// so the ranges it ends up with are the ones the engine would have produced.
+    /// </remarks>
     public List<DimensionRecordPlacementStepEntry> Placements { get; set; } = [];
+
+    /// <summary>
+    /// What this record has been called, over time, when that is more than one thing.
+    /// </summary>
+    /// <remarks>
+    /// Only substantive renames leave a history worth carrying — a corrective rename rewrites the
+    /// past on purpose, so it has no earlier period to reproduce. Empty for a record that has never
+    /// been renamed, whose single name is <see cref="NameEn"/>/<see cref="NameAr"/> already.
+    ///
+    /// Without this an export would flatten the history: every report for a period before the
+    /// rename would resolve to the new name in the imported tenant, which is exactly the
+    /// difference between the two kinds of rename that architecture section 5 exists to keep.
+    /// </remarks>
+    public List<DimensionRecordNameStepEntry> NameHistory { get; set; } = [];
+}
+
+/// <summary>One period a record was called something, as a recipe states it.</summary>
+internal sealed class DimensionRecordNameStepEntry
+{
+    public DateOnly EffectiveFrom { get; set; }
+
+    public string NameEn { get; set; } = string.Empty;
+
+    public string NameAr { get; set; } = string.Empty;
 }
 
 internal sealed class DimensionRecordPlacementStepEntry

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using OrchardCore.AuditTrail.Services.Models;
 using OrchardCore.Data;
 using OrchardCore.Data.Migration;
+using OrchardCore.Deployment;
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Display.ContentDisplay;
 using OrchardCore.ContentManagement.Handlers;
@@ -11,6 +12,7 @@ using OrchardCore.Navigation;
 using OrchardCore.Recipes;
 using OrchardCore.ResourceManagement;
 using OrchardCore.Security.Permissions;
+using WorkMate.Dimensions.Deployment;
 using WorkMate.Dimensions.Drivers;
 using WorkMate.Dimensions.Handlers;
 using WorkMate.Dimensions.Indexes;
@@ -99,5 +101,10 @@ public sealed class Startup : StartupBase
         services.AddRecipeExecutionStep<DimensionTypesRecipeStep>();
         services.AddRecipeExecutionStep<StructuresRecipeStep>();
         services.AddRecipeExecutionStep<DimensionRecordsRecipeStep>();
+
+        // The export side of those three steps. ADR-0011: a deployment step rather than a screen
+        // of its own, so an export of the organisation travels in the same plan as everything else
+        // a tenant promotes, and the file it produces is a recipe the importers above already read.
+        services.AddDeployment<DimensionsDeploymentSource, DimensionsDeploymentStep, DimensionsDeploymentStepDriver>();
     }
 }

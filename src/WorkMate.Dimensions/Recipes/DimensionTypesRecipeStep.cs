@@ -87,7 +87,8 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
                 }
 
                 var name = new BilingualText(type.NameEn, type.NameAr);
-                var violations = await _validator.ValidateDimensionTypeAsync(null, type.Code, name, [], batch);
+                var violations = await _validator.ValidateDimensionTypeAsync(
+                    null, type.Code, name, type.ToAttributeSchema(), batch);
 
                 errors.AddRange(violations.Select(error => error.Message.Value));
                 toCreate.Add(type);
@@ -102,7 +103,10 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
             foreach (var type in toCreate)
             {
                 var result = await _dimensionTypeService.CreateAsync(
-                    type.Code, new BilingualText(type.NameEn, type.NameAr), [], type.AllowsSelfNesting);
+                    type.Code,
+                    new BilingualText(type.NameEn, type.NameAr),
+                    type.ToAttributeSchema(),
+                    type.AllowsSelfNesting);
 
                 if (!result.Succeeded)
                 {
@@ -137,8 +141,31 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
             differences.Add($"allowsSelfNesting is {existing.AllowsSelfNesting} in the tenant but {type.AllowsSelfNesting} in the recipe");
         }
 
+        // Compared only when the row states one. ADR-0008 scopes the comparison to the fields a
+        // row actually states, and a row written before the schema could be carried says nothing
+        // about it — reporting "the tenant has three attributes and the recipe has none" for such
+        // a row would refuse a re-run of a recipe that is still perfectly correct.
+        if (type.Attributes.Count > 0)
+        {
+            var wanted = type.ToAttributeSchema();
+            var held = existing.AttributeSchema;
+
+            if (held.Count != wanted.Count ||
+                held.Zip(wanted).Any(pair => !SameAttribute(pair.First, pair.Second)))
+            {
+                differences.Add("the attribute schema differs from the tenant's existing type");
+            }
+        }
+
         return differences;
     }
+
+    private static bool SameAttribute(DimensionAttributeDefinition held, DimensionAttributeDefinition wanted) =>
+        string.Equals(held.Name, wanted.Name, StringComparison.Ordinal) &&
+        held.Kind == wanted.Kind &&
+        held.IsRequired == wanted.IsRequired &&
+        RecipeNameComparison.Same(held.Label.En, wanted.Label.En) &&
+        RecipeNameComparison.Same(held.Label.Ar, wanted.Label.Ar);
 }
 
 internal sealed class DimensionTypesStepModel
@@ -155,4 +182,37 @@ internal sealed class DimensionTypeStepEntry
     public string NameAr { get; set; } = string.Empty;
 
     public bool AllowsSelfNesting { get; set; }
+
+    /// <summary>
+    /// The fields this type's records carry beyond the standard ones, in order.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0008 recorded that a type's schema was built through the admin screen and not through
+    /// the recipe, so a seeded type arrived with no attributes. ADR-0011 needed it: an export that
+    /// cannot carry the schema cannot reproduce the tenant, and a Project with no start date is
+    /// not the Project that was exported. Optional, so every recipe written before this still
+    /// means what it said.
+    /// </remarks>
+    public List<DimensionAttributeStepEntry> Attributes { get; set; } = [];
+
+    public IReadOnlyList<DimensionAttributeDefinition> ToAttributeSchema() =>
+        [.. Attributes.Select(attribute => attribute.ToDefinition())];
+}
+
+/// <summary>One field on a dimension type's attribute schema, as a recipe states it.</summary>
+internal sealed class DimensionAttributeStepEntry
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string LabelEn { get; set; } = string.Empty;
+
+    public string LabelAr { get; set; } = string.Empty;
+
+    /// <summary>Text, BilingualText, Number, Date or Boolean, by name.</summary>
+    public DimensionAttributeKind Kind { get; set; }
+
+    public bool IsRequired { get; set; }
+
+    public DimensionAttributeDefinition ToDefinition() =>
+        new(Name, new BilingualText(LabelEn, LabelAr), Kind, IsRequired);
 }

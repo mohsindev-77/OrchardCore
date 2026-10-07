@@ -99,9 +99,6 @@ msgstr "يجب أن يبدأ رمز الهيكل بحرف، ويمكن أن يح
 msgid "A structure with the code '{0}' already exists in this tenant."
 msgstr "يوجد بالفعل هيكل بالرمز '{0}' في هذا المستأجر."
 
-#: WorkMate.Dimensions.Services.StructureService
-msgid "A structure needs at least one level."
-msgstr "يحتاج الهيكل إلى مستوى واحد على الأقل."
 
 #: WorkMate.Dimensions.Services.StructureService
 msgid "A dimension type may appear only once in a structure's levels."
@@ -1268,3 +1265,43 @@ msgstr "{0} — أُزيلت من الشجرة"
 #: Views/OrganisationDesignerAdmin/CancelMove.cshtml
 msgid "Taking the unit off the tree on {0} is removed from the record."
 msgstr "تُزال من السجل عملية إخراج الوحدة من الشجرة في {0}."
+
+# ---- ADR-0011 and the audit display decision ----
+
+
+#: WorkMate.Dimensions.Deployment.DimensionsDeploymentStepDriver
+msgid "Records reference their dimension type and their structure by code, so exporting them needs both to be included too."
+msgstr "تشير الوحدات إلى نوع البعد والهيكل بالرمز، لذا يتطلب تصديرها تضمين الاثنين معًا."
+
+#: Views/DimensionsDeploymentStep.Fields.Edit.cshtml
+msgid "What to export"
+msgstr "ما الذي سيتم تصديره"
+
+#: Views/DimensionsDeploymentStep.Fields.Edit.cshtml
+msgid "Dimension types, with their attribute schemas"
+msgstr "أنواع الأبعاد، مع مخططات سماتها"
+
+#: Views/DimensionsDeploymentStep.Fields.Edit.cshtml
+msgid "Structures: their types, root types, containment rules and flags"
+msgstr "الهياكل: أنواعها وأنواع القمة وقواعد الاحتواء والإعدادات"
+
+#: Views/DimensionsDeploymentStep.Fields.Edit.cshtml
+msgid "Units, with their full dated placement and name history"
+msgstr "الوحدات، مع كامل تاريخ تعييناتها وأسمائها المؤرَّخ"
+
+#: Views/DimensionsDeploymentStep.Fields.Edit.cshtml
+msgid "Every move on record, including the ones that took a unit off the tree, and every unit that has been retired."
+msgstr "كل نقل مسجَّل، بما في ذلك ما أخرج وحدة من الشجرة، وكل وحدة تم إيقافها."
+
+#: Views/DimensionsDeploymentStep.Fields.Summary.cshtml
+#: Views/DimensionsDeploymentStep.Fields.Thumbnail.cshtml
+msgid "Organisation dimensions"
+msgstr "أبعاد الهيكل التنظيمي"
+
+#: Views/DimensionsDeploymentStep.Fields.Thumbnail.cshtml
+msgid "Exports dimension types, structures and units — with every dated placement — as the recipe steps the importer reads."
+msgstr "يصدّر أنواع الأبعاد والهياكل والوحدات — مع كل تعيين مؤرَّخ — بصيغة خطوات الوصفة التي يقرأها المستورد."
+
+#: WorkMate.Dimensions.Recipes.DimensionRecordsRecipeStep
+msgid "'{0}' could not be renamed."
+msgstr "تعذّر إعادة تسمية '{0}'."

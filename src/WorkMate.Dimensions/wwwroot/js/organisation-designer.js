@@ -664,7 +664,17 @@
         hits.forEach(function (hit) {
             var item = document.createElement("li");
             item.className = "list-group-item list-group-item-action";
-            item.textContent = hit.nameEn + " (" + hit.dimensionTypeNameEn + " — " + hit.code + ")";
+            // The name in the reader's language, with the other in brackets where there is one.
+            // Search matches both halves whatever the UI language — an English name is findable
+            // under Arabic and the other way round — so a row that only ever showed the English
+            // name left an Arabic reader looking at a hit they could not see the match in.
+            var arabic = document.documentElement.getAttribute("dir") === "rtl";
+            var primary = (arabic ? hit.nameAr : hit.nameEn) || hit.nameEn || hit.nameAr || "";
+            var alternate = (arabic ? hit.nameEn : hit.nameAr) || "";
+
+            item.textContent = primary
+                + (alternate && alternate !== primary ? " (" + alternate + ")" : "")
+                + " (" + hit.dimensionTypeNameEn + " — " + hit.code + ")";
             item.addEventListener("click", function () {
                 expandPath(hit);
             });

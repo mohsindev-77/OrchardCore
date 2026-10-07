@@ -10,6 +10,8 @@
     <PackageReference Include="OrchardCore.DisplayManagement" />
     <PackageReference Include="OrchardCore.Data.YesSql" />
     <PackageReference Include="OrchardCore.Recipes.Abstractions" />
+    <!-- The export deployment step: IDeploymentSource, DeploymentStep and the step driver. ADR-0011. -->
+    <PackageReference Include="OrchardCore.Deployment.Abstractions" />
     <PackageReference Include="OrchardCore.Security" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
     <!--

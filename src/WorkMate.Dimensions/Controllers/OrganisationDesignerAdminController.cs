@@ -116,9 +116,19 @@ public sealed class OrganisationDesignerAdminController : Controller
             ExpandRecordId = expand,
         };
 
+        // Whichever was asked for; else the primary organisation axis, but only once somebody has
+        // given it types to draw. base.recipe.json seeds an empty primary "organisation" on every
+        // tenant so the customer names their own levels — and opening the designer on an axis with
+        // nothing on it, while the tenant's actual organisation sits on another, shows an empty
+        // screen and hides the data. A configured axis beats an unconfigured one; among configured
+        // ones the primary still wins.
+        var configured = structures.Where(structure => structure.Levels.Count > 0).ToList();
+
         var selected = (structureId is not null
                 ? structures.FirstOrDefault(structure => structure.StructureId == structureId)
                 : null)
+            ?? configured.FirstOrDefault(structure => structure.IsPrimaryOrganisation)
+            ?? (configured is [var firstConfigured, ..] ? firstConfigured : null)
             ?? structures.FirstOrDefault(structure => structure.IsPrimaryOrganisation)
             ?? (structures is [var first, ..] ? first : null);
 

@@ -727,7 +727,34 @@ move is the one record-level operation this module requires one for.
 ## Recipe steps
 `dimension-types`, `structures` and `dimension-records` are built, in
 `Recipes/`. `employee-assignments` has not landed yet — it arrives with the
-employee assignment admin UI.
+employee record in prompt 4, where its full shape is specified in the prompt
+library so the two are built as one thing.
+
+### Export (ADR-0011)
+
+`Deployment/` holds the other half: a deployment step that appears under
+**Tools → Deployments** and writes those same three steps. It is deliberately
+not an export format of its own — the output is a recipe the importers above
+already read, so there is one description of a tenant's organisation rather than
+two that can drift.
+
+It carries the attribute schema on a type, ADR-0010's explicit `rootTypeCodes`
+and `containment` on a structure, and on a record the **full dated placement
+history** — every move for every structure, including the stage-D2 entries that
+name no parent, and retired units with their end dates — plus a dated
+`nameHistory` where a unit has been substantively renamed. Records are emitted
+**parents first**, by a walk over every parent a record has *ever* had, because
+the importer resolves a parent by code against records it has already created.
+
+`DimensionExportRoundTripTenantTests` is the proof: it seeds a tenant containing
+a rename, a backdated move that splits, a retirement, a move-to-top, a
+self-nested unit and a ragged tree, exports it, imports it into a second fresh
+tenant and compares the closure on dates either side of every change. A
+flattened history produces an identical tree today and a different answer about
+last March, which is exactly what that comparison is for.
+
+**Not exported yet:** a record's own attribute *values* (the type's schema is),
+and employee assignments.
 
 Each step validates every row of its own JSON array against one
 `IDimensionValidator.BeginBatch()` before creating any of them, and throws

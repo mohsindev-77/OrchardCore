@@ -325,6 +325,68 @@ exist. Prompt 5's approval routing — route to the unit head, and the
 vacant-head rule — must read the same source, so that what the chart shows and
 what an approval routes to can never disagree.
 
+**Backlog note, 7 October 2026 — the `employee-assignments` recipe step and its
+export.** Raised while building the dimension export in prompt 3 (ADR-0011).
+Prompt 3 deliberately did **not** build this step: employees do not exist until
+this prompt, so a step that places them would have nothing to place and no way
+to be tested. It has to be built here, with the employee record, and not
+retrofitted — the shape below is what the other three steps already imply, so
+building it separately would mean inventing it twice.
+
+*Shape.* A fourth step named `employee-assignments`, alongside `dimension-types`,
+`structures` and `dimension-records` in `WorkMate.Dimensions/Recipes/`, applied
+**after** all three: an assignment names an employee, a structure and a record,
+and every one of those must already exist.
+
+```json
+{
+  "name": "employee-assignments",
+  "assignments": [
+    {
+      "employeeCode": "emp-00412",
+      "structureCode": "demo-org",
+      "recordCode": "demo-dept-retail",
+      "effectiveFrom": "2026-01-01",
+      "effectiveTo": null,
+      "allocationPercent": 60,
+      "isPrimary": true
+    }
+  ]
+}
+```
+
+*References by code, never by id* — the rule every other step follows, and the
+reason a recipe is portable at all. `employeeCode` resolves against whatever the
+employee record's natural key turns out to be; if it is not a code, this step
+needs one anyway, because a generated content item id in a recipe makes the file
+tenant-specific. Decide that **when the employee record is designed**, not after.
+
+*Validation*, all of it before anything is written, in one
+`IDimensionValidator.BeginBatch()` the way the other three steps do:
+- the employee, structure and record all resolve, each reported by the code that
+  failed to resolve rather than as a generic failure;
+- the record is actually on that structure on that date;
+- `allocationPercent` for one employee on one structure totals 100 on every date
+  the batch touches — the existing rule from architecture section 6, which a
+  batch can break across rows that are each individually fine;
+- exactly one primary assignment per employee per date;
+- effective ranges for one employee on one structure do not overlap.
+
+*Re-run safety, per ADR-0008*: an assignment row naming an employee/structure/
+record/effective-from that already exists is compared field by field — identical
+is skipped, different fails the step naming what differs. The natural key for
+that comparison is the four together, not a generated id.
+
+*Export, per ADR-0011*: `DimensionsDeploymentStep` gains a fourth switch,
+`IncludeAssignments`, and `DimensionsDeploymentSource` a fourth step emitted last.
+It must carry the **full dated history** — every assignment row with its own
+range, not only the one in force today — for the same reason the placement
+history is carried: an export that flattens it answers "where did this person sit
+last March" differently in the imported tenant. The round-trip test in
+`DimensionExportRoundTripTenantTests` extends to cover it: seed a mid-month
+transfer and a split allocation, export, import, and compare
+`IEmployeeAssignmentService`'s answers on dates either side of each change.
+
 ```
 # Task: WorkMate.Records — the employee record and the form designer
 

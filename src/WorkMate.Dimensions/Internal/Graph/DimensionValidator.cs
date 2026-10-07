@@ -183,13 +183,14 @@ internal sealed class DimensionValidator : IDimensionValidator
     {
         var errors = new List<DimensionError>();
 
+        // An axis with no types yet is a legitimate state, not an error. base.recipe.json gives
+        // every new tenant an empty "Organisation" structure precisely so the customer names their
+        // own levels rather than deleting somebody's guess at them, and the designer draws it
+        // correctly: the structure card, with nothing under it and an Add unit menu that offers
+        // nothing until the Structures editor has been used. The same argument as an unplaced
+        // record — "not configured yet" and "wrong" are different facts.
         if (levelDimensionTypeIds.Count == 0)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.StructureLevels,
-                subject,
-                S["A structure needs at least one level."]));
-
             return errors;
         }
 

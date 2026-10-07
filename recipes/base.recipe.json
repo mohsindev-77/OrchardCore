@@ -150,14 +150,52 @@
     },
 
     {
-      "$comment": "Step 4 of 6. Register the system dimension types and the primary Organisation structure.",
-      "$stub": { "module": "WorkMate.Dimensions", "prompt": 2, "step": "dimension-types" },
-      "name": "dimension-types"
+      "$comment": [
+        "Step 4 of 6. The system dimension types every tenant starts with.",
+        "CostCentre only. It is the one kind of unit the platform itself refers to — payroll, cost",
+        "allocation and the GL reference on every record all mean the same thing by it — so a tenant",
+        "that has not defined it is a tenant those features cannot describe. Division, Department and",
+        "the rest are deliberately absent: what a customer calls their levels is theirs to decide, and",
+        "a base recipe that guessed would leave every tenant deleting three types before starting.",
+        "Re-running is safe per ADR-0008: an identical row is skipped, a divergent one fails naming",
+        "the difference rather than overwriting what the customer has since changed."
+      ],
+      "name": "dimension-types",
+      "types": [
+        {
+          "code": "cost-centre",
+          "nameEn": "Cost centre",
+          "nameAr": "مركز التكلفة",
+          "allowsSelfNesting": true,
+          "attributes": []
+        }
+      ]
     },
     {
-      "$comment": "Step 4 of 6, continued.",
-      "$stub": { "module": "WorkMate.Dimensions", "prompt": 2, "step": "structures" },
-      "name": "structures"
+      "$comment": [
+        "Step 4 of 6, continued. The primary organisation axis, deliberately empty.",
+        "No levels, no root types and no containment: every new tenant gets an organisation chart to",
+        "fill in, not one somebody else guessed at. The designer renders an empty structure correctly",
+        "— the structure card with nothing under it — and the Structures editor is where the customer",
+        "names their own levels and ticks what may sit under what.",
+        "isPrimaryOrganisation makes this the default scope for approvals and data visibility, which",
+        "is a decision about which axis is authoritative rather than about its shape, so it is safe to",
+        "take here. A Cost structure is NOT created: see the module README for why that is a customer",
+        "decision rather than a platform one."
+      ],
+      "name": "structures",
+      "structures": [
+        {
+          "code": "organisation",
+          "nameEn": "Organisation",
+          "nameAr": "الهيكل التنظيمي",
+          "levelTypeCodes": [],
+          "rootTypeCodes": [],
+          "containment": {},
+          "isStrict": true,
+          "isPrimaryOrganisation": true
+        }
+      ]
     },
 
     {

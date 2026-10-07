@@ -198,7 +198,9 @@ public sealed class BaseRecipeTests
     public void EveryStepIsEitherRealOrExplicitlyMarkedAsAStub()
     {
         // A step that does nothing and does not say so is the one that gets forgotten.
-        string[] implemented = ["Feature", "themes", "Roles", "Settings"];
+        // dimension-types and structures became real in prompt 3: the base recipe now seeds the
+        // CostCentre type and an empty primary Organisation structure.
+        string[] implemented = ["Feature", "themes", "Roles", "Settings", "dimension-types", "structures"];
 
         foreach (var step in Steps)
         {
