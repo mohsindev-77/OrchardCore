@@ -66,15 +66,13 @@
         var li = fragment.querySelector(".designer-node");
 
         li.setAttribute("data-record-id", node.recordId);
-        li.querySelector(".designer-card-name").textContent = node.nameEn;
+        // One name, the English one, matching what the server renders on a card. The Arabic half
+        // is still in the payload — the search results list uses it to show why a hit matched —
+        // it just has no line of its own on a card.
+        var name = li.querySelector(".designer-card-name");
 
-        // Hidden when there is none, the same way the server renders it: Arabic is optional, and
-        // an empty line is a gap on the card rather than a name.
-        var arabic = li.querySelector(".designer-card-name-ar");
-
-        arabic.textContent = node.nameAr || "";
-        arabic.title = node.nameAr || "";
-        arabic.hidden = !node.nameAr;
+        name.textContent = node.nameEn;
+        name.title = node.nameEn;
         li.querySelector(".designer-card-type").textContent = node.dimensionTypeNameEn;
         li.querySelector(".designer-card-code").textContent = node.code;
 
@@ -401,7 +399,13 @@
         var available = viewport.clientWidth - 16;
         var needed = canvas.scrollWidth;
 
-        setZoom(needed > available && needed > 0 ? Math.max(0.3, available / needed) : 1);
+        // A much lower floor than the zoom buttons', and deliberately. Their floor stops someone
+        // stepping down into a chart nobody can read; this one is the answer to "show me the whole
+        // thing", and a fit that stops at 0.3 and leaves a branch off the screen has answered a
+        // different question. A fully expanded fifteen-unit tree in a narrow panel needs about
+        // 0.28, so the old floor cut the leftmost branch off at exactly the width the control
+        // exists for.
+        setZoom(needed > available && needed > 0 ? Math.max(0.1, available / needed) : 1);
     }
 
     if (zoomControls) {
@@ -421,7 +425,9 @@
             } else if (action === "in") {
                 setZoom(Math.min(2, currentZoom() * 1.2));
             } else {
-                setZoom(Math.max(0.3, currentZoom() / 1.2));
+                // Never upward. Fit to screen is allowed below this floor, and a zoom-out button
+                // that zooms a fitted chart back in is a button doing the opposite of its label.
+                setZoom(Math.min(currentZoom(), Math.max(0.3, currentZoom() / 1.2)));
             }
         });
     }

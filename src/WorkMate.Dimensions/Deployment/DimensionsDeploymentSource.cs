@@ -248,6 +248,7 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
         }
 
         var history = await _records.GetNameHistoryAsync(record.RecordId);
+        var attributes = await _records.GetAttributeValuesAsync(record.RecordId);
 
         var entry = new JsonObject
         {
@@ -258,12 +259,45 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
             ["nameEn"] = record.NameEn,
             ["nameAr"] = record.NameAr,
             ["effectiveFrom"] = Iso(record.EffectiveRange.From),
+            // Stated even when it is zero. An import assigns an unstated sort order from its own
+            // tenant's highest, which is the right default for a hand-written recipe and the wrong
+            // one here: an export reproduces a tenant, and sibling order is part of what it is.
+            ["sortOrder"] = record.SortOrder,
             ["placements"] = placements,
         };
 
         if (record.EffectiveRange.To is { } retiredOn)
         {
             entry["effectiveTo"] = Iso(retiredOn);
+        }
+
+        // The record's own custom fields. Undated, because they are: an attribute is a field on
+        // the record's content part with no effective range of its own, unlike its name, its
+        // placement and its existence. Omitted entirely when the record has none, so a type with
+        // no schema produces no noise.
+        if (attributes.Count > 0)
+        {
+            entry["attributes"] = new JsonArray(
+            [
+                .. attributes.Select(attribute =>
+                {
+                    var value = new JsonObject
+                    {
+                        ["name"] = attribute.Name,
+                        ["value"] = attribute.Value,
+                    };
+
+                    // Only for a bilingual attribute, which is the only kind that has one. An
+                    // empty valueAr on a Text attribute would read as "this has an Arabic half
+                    // and it is blank", which is a different claim from "there is no such half".
+                    if (!string.IsNullOrEmpty(attribute.ValueAr))
+                    {
+                        value["valueAr"] = attribute.ValueAr;
+                    }
+
+                    return (JsonNode)value;
+                }),
+            ]);
         }
 
         // Only when there is more than one period. One period is the name the record has always

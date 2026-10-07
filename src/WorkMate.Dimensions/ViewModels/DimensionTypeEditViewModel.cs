@@ -39,6 +39,18 @@ public sealed class DimensionTypeEditViewModel
     /// <inheritdoc cref="NameEn"/>
     public string? NameAr { get; set; }
 
+    /// <summary>
+    /// The type's historical self-nesting flag, carried so that saving this form does not change
+    /// it. Never bound and never shown.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0010's addendum took the setting off this screen: whether a Department may sit under a
+    /// Department is a fact about one organisation chart and is a tick on that structure's grid.
+    /// The stored flag is still load-bearing for one thing — a <c>structures</c> recipe row written
+    /// as a plain chain derives its map from it — so a save here must leave it exactly as it found
+    /// it rather than posting a cleared checkbox over it.
+    /// </remarks>
+    [BindNever]
     public bool AllowsSelfNesting { get; set; }
 
     [BindNever]

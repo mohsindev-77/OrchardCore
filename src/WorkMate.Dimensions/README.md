@@ -9,7 +9,7 @@ contracted in section 4 of `/docs/technical-specification.md`.
 ### Configuration layer — built
 - **`DimensionTypeDocument`** — a kind of unit (Business Unit, Department,
   Cost Centre, anything a customer invents): code, bilingual name,
-  system-defined flag, self-nesting rule, attribute schema, and the name of the
+  system-defined flag, attribute schema, and the name of the
   content type generated for it. Indexed by `DimensionTypeIndex`.
 - **`StructureDocument`** — a named axis. `Levels` is its vocabulary in reading
   order; `RootDimensionTypeIds` and `Containment` are its rules, per ADR-0010;
@@ -124,9 +124,9 @@ be restored exactly. A move with nothing before it (the record's first-ever
 placement on that axis) restores to no parent at all: a root, exactly as it
 was. The restored placement is checked against **today's** rules through
 `IDimensionValidator.ValidatePlacementAsync`, not the rules as they stood on
-the original date, because a dimension type's or a structure's configuration
-carries no history of its own past state — the type may have stopped allowing
-self-nesting since, or the structure's levels may have changed. A blocking
+the original date, because a structure's configuration carries no history of its
+own past state — it may have unticked that pairing since, or its levels may have
+changed. A blocking
 violation refuses the cancellation and leaves the timeline untouched.
 `IDimensionService.CancelMoveAsync` requires a reason and records it, with the
 acting user, against `MoveCancelled` in the audit trail — this operation is
@@ -142,7 +142,7 @@ write.
 
 Every rule in architecture section 6 is now enforced. Five were not enforced
 anywhere before this session: **record code uniqueness** (including against
-retired records), **containment**, **self-nesting**, and the advisory **parent
+retired records), **containment** (the diagonal included), and the advisory **parent
 not yet effective** — advisory because pre-building next year's structure is
 legitimate and refusing it would make the engine unusable for a case it was
 designed for.
@@ -166,18 +166,35 @@ on the one kind of axis that flag exists for the picker and the validator
 disagreed. `DimensionContainmentTenantTests` asserts they agree over every
 ordered pair of a structure's types, strict and non-strict.
 
-Three things interlock:
+Two things interlock:
 
 | | |
 | --- | --- |
 | `Levels` | Vocabulary and reading order. Gives the editor's grid its rows and columns and the pickers their order. Carries no rule. |
 | `IsStrict` | Whether an undeclared pairing is refused (`ParentTypeNotPermitted`) or merely reported (`ParentTypeNotDeclared`, which is advisory). |
-| `AllowsSelfNesting` on the type | A **veto**, not a grant. `X → X` needs the type's flag *and* the structure's pair, which is what finally lets Section nest inside Section on the org chart but not on the cost structure. |
 
-`DimensionRule.LevelSkipping` is retained in the enum and no longer emitted: a
-skipped level is now simply a pairing the structure does not declare. Audit
-entries written before the change name it, and a persisted enum member is a
-contract.
+**Self-nesting is a cell of the grid like any other** (ADR-0010 addendum). `X → X`
+on a structure is the whole of it: tick it and that kind of unit nests inside
+itself on that structure, untick it and it does not, and the same type can do
+both on two different axes. The dimension type used to hold a veto no structure
+could grant past, which greyed out the diagonal on the one screen whose job is to
+answer that question and sent the reader looking for a checkbox on a screen about
+something else. *"May a Department contain a Department"* is an axis-specific
+fact for the same reason *"may a Division contain a Department"* is.
+
+`DimensionTypeDocument.AllowsSelfNesting` is still stored and still accepted by
+the `dimension-types` recipe step, but nothing reads it when deciding a
+placement and no screen sets it. It keeps exactly one job: a `structures` row
+written as a plain chain (`levelTypeCodes` + `allowSkipLevel`) has nothing else
+to derive its diagonal from, so dropping the property would leave an old recipe
+applying cleanly while quietly meaning something narrower. The dimension type
+editor carries the stored value through a save unchanged rather than posting a
+cleared checkbox over it.
+
+`DimensionRule.LevelSkipping` and `DimensionRule.SelfNesting` are retained in the
+enum and no longer emitted: a skipped level and an undeclared diagonal are both
+simply pairings the structure does not declare. Audit entries written before
+those changes name them, and a persisted enum member is a contract.
 
 Having no parent is **not** constrained by containment. A record with no parent
 is either a root of the chart or a unit in the unplaced panel, and
@@ -186,11 +203,16 @@ being parentless, because moving a unit off the tree is a supported operation.
 
 `Migrations.UpdateFrom4Async` derives the map for every existing structure
 through `StructureContainmentDerivation.FromChain`: adjacent pairs always, the
-transitive pairs only where skipping was on, and a self-pair per self-nesting
-type. That is exactly the set the old arithmetic permitted, and
-`DimensionsMigrationUpgradeTenantTests` proves it pairwise rather than by
-inspection — for every ordered pair of level types, the derived map's answer
-equals the v4 arithmetic's answer, for both values of the flag.
+transitive pairs only where skipping was on, and a self-pair for every type whose
+old `AllowsSelfNesting` was set. That is exactly the set the old arithmetic
+permitted, and `DimensionsMigrationUpgradeTenantTests` proves it pairwise rather
+than by inspection — for every ordered pair of level types, the derived map's
+answer equals the v4 arithmetic's answer, for both values of the flag.
+
+That derivation is also why the ADR-0010 addendum changed no tenant's permitted
+placements. The migration had already written the `X → X` pairs the type flag
+used to veto past, so removing the veto leaves the same set: the upgrade test's
+"after" reading now consults the map alone and still matches v4 pairwise.
 
 **`BeginBatch()` is what makes an import correct.** Two rows of one file
 sharing a code are each individually fine and together are not, and nothing in
@@ -560,6 +582,49 @@ level and nothing is hidden either way. An earlier version gave every card one
 fixed height and an ellipsis to enforce it, which lined the rows up beautifully
 and turned "WorkMate Demo Organisation" into "WorkMate De…".
 
+**A card shows one name, and it is the English one, in every UI language.** The
+Arabic name is stored, edited on *Add unit* and *Rename*, searchable in either
+language and used in the sentences on the action screens — it simply has no line
+of its own on a card. A chart is a shape before it is a sentence: a second line
+doubles every card's height and halves how much of the tree fits on screen, and
+it buys a reader of either language nothing they cannot get from the card they
+are already looking at. This is a decision about the chart, not about the data.
+The chart still mirrors under `dir="rtl"`.
+
+**Nothing renders outside a card.** A code that does not fit wraps at its
+hyphens at a slightly smaller size, rather than being kept on one line and
+printed out through the card's edge over whatever is beside it — which is what
+`white-space: nowrap` did to `zenith-dept-mechanical`. The one deliberate
+exception is the action menu, which is positioned out of the flow precisely so
+that opening it cannot change a card's height. `DesignerCardBrowserTests` walks
+every element of every card on the two fully expanded demo companies and fails on
+any rectangle outside its card's.
+
+**A chart wider than its viewport scrolls to both edges.** The canvas used to
+centre itself with `margin-inline: auto`, which works while the tree fits and
+silently breaks when it does not: an auto margin on an overflowing box puts half
+the overflow off the *start* edge, where there is no scroll range to reach it.
+The leftmost branch read "…ate" and no amount of panning brought it back. The
+viewport centres it instead, with `justify-content: safe center` — centre while
+it fits, align to the start once it does not. *Fit to screen* has a much lower
+zoom floor than the zoom-out button for the same reason: the button's floor stops
+someone stepping down into an unreadable chart, while fit is the answer to "show
+me the whole thing" and a fit that leaves a branch off screen has answered a
+different question.
+
+**Siblings appear in sort order, then by English name.** Every record is given a
+sort order when it is created — one past the highest in the tenant — so units
+come out in the order they were created, which for an import is the order the
+recipe lists them in. Nothing used to set it, so every record sat at zero, the
+name was the only clause that ever applied and every tree came out alphabetical:
+Zenith's recipe says *Engineering, Projects, Corporate* and the chart said
+*Corporate, Engineering, Projects*. A recipe may state `sortOrder`
+explicitly, and an export always does. Both views honour it, because both read
+`GetRootsAsync` and `GetChildrenAsync`. Existing tenants are untouched: records
+already written sit at zero and keep the alphabetical order they have today,
+which is why this is not a migration — there is no correct order to invent for
+records whose creation order was never recorded.
+
 **The whole card toggles, not only the control on it.** Reaching for the unit's
 name is what people do first, and a card that ignores it reads as a broken
 screen. The control stays because it is what is reachable from the keyboard and
@@ -753,8 +818,37 @@ tenant and compares the closure on dates either side of every change. A
 flattened history produces an identical tree today and a different answer about
 last March, which is exactly what that comparison is for.
 
-**Not exported yet:** a record's own attribute *values* (the type's schema is),
-and employee assignments.
+It also carries a record's own **attribute values** — undated, because they are:
+an attribute is a field on the record's content part with no effective range,
+unlike its name, its placement and its existence — and its **`sortOrder`**, which
+is what sibling order on the chart is made of. That one is stated even when it is
+zero: an import assigns an unstated sort order from its own tenant's highest,
+which is the right default for a hand-written recipe and the wrong one for an
+export, where the order a tenant is in is a fact to reproduce rather than an
+intent to express.
+
+**Not exported yet:** employee assignments, which arrive with the employee
+record in prompt 4.
+
+### The demo recipes
+
+`organisation-designer-demo` is the small three-level example the designer tests
+run against. Two worked company examples sit beside it:
+
+- **`organisation-designer-zenith`** — two kinds of unit at one level. Under a
+  Division sits either a Department or a Project; a Project contains Teams.
+  Project carries a real attribute schema and the records carry values for it.
+- **`organisation-designer-crescent`** — a ragged tree. One Division holds
+  Departments two levels deep while its sibling holds Regions, and Departments
+  appear again four levels down under a Branch. Three branches are leaves.
+
+Every code in each is prefixed, types included, so the three coexist on one
+tenant in any order and none can become another's by sharing a code. Both state
+`rootTypeCodes` + `containment` rather than `allowSkipLevel` — the shapes they
+exist to demonstrate are the ones a chain cannot express.
+`DemoCompanyRecipesTenantTests` asserts each tree parent by parent, both unit
+counts, a clean re-run, and that the placements their containment forbids are
+actually refused.
 
 Each step validates every row of its own JSON array against one
 `IDimensionValidator.BeginBatch()` before creating any of them, and throws
@@ -768,7 +862,9 @@ codes it may contain). Stating both is **refused** naming the conflict rather
 than merged: they are two descriptions of one thing, and picking one silently is
 how a recipe comes to do something its author cannot read off it.
 `dimension-records` resolves its type and structure the same way,
-and resolves a placement's parent by code too, once the record it names has
+carries each record's attribute values and, optionally, an explicit `sortOrder`
+— absent means the order the file lists the records in, which is what the step
+creates them in — and resolves a placement's parent by code too, once the record it names has
 actually been created — which is why a recipe must list a parent before its
 children, the same ordering constraint the record layer already has between
 types, structures and records themselves. See the remarks on

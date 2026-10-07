@@ -107,6 +107,14 @@ public sealed class DesignerMenuDismissalBrowserTests
     }
 
     /// <summary>Opening a second menu closes the first: never two open at once.</summary>
+    /// <remarks>
+    /// The second menu is opened from the keyboard, which is a path a reader of this screen
+    /// genuinely uses and the only one that can prove this in the list view. A menu is a dropdown:
+    /// it overlays what is beneath it, and in the list the row beneath it is the next unit, whose
+    /// ⋯ control is therefore under the open menu and not clickable while it is open. That is what
+    /// a dropdown is rather than a defect — a person sees the open menu they would be clicking
+    /// into. The pointer path into a menu is covered by every other test here.
+    /// </remarks>
     [Theory]
     [InlineData("Chart")]
     [InlineData("List")]
@@ -120,7 +128,7 @@ public sealed class DesignerMenuDismissalBrowserTests
         await OpenMenuAsync(page, Division);
         await Assertions.Expect(page.Locator(".designer-actions[open]")).ToHaveCountAsync(1);
 
-        await OpenMenuAsync(page, Other);
+        await OpenMenuFromTheKeyboardAsync(page, Other);
 
         await Assertions.Expect(page.Locator(".designer-actions[open]")).ToHaveCountAsync(1);
         await Assertions.Expect(Node(page, Other).Locator(".designer-actions[open]")).ToHaveCountAsync(1);
@@ -202,6 +210,23 @@ public sealed class DesignerMenuDismissalBrowserTests
         var menu = Node(page, nameEn).Locator(".designer-actions").First;
 
         await menu.Locator("summary").ClickAsync();
+        await Assertions.Expect(menu).ToHaveAttributeAsync(
+            "open", new System.Text.RegularExpressions.Regex(".*"));
+    }
+
+    /// <summary>
+    /// Opens a card's menu the way the keyboard does: focus the summary, press Enter. No pointer,
+    /// and therefore nothing the open menu beside it can get in front of.
+    /// </summary>
+    private static async Task OpenMenuFromTheKeyboardAsync(IPage page, string nameEn)
+    {
+        await RevealAsync(page, nameEn);
+
+        var menu = Node(page, nameEn).Locator(".designer-actions").First;
+
+        await menu.Locator("summary").FocusAsync();
+        await page.Keyboard.PressAsync("Enter");
+
         await Assertions.Expect(menu).ToHaveAttributeAsync(
             "open", new System.Text.RegularExpressions.Regex(".*"));
     }

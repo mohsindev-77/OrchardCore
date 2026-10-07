@@ -448,7 +448,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             return errors;
         }
 
-        errors.AddRange(await ValidateContainmentAsync(structure, child, parent, cancellationToken));
+        errors.AddRange(ValidateContainment(structure, child, parent));
 
         // Not effective splits into two cases that look alike and are not. A parent that has not
         // started yet is usually a customer pre-building next year's structure, which is legitimate
@@ -486,36 +486,22 @@ internal sealed class DimensionValidator : IDimensionValidator
     /// level skipping, self-nesting — now that ADR-0010 has made the permitted pairings explicit.
     /// The decision itself is <see cref="ContainmentRules.Decide"/>, which the pickers call too;
     /// everything here is turning its answer into a sentence.
+    ///
+    /// The dimension type is no longer consulted. It used to hold a veto over nesting inside
+    /// itself that no axis could grant past, which meant the answer to "may this sit here" lived in
+    /// two places and the screen that asks it could only offer half of it. ADR-0010's addendum put
+    /// the diagonal in the same map as every other pairing.
     /// </remarks>
-    private async Task<IReadOnlyList<DimensionError>> ValidateContainmentAsync(
+    private IReadOnlyList<DimensionError> ValidateContainment(
         StructureDocument structure,
         DimensionNodeRef child,
-        DimensionNodeRef parent,
-        CancellationToken cancellationToken)
+        DimensionNodeRef parent)
     {
-        // Undated: the lookup never filters by retirement, so there is no "as of which date"
-        // workaround needed here the way there was through IDimensionTypeService.
-        var childType = await _typeLookup.GetAsync(child.DimensionTypeId, cancellationToken);
-
-        var outcome = ContainmentRules.Decide(
-            structure, parent.DimensionTypeId, child.DimensionTypeId, childType?.AllowsSelfNesting == true);
+        var outcome = ContainmentRules.Decide(structure, parent.DimensionTypeId, child.DimensionTypeId);
 
         if (outcome == ContainmentRules.Outcome.Permitted)
         {
             return [];
-        }
-
-        if (outcome == ContainmentRules.Outcome.SelfNestingVetoedByType)
-        {
-            return
-            [
-                new DimensionError(
-                    DimensionRule.SelfNesting,
-                    child.Code,
-                    S["'{0}' and '{1}' are the same kind of unit, and that kind does not allow nesting inside itself.",
-                        child.Code,
-                        parent.Code]),
-            ];
         }
 
         // Undeclared. On a strict axis that is a refusal; on one still being shaped it is worth

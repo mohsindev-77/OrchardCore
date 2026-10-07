@@ -211,27 +211,41 @@ public sealed class DimensionValidatorTenantTests
             (await graph.MoveAsync(structure, section, division, Opened)).Succeeded.Should().BeTrue();
         });
 
+    /// <summary>
+    /// Self-nesting is refused unless the structure's map declares it — and a map derived from a
+    /// chain declares exactly what it always did.
+    /// </summary>
+    /// <remarks>
+    /// This axis is described as a chain, which is how every structure written before ADR-0010 is
+    /// described and how the v5 migration read them. The derivation still consults the type's
+    /// <c>AllowsSelfNesting</c>, which is the one job that flag still has: translating a legacy
+    /// description into a map. So Section, whose flag is on, still ends up with Section → Section
+    /// ticked and still nests; Department, whose flag is off, still ends up without the pair and
+    /// still does not. Identical permitted placements, decided in one place instead of two — which
+    /// is what ADR-0010's addendum had to leave untouched.
+    /// </remarks>
     [Fact]
-    public async Task SelfNestingIsRefusedUnlessTheTypeDeclaresIt() =>
+    public async Task SelfNestingIsRefusedUnlessTheStructureDeclaresIt() =>
         await _tenant.InTenantAsSystemAsync(async services =>
         {
             var (structure, types) = await StrictAxisAsync(services, "val-selfnest", allowSkipLevel: true);
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
-            // The scenario's department does not declare self-nesting; its section does.
             var outer = await DimensionGraphScenario.RecordAsync(services, types.Department, "vsn-outer", Opened);
             var inner = await DimensionGraphScenario.RecordAsync(services, types.Department, "vsn-inner", Opened);
 
             var refused = await graph.MoveAsync(structure, inner, outer, Opened);
 
             refused.Succeeded.Should().BeFalse();
-            refused.Errors.Should().Contain(error => error.Rule == DimensionRule.SelfNesting);
+            refused.Errors.Should().Contain(
+                error => error.Rule == DimensionRule.ParentTypeNotPermitted,
+                "an undeclared pairing, reported as one — the type holds no separate veto to report");
 
             var outerSection = await DimensionGraphScenario.RecordAsync(services, types.Section, "vsn-so", Opened);
             var innerSection = await DimensionGraphScenario.RecordAsync(services, types.Section, "vsn-si", Opened);
 
             (await graph.MoveAsync(structure, innerSection, outerSection, Opened)).Succeeded.Should().BeTrue(
-                "a section declares self-nesting, so a section inside a section is allowed");
+                "the chain derivation ticked Section inside Section, as it always has");
         });
 
     [Fact]

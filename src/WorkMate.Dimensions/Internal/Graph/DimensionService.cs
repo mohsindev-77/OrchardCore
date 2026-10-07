@@ -74,6 +74,7 @@ internal sealed class DimensionService : IDimensionService
         BilingualText name,
         EffectiveRange effectiveRange,
         DimensionValidationBatch? batch = null,
+        int? sortOrder = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -111,6 +112,7 @@ internal sealed class DimensionService : IDimensionService
         }
 
         var item = await _contentManager.NewAsync(type.ContentTypeName);
+        var order = sortOrder ?? await NextSortOrderAsync(cancellationToken);
 
         item.Alter<DimensionRecordPart>(part =>
         {
@@ -118,6 +120,7 @@ internal sealed class DimensionService : IDimensionService
             part.NameEn = name.En;
             part.NameAr = name.Ar;
             part.DimensionTypeId = dimensionTypeId;
+            part.SortOrder = order;
             part.EffectiveFrom = effectiveRange.From;
             part.EffectiveTo = effectiveRange.To;
         });
@@ -148,7 +151,40 @@ internal sealed class DimensionService : IDimensionService
         await _graph.EnsureSelfPairsAsync(item.ContentItemId, dimensionTypeId, effectiveRange, cancellationToken);
         await StartNameHistoryAsync(item.ContentItemId, name, effectiveRange.From, cancellationToken);
 
-        return DimensionResult.Success(ToNodeRef(item.ContentItemId, code, name, dimensionTypeId, effectiveRange));
+        return DimensionResult.Success(ToNodeRef(item.ContentItemId, code, name, dimensionTypeId, effectiveRange, order));
+    }
+
+    /// <summary>
+    /// The sort order a record gets when its caller does not state one: one past the highest in
+    /// the tenant, so records sort in the order they were created.
+    /// </summary>
+    /// <remarks>
+    /// Siblings are ordered by <c>SortOrder</c> and then by English name, so leaving every record
+    /// at zero made that second clause the only one that ever applied and every tree came out
+    /// alphabetical. A recipe that lists Engineering, Projects and Corporate in that order means
+    /// that order — it is the order the organisation itself puts them in — and a unit added in
+    /// the designer belongs after the siblings that were already there, not wherever its initial
+    /// falls.
+    ///
+    /// Tenant-wide rather than per-parent, which costs one indexed read instead of a sibling
+    /// query and gives the same answer for the case that matters: a record created later sorts
+    /// after one created earlier, whichever parent each ends up under, including a record moved
+    /// under a parent it was not created beneath. An operator who wants a different order sets
+    /// <c>SortOrder</c> on the record, or a recipe states it, and that wins.
+    ///
+    /// Existing tenants are untouched: every record already written sits at zero and therefore
+    /// stays in the alphabetical order it is in today until something renumbers it. That is why
+    /// this is not a migration — there is no correct order to invent for records whose creation
+    /// order was never recorded.
+    /// </remarks>
+    private async Task<int> NextSortOrderAsync(CancellationToken cancellationToken)
+    {
+        var highest = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index => index.Latest)
+            .OrderByDescending(index => index.SortOrder)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return highest is null ? 0 : highest.SortOrder + 1;
     }
 
     public async Task<DimensionResult<DimensionNodeRef>> AddUnitAsync(
@@ -159,6 +195,7 @@ internal sealed class DimensionService : IDimensionService
         BilingualText name,
         DateOnly effectiveFrom,
         IReadOnlyList<DimensionAttributeValue>? attributes = null,
+        int? sortOrder = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -193,7 +230,7 @@ internal sealed class DimensionService : IDimensionService
             return DimensionResult.Failed<DimensionNodeRef>(errors);
         }
 
-        var created = await CreateAsync(dimensionTypeId, code, name, range, batch: null, cancellationToken);
+        var created = await CreateAsync(dimensionTypeId, code, name, range, batch: null, sortOrder, cancellationToken);
 
         if (!created.Succeeded)
         {
@@ -1066,6 +1103,135 @@ internal sealed class DimensionService : IDimensionService
             : DimensionResult.Failed<MergePlan>(retired.Errors);
     }
 
+    public async Task<IReadOnlyList<DimensionAttributeValue>> GetAttributeValuesAsync(
+        string recordId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var item = await _contentManager.GetAsync(recordId);
+        var part = item?.Get<DimensionRecordPart>(nameof(DimensionRecordPart));
+
+        if (item is null || part is null)
+        {
+            return [];
+        }
+
+        var type = await _dimensionTypeService.GetAsync(part.DimensionTypeId, asAt: null, cancellationToken);
+        var own = type is null ? null : item.Get<ContentPart>(type.ContentTypeName);
+
+        if (type is null || own is null)
+        {
+            return [];
+        }
+
+        var values = new List<DimensionAttributeValue>();
+
+        // Driven by the schema rather than by what happens to be on the item: a field left over
+        // from an attribute that has since been removed from the type is not part of the record's
+        // value any more, and an export that carried it would reintroduce it on import.
+        foreach (var definition in type.AttributeSchema)
+        {
+            if (Read(own, definition) is { } value && !value.IsEmpty)
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
+    }
+
+    public async Task<DimensionResult<DimensionNodeRef>> SetAttributeValuesAsync(
+        string recordId,
+        IReadOnlyList<DimensionAttributeValue> attributes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(attributes);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<DimensionNodeRef>();
+        }
+
+        var item = await _contentManager.GetAsync(recordId);
+        var part = item?.Get<DimensionRecordPart>(nameof(DimensionRecordPart));
+
+        if (item is null || part is null)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(UnknownRecord(recordId));
+        }
+
+        var type = await _dimensionTypeService.GetAsync(part.DimensionTypeId, asAt: null, cancellationToken);
+
+        if (type is null)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(new DimensionError(
+                DimensionRule.UnknownReference,
+                part.DimensionTypeId,
+                S["There is no dimension type with the id '{0}' in this tenant.", part.DimensionTypeId]));
+        }
+
+        // Validated before anything is written, and against the same rules the Add unit form uses:
+        // an attribute the type does not declare, a missing required one, a value that is not of
+        // its declared kind. The same errors, reaching the caller the same way.
+        var errors = ValidateAttributes(type, attributes);
+
+        if (errors.Count > 0)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(errors);
+        }
+
+        await WriteAttributesAsync(recordId, type, attributes, cancellationToken);
+
+        return DimensionResult.Success(ToNodeRef(
+            recordId,
+            part.Code,
+            new BilingualText(part.NameEn, part.NameAr),
+            part.DimensionTypeId,
+            new EffectiveRange(part.EffectiveFrom, part.EffectiveTo),
+            part.SortOrder));
+    }
+
+    /// <summary>
+    /// Reads one attribute back off the record's own part, as the text an export or a form carries.
+    /// </summary>
+    /// <remarks>
+    /// The inverse of <see cref="TryConvert"/>, and it has to stay that way: a value written by one
+    /// and read by the other has to survive the round trip unchanged, which is what makes an export
+    /// faithful. Numbers and dates are written invariantly for the same reason they are parsed
+    /// invariantly — the wire format does not change with the culture of whoever typed it.
+    /// </remarks>
+    private static DimensionAttributeValue? Read(ContentPart own, DimensionAttributeDefinition definition) =>
+        definition.Kind switch
+        {
+            DimensionAttributeKind.BilingualText =>
+                own.Get<BilingualTextField>(definition.Name) is { } bilingual
+                    ? new DimensionAttributeValue(definition.Name, bilingual.En, bilingual.Ar)
+                    : null,
+
+            DimensionAttributeKind.Number =>
+                own.Get<NumericField>(definition.Name)?.Value is { } number
+                    ? new DimensionAttributeValue(
+                        definition.Name, number.ToString(CultureInfo.InvariantCulture))
+                    : null,
+
+            DimensionAttributeKind.Boolean =>
+                own.Get<BooleanField>(definition.Name)?.Value is { } boolean
+                    ? new DimensionAttributeValue(definition.Name, boolean ? "true" : "false")
+                    : null,
+
+            DimensionAttributeKind.Date =>
+                own.Get<DateField>(definition.Name)?.Value is { } date
+                    ? new DimensionAttributeValue(
+                        definition.Name, DateOnly.FromDateTime(date).ToIso())
+                    : null,
+
+            _ => own.Get<TextField>(definition.Name) is { } text
+                ? new DimensionAttributeValue(definition.Name, text.Text)
+                : null,
+        };
+
     public async Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(
         string dimensionTypeId,
         CancellationToken cancellationToken = default)
@@ -1096,7 +1262,8 @@ internal sealed class DimensionService : IDimensionService
                     row.DimensionTypeId,
                     new EffectiveRange(
                         EffectiveDates.FromColumn(row.EffectiveFrom),
-                        EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive))))
+                        EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
+                    row.SortOrder))
                 .OrderBy(record => record.Code, StringComparer.Ordinal),
         ];
     }
@@ -1281,8 +1448,9 @@ internal sealed class DimensionService : IDimensionService
         string code,
         BilingualText name,
         string dimensionTypeId,
-        EffectiveRange range) =>
-        new(recordId, code, name.En, name.Ar, dimensionTypeId, range, IsActive: true, SortOrder: 0);
+        EffectiveRange range,
+        int sortOrder) =>
+        new(recordId, code, name.En, name.Ar, dimensionTypeId, range, IsActive: true, sortOrder);
 
     private DimensionError UnknownRecord(string recordId) => new(
         DimensionRule.UnknownReference,

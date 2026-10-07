@@ -1,0 +1,193 @@
+{
+  "name": "WorkMate.Demo.Zenith",
+  "displayName": "WorkMate demo: Zenith Engineering & Construction",
+  "description": "TEST DATA — a project-based engineering contractor, as a worked example of two kinds of unit at one level. Under a Division sits either a Department or a Project, and a Project contains Teams; nothing else is permitted. Self-contained: every code is prefixed zenith-, so it adds to a tenant without colliding with the other demo recipes and can be applied in any order alongside them.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate", "demo"],
+  "tags": ["workmate", "demo", "test-data"],
+
+  "$notes": [
+    "The shape this exists to demonstrate: Department and Project are siblings under a Division, not one above the other. Before ADR-0010 that was inexpressible — the only way to allow a Project under a Division was to turn on level skipping, which also allowed a Team under one.",
+    "Stated as rootTypeCodes + containment, never allowSkipLevel. The two are different descriptions of the same thing and the structures step refuses a row that gives both.",
+    "Project carries a real attribute schema — start date, end date, cost code, site location — and the records carry values for it. Both halves travel through export and import since ADR-0011.",
+    "Headcounts are deliberately absent: employees do not exist until prompt 4. The figures to seed are recorded in the prompt library's prompt 4 backlog note, alongside the matrix assignment this organisation is the example for."
+  ],
+
+  "steps": [
+    {
+      "name": "dimension-types",
+      "types": [
+        { "code": "zenith-division", "nameEn": "Division", "nameAr": "قطاع", "allowsSelfNesting": false },
+        { "code": "zenith-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
+        {
+          "code": "zenith-project",
+          "nameEn": "Project",
+          "nameAr": "مشروع",
+          "allowsSelfNesting": false,
+          "attributes": [
+            { "name": "StartDate", "labelEn": "Start date", "labelAr": "تاريخ البدء", "kind": "Date", "isRequired": true },
+            { "name": "EndDate", "labelEn": "End date", "labelAr": "تاريخ الانتهاء", "kind": "Date", "isRequired": false },
+            { "name": "CostCode", "labelEn": "Cost code", "labelAr": "رمز التكلفة", "kind": "Text", "isRequired": true },
+            { "name": "SiteLocation", "labelEn": "Site location", "labelAr": "موقع العمل", "kind": "Text", "isRequired": false }
+          ]
+        },
+        { "code": "zenith-team", "nameEn": "Team", "nameAr": "فريق", "allowsSelfNesting": false }
+      ]
+    },
+
+    {
+      "name": "structures",
+      "structures": [
+        {
+          "code": "zenith-org",
+          "nameEn": "Zenith Engineering & Construction",
+          "nameAr": "زينيث للهندسة والإنشاءات",
+          "levelTypeCodes": ["zenith-division", "zenith-department", "zenith-project", "zenith-team"],
+          "rootTypeCodes": ["zenith-division"],
+          "containment": {
+            "zenith-division": ["zenith-department", "zenith-project"],
+            "zenith-project": ["zenith-team"]
+          },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        }
+      ]
+    },
+
+    {
+      "name": "dimension-records",
+      "records": [
+        {
+          "code": "zenith-div-engineering",
+          "typeCode": "zenith-division",
+          "nameEn": "Engineering Division",
+          "nameAr": "قطاع الهندسة",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": null, "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "zenith-div-projects",
+          "typeCode": "zenith-division",
+          "nameEn": "Projects Division",
+          "nameAr": "قطاع المشاريع",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": null, "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "zenith-div-corporate",
+          "typeCode": "zenith-division",
+          "nameEn": "Corporate",
+          "nameAr": "الشؤون المؤسسية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": null, "effectiveFrom": "2024-01-01" }]
+        },
+
+        {
+          "code": "zenith-dept-civil",
+          "typeCode": "zenith-department",
+          "nameEn": "Civil",
+          "nameAr": "الهندسة المدنية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-engineering", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "zenith-dept-electrical",
+          "typeCode": "zenith-department",
+          "nameEn": "Electrical",
+          "nameAr": "الهندسة الكهربائية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-engineering", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "zenith-dept-mechanical",
+          "typeCode": "zenith-department",
+          "nameEn": "Mechanical",
+          "nameAr": "الهندسة الميكانيكية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-engineering", "effectiveFrom": "2024-01-01" }]
+        },
+
+        {
+          "code": "zenith-proj-motorway",
+          "typeCode": "zenith-project",
+          "nameEn": "Motorway Interchange",
+          "nameAr": "تقاطع الطريق السريع",
+          "effectiveFrom": "2024-03-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-projects", "effectiveFrom": "2024-03-01" }],
+          "attributes": [
+            { "name": "StartDate", "value": "2024-03-01" },
+            { "name": "EndDate", "value": "2026-09-30" },
+            { "name": "CostCode", "value": "PRJ-2024-017" },
+            { "name": "SiteLocation", "value": "M4 Interchange, Lahore" }
+          ]
+        },
+        {
+          "code": "zenith-proj-grid",
+          "typeCode": "zenith-project",
+          "nameEn": "Grid Station",
+          "nameAr": "محطة الشبكة الكهربائية",
+          "effectiveFrom": "2024-06-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-projects", "effectiveFrom": "2024-06-01" }],
+          "attributes": [
+            { "name": "StartDate", "value": "2024-06-01" },
+            { "name": "EndDate", "value": "2025-12-15" },
+            { "name": "CostCode", "value": "PRJ-2024-031" },
+            { "name": "SiteLocation", "value": "Sheikhupura Road, Faisalabad" }
+          ]
+        },
+
+        {
+          "code": "zenith-team-site-a",
+          "typeCode": "zenith-team",
+          "nameEn": "Site Team A",
+          "nameAr": "فريق الموقع أ",
+          "effectiveFrom": "2024-03-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-proj-motorway", "effectiveFrom": "2024-03-01" }]
+        },
+        {
+          "code": "zenith-team-site-b",
+          "typeCode": "zenith-team",
+          "nameEn": "Site Team B",
+          "nameAr": "فريق الموقع ب",
+          "effectiveFrom": "2024-03-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-proj-motorway", "effectiveFrom": "2024-03-01" }]
+        },
+        {
+          "code": "zenith-team-electrical-works",
+          "typeCode": "zenith-team",
+          "nameEn": "Electrical Works",
+          "nameAr": "الأعمال الكهربائية",
+          "effectiveFrom": "2024-06-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-proj-grid", "effectiveFrom": "2024-06-01" }]
+        },
+        {
+          "code": "zenith-team-civil-works",
+          "typeCode": "zenith-team",
+          "nameEn": "Civil Works",
+          "nameAr": "الأعمال المدنية",
+          "effectiveFrom": "2024-06-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-proj-grid", "effectiveFrom": "2024-06-01" }]
+        },
+
+        {
+          "code": "zenith-dept-finance",
+          "typeCode": "zenith-department",
+          "nameEn": "Finance",
+          "nameAr": "المالية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-corporate", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "zenith-dept-hr",
+          "typeCode": "zenith-department",
+          "nameEn": "HR",
+          "nameAr": "الموارد البشرية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "zenith-org", "parentCode": "zenith-div-corporate", "effectiveFrom": "2024-01-01" }]
+        }
+      ]
+    }
+  ]
+}

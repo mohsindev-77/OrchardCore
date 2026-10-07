@@ -23,10 +23,11 @@
 
     <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"].Value" required="true" max-length="200" />
 
-    <div class="form-check mb-3">
-        <input asp-for="AllowsSelfNesting" class="form-check-input" />
-        <label asp-for="AllowsSelfNesting" class="form-check-label">@T["Allow a record of this type to sit under another record of the same type"]</label>
-    </div>
+    @* No self-nesting checkbox. Whether a Department may sit under a Department is a fact about
+       one organisation chart, not about the kind of unit, and it is a tick on that structure's
+       grid — see ADR-0010's addendum. The stored flag survives on the document because a recipe
+       written as a plain chain still uses it to derive its map, but nothing here sets it and
+       nothing reads it when deciding a placement. *@
 
     @if (!Model.IsNew)
     {

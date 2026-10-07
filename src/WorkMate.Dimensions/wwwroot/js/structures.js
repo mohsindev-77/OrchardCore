@@ -95,8 +95,8 @@
     }
 
     // The chosen types, in the order the rows are in, with their labels taken from the option that
-    // is selected: the select already carries every label and the self-nesting flag, so the grid
-    // needs no second copy of the type list to go stale against.
+    // is selected: the select already carries every label, so the grid needs no second copy of the
+    // type list to go stale against.
     function vocabulary() {
         var chosen = [];
         var seen = {};
@@ -115,8 +115,7 @@
 
             chosen.push({
                 id: value,
-                label: option ? option.textContent.trim() : value,
-                selfNesting: option ? option.getAttribute("data-self-nesting") === "true" : false
+                label: option ? option.textContent.trim() : value
             });
         });
 
@@ -199,14 +198,13 @@
                 cell.className = "text-center";
                 cell.setAttribute("data-child", child.id);
 
-                // The diagonal where the type itself forbids nesting: disabled rather than
-                // unticked, because no structure can grant past the type's own veto and an offer
-                // the validator would refuse is worse than no offer.
-                var vetoed = parent.id === child.id && !parent.selfNesting;
+                // The diagonal is an ordinary cell: ADR-0010's addendum made the structure's map
+                // the only authority for self-nesting too, so there is nothing here for a setting
+                // on another screen to veto.
                 var value = parent.id + ">" + child.id;
 
                 cell.appendChild(checkbox(
-                    "ContainmentPairs", value, !vetoed && ticked[value] === true, vetoed, parent.label + " > " + child.label));
+                    "ContainmentPairs", value, ticked[value] === true, false, parent.label + " > " + child.label));
 
                 row.appendChild(cell);
             });

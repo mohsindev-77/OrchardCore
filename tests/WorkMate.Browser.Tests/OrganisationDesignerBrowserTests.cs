@@ -257,7 +257,7 @@ public sealed class OrganisationDesignerBrowserTests
                 const clipped = [];
 
                 for (const element of document.querySelectorAll(
-                    '.designer-card-name, .designer-card-name-ar, .designer-card-code')) {
+                    '.designer-card-name, .designer-card-code')) {
                     // A pixel of slack: sub-pixel text metrics round against us otherwise.
                     if (element.scrollWidth > element.clientWidth + 1 ||
                         element.scrollHeight > element.clientHeight + 1) {
@@ -282,10 +282,18 @@ public sealed class OrganisationDesignerBrowserTests
     }
 
     /// <summary>
-    /// The chart under Arabic: the page reads right to left and the cards carry Arabic names.
+    /// The chart under Arabic: the page reads right to left, and the cards still carry the one
+    /// name they carry under English.
     /// </summary>
+    /// <remarks>
+    /// The mirroring is the assertion. The names deliberately are not: a card shows the English
+    /// name in every UI language, so that the chart is one drawing rather than two, and "Sales" on
+    /// an Arabic page is the intended result rather than a missing translation. The Arabic name is
+    /// still stored, still edited on Rename, and still searchable — see
+    /// <c>DimensionSearchTenantTests</c>.
+    /// </remarks>
     [Fact]
-    public async Task UnderArabicTheChartMirrorsAndTheCardsCarryTheArabicNames()
+    public async Task UnderArabicTheChartMirrorsAndTheCardsStillCarryOneEnglishName()
     {
         await using var context = await _tenant.SignedInContextAsync();
         var page = await context.NewPageAsync();
@@ -297,10 +305,8 @@ public sealed class OrganisationDesignerBrowserTests
         var direction = await page.GetAttributeAsync("html", "dir");
         direction.Should().Be("rtl");
 
-        await Assertions.Expect(page.Locator(".designer-node .designer-card-name-ar", new()
-        {
-            HasTextString = "المبيعات",
-        }).First).ToBeVisibleAsync();
+        await Assertions.Expect(Node(page, "Sales")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator(".designer-node .designer-card-name-ar")).ToHaveCountAsync(0);
     }
 
     /// <summary>
@@ -340,10 +346,9 @@ public sealed class OrganisationDesignerBrowserTests
 
         await Assertions.Expect(card).ToBeVisibleAsync();
 
-        // No Arabic line reserving space where a name should be — present in the markup, because
-        // the template this card is cloned from needs it, and hidden because there is nothing in
-        // it — and the English name still on the card for an Arabic reader to read.
-        await Assertions.Expect(card.Locator(".designer-card-name-ar").First).ToBeHiddenAsync();
+        // One name line on the card, carrying the English name: for a unit with no Arabic name
+        // that is the fallback working, and for every other unit it is simply what a card shows.
+        await Assertions.Expect(card.Locator(".designer-card-name")).ToHaveCountAsync(1);
         await Assertions.Expect(card.Locator(".designer-card-name").First).ToHaveTextAsync("Untranslated Division");
     }
 
@@ -395,7 +400,16 @@ public sealed class OrganisationDesignerBrowserTests
     private static async Task<IReadOnlyList<MeasuredCard>> MeasureCardsAsync(IPage page) =>
         await page.EvaluateAsync<MeasuredCard[]>(
             """
-            () => {
+            async () => {
+                // Measured once the layout has settled, not the instant the last request finished.
+                // The script sizes each row from the tallest card in it and re-runs that when the
+                // fonts arrive; a measurement taken between those two is of a chart mid-reflow,
+                // which fails an assertion about a chart nobody is looking at yet. Two frames,
+                // because the first is when the re-run's style change is applied and the second is
+                // when it has been laid out.
+                if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
                 const canvas = document.querySelector('.designer-chart-canvas').getBoundingClientRect();
 
                 return [...document.querySelectorAll('#designer-tree .designer-node')].map(node => {

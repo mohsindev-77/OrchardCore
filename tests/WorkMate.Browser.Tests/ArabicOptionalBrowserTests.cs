@@ -210,8 +210,8 @@ public sealed class ArabicOptionalBrowserTests
         var card = Node(page, "Fallback Division");
 
         await Assertions.Expect(card).ToBeVisibleAsync();
+        await Assertions.Expect(card.Locator(".designer-card-name")).ToHaveCountAsync(1);
         await Assertions.Expect(card.Locator(".designer-card-name").First).ToHaveTextAsync("Fallback Division");
-        await Assertions.Expect(card.Locator(".designer-card-name-ar").First).ToBeHiddenAsync();
 
         // And in a picker: the Move screen's heading and its target list are sentences built from
         // names, which is where an empty half used to leave empty brackets or a bare separator.

@@ -74,6 +74,13 @@ public enum DimensionRule
     Cycle,
 
     /// <summary>The parent and child share a type and that type does not declare self-nesting.</summary>
+    /// <remarks>
+    /// No longer emitted, for the same reason as <see cref="LevelSkipping"/> and by the same ADR's
+    /// addendum: the dimension type's veto over nesting inside itself is gone, so parent and child
+    /// sharing a type is just a pairing the structure declares or does not, reported as
+    /// <see cref="ParentTypeNotPermitted"/> or <see cref="ParentTypeNotDeclared"/>. Kept because
+    /// audit entries written before that change name it, and a persisted enum member is a contract.
+    /// </remarks>
     SelfNesting,
 
     /// <summary>The record is referenced by live data and cannot be deleted; the blockers are listed.</summary>

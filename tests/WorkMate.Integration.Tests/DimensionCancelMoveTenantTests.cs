@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using WorkMate.Core;
+using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using Xunit;
 
@@ -231,7 +232,9 @@ public sealed class DimensionCancelMoveTenantTests
             var graph = services.GetRequiredService<IDimensionGraphService>();
             var records = services.GetRequiredService<IDimensionService>();
 
-            // A type that allows self-nesting today, so a unit of it can sit under another one.
+            // A structure that allows this type inside itself today, so a unit of it can sit under
+            // another one. Since ADR-0010's addendum that is the structure's grid and nothing else,
+            // so this is what the test flips later — the type's own flag does not decide it.
             var flipType = await dimensionTypes.CreateAsync(
                 "cnl-flip", new BilingualText("Flip", "فليب"), [], allowsSelfNesting: true);
 
@@ -243,7 +246,7 @@ public sealed class DimensionCancelMoveTenantTests
                 new BilingualText("cnl-blocked", "cnl-blocked-ar"),
                 [types.Division, types.Department, flipTypeId],
                 allowSkipLevel: true,
-                isStrict: false,
+                isStrict: true,
                 isPrimaryOrganisation: false);
 
             structure.Succeeded.Should().BeTrue();
@@ -259,22 +262,33 @@ public sealed class DimensionCancelMoveTenantTests
             (await graph.MoveAsync(structureId, inner, outer, Opened)).Succeeded.Should().BeTrue();
 
             // The move under test: inner leaves outer for dept directly. Valid when made, because
-            // the type allowed self-nesting throughout — moving onto a different type needs no
-            // such rule anyway.
+            // the structure allowed Flip inside Flip throughout — moving onto a different type
+            // needs no such rule anyway.
             (await graph.MoveAsync(structureId, inner, dept, MoveDay)).Succeeded.Should().BeTrue();
 
-            // The type no longer allows self-nesting, as of today. Nothing about the move above
+            // The structure no longer ticks Flip → Flip, as of today. Nothing about the move above
             // is retroactively wrong, but restoring inner back under outer — the same type —
             // would be, if asked for today.
-            (await dimensionTypes.UpdateAsync(
-                flipTypeId, new BilingualText("Flip", "فليب"), [], allowsSelfNesting: false))
+            (await structures.UpdateAsync(
+                structureId,
+                new BilingualText("cnl-blocked", "cnl-blocked-ar"),
+                [types.Division, types.Department, flipTypeId],
+                allowSkipLevel: true,
+                isStrict: true,
+                isPrimaryOrganisation: false,
+                new StructureShape(
+                    [types.Division],
+                    [
+                        new StructureContainment(types.Division, types.Department),
+                        new StructureContainment(types.Department, flipTypeId),
+                    ])))
                 .Succeeded.Should().BeTrue();
 
             var refused = await records.CancelMoveAsync(
                 structureId, inner, MoveDay, "testing a restoration that breaks a rule today");
 
             refused.Succeeded.Should().BeFalse();
-            refused.Errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.SelfNesting);
+            refused.Errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.ParentTypeNotPermitted);
 
             // Refused means untouched: the timeline the move actually produced still stands.
             (await graph.IsUnderAsync(structureId, inner, dept, MoveDay))

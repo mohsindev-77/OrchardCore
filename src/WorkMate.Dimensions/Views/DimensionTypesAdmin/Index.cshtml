@@ -20,7 +20,6 @@ else
             <tr>
                 <th>@T["Code"]</th>
                 <th>@T["Name"]</th>
-                <th>@T["Self-nesting"]</th>
                 <th>@T["Attributes"]</th>
                 <th>@T["Content type"]</th>
                 <th>@T["Status"]</th>
@@ -41,7 +40,6 @@ else
                             <div dir="rtl" lang="ar" class="text-muted small">@type.NameAr</div>
                         }
                     </td>
-                    <td>@(type.AllowsSelfNesting ? T["Yes"] : T["No"])</td>
                     <td>@type.AttributeCount</td>
                     <td><code>@type.ContentTypeName</code></td>
                     <td>

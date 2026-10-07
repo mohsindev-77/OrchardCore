@@ -182,6 +182,10 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
     {
         if (!structure.StatesContainment)
         {
+            // The one place a dimension type's AllowsSelfNesting is still read. It is not a veto
+            // any more — ADR-0010's addendum made the map below the only authority — it is part of
+            // translating a chain description into that map, exactly as allowSkipLevel is. A row
+            // written before ADR-0010 therefore still produces the map it has always meant.
             var selfNesting = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var typeCode in structure.LevelTypeCodes)
@@ -252,12 +256,12 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
 
         if (!RecipeNameComparison.Same(existing.Name.En, structure.NameEn))
         {
-            differences.Add(RecipeNameComparison.Describe("English", existing.Name.En, structure.NameEn));
+            differences.Add(RecipeNameComparison.Describe("English name", existing.Name.En, structure.NameEn));
         }
 
         if (!RecipeNameComparison.Same(existing.Name.Ar, structure.NameAr))
         {
-            differences.Add(RecipeNameComparison.Describe("Arabic", existing.Name.Ar, structure.NameAr));
+            differences.Add(RecipeNameComparison.Describe("Arabic name", existing.Name.Ar, structure.NameAr));
         }
 
         // Compared only when the row states it. A row written in the explicit form says nothing

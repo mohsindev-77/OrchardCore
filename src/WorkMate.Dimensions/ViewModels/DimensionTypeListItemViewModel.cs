@@ -15,8 +15,6 @@ public sealed class DimensionTypeListItemViewModel
 
     public bool IsSystemDefined { get; set; }
 
-    public bool AllowsSelfNesting { get; set; }
-
     public string ContentTypeName { get; set; } = string.Empty;
 
     public int AttributeCount { get; set; }
@@ -30,7 +28,6 @@ public sealed class DimensionTypeListItemViewModel
         NameEn = document.Name.En,
         NameAr = document.Name.Ar,
         IsSystemDefined = document.IsSystemDefined,
-        AllowsSelfNesting = document.AllowsSelfNesting,
         ContentTypeName = document.ContentTypeName,
         AttributeCount = document.AttributeSchema.Count,
         RetiredOn = document.RetiredOn,

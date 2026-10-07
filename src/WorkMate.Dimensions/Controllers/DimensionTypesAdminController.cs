@@ -93,7 +93,9 @@ public sealed class DimensionTypesAdminController : Controller
             (model.Code ?? string.Empty).Trim(),
             model.Name,
             model.ToAttributeSchema(),
-            model.AllowsSelfNesting,
+            // A type created here carries no self-nesting flag. Nothing reads it when deciding a
+            // placement any more, and the structure grid is where self-nesting is now said.
+            allowsSelfNesting: false,
             cancellationToken: cancellationToken);
 
         if (!result.IsAuthorised)
@@ -157,6 +159,11 @@ public sealed class DimensionTypesAdminController : Controller
         model.Code = document.Code;
         model.IsSystemDefined = document.IsSystemDefined;
         model.ContentTypeName = document.ContentTypeName;
+
+        // Carried through unchanged. The screen stopped offering it with ADR-0010's addendum, and
+        // a save that silently cleared it would change what a chain-shaped recipe row means the
+        // next time one is applied.
+        model.AllowsSelfNesting = document.AllowsSelfNesting;
 
         if (!ModelState.IsValid)
         {

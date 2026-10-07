@@ -29,7 +29,7 @@ namespace WorkMate.Browser.Tests;
 /// switching view without a reload, zooming. A designer whose expand control did nothing at all
 /// passed the entire suite.
 /// </remarks>
-public sealed class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string AdminUserName = "admin";
     public const string AdminPassword = "Workmate!Browser1";
@@ -64,7 +64,7 @@ public sealed class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyn
 
         await SetUpTenantAsync(client);
         await SignInAsync(client);
-        await ApplyDemoRecipeAsync(client);
+        await ApplyRecipesAsync(client);
 
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
@@ -266,31 +266,47 @@ public sealed class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyn
     }
 
     /// <summary>
-    /// Seeds the demo organisation the way an operator would: by running the shipped demo recipe
-    /// from the admin screen, not by calling services. What the browser then sees is what someone
-    /// following the module README would see.
+    /// The shipped recipes this tenant is seeded with, each paired with a phrase that must appear
+    /// on the designer once it has run.
     /// </summary>
-    private static async Task ApplyDemoRecipeAsync(HttpClient client)
+    /// <remarks>
+    /// Overridable so a suite can be given a different organisation to look at, and deliberately
+    /// not additive: a tenant carrying two companies' structures opens the designer on whichever
+    /// sorts first, which is a different screen from the one the demo suite asserts against. Each
+    /// company therefore gets its own tenant rather than sharing one.
+    /// </remarks>
+    protected virtual IReadOnlyList<(string FileName, string Evidence)> Recipes =>
+        [("organisation-designer-demo.recipe.json", "WorkMate Demo Organisation")];
+
+    /// <summary>
+    /// Seeds the organisation the way an operator would: by running the shipped recipes from the
+    /// admin screen, not by calling services. What the browser then sees is what someone following
+    /// the module README would see.
+    /// </summary>
+    private async Task ApplyRecipesAsync(HttpClient client)
     {
-        var page = await GetAsync(client, "/Admin/Recipes");
-
-        await client.PostAsync(
-            "/Admin/Recipes/Execute?basePath=Areas%2FWorkMate.Dimensions%2FRecipes&fileName=organisation-designer-demo.recipe.json",
-            new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = AntiforgeryTokenIn(page),
-            }));
-
-        // The recipe screen redirects whether or not a step failed, so the status code proves
-        // nothing. The designer itself is the evidence: either the demo organisation is on it or
-        // every test in this suite is about to fail for a reason that has nothing to do with the
-        // browser.
-        var designer = await GetAsync(client, "/Admin/Dimensions/Designer/Index");
-
-        if (!designer.Contains("WorkMate Demo Organisation", StringComparison.Ordinal))
+        foreach (var (fileName, evidence) in Recipes)
         {
-            throw new InvalidOperationException(
-                "The demo recipe ran but the organisation designer does not show the demo organisation.");
+            var page = await GetAsync(client, "/Admin/Recipes");
+
+            await client.PostAsync(
+                "/Admin/Recipes/Execute?basePath=Areas%2FWorkMate.Dimensions%2FRecipes&fileName=" + fileName,
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["__RequestVerificationToken"] = AntiforgeryTokenIn(page),
+                }));
+
+            // The recipe screen redirects whether or not a step failed, so the status code proves
+            // nothing. The designer itself is the evidence: either the organisation is on it — on
+            // the chart or in the structure picker — or every test in this suite is about to fail
+            // for a reason that has nothing to do with the browser.
+            var designer = await GetAsync(client, "/Admin/Dimensions/Designer/Index");
+
+            if (!designer.Contains(evidence, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"'{fileName}' ran but the organisation designer does not mention '{evidence}'.");
+            }
         }
     }
 

@@ -63,7 +63,7 @@
                                 <option value="">@T["Choose a dimension type"]</option>
                                 @foreach (var option in Model.AvailableDimensionTypes)
                                 {
-                                    <option value="@option.DimensionTypeId" data-self-nesting="@(option.AllowsSelfNesting ? "true" : "false")">@option.DisplayLabel</option>
+                                    <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
                                 }
                             </select>
                         </td>
@@ -137,19 +137,17 @@
                     {
                         <tr data-parent="@parent.DimensionTypeId">
                             <th scope="row">@parent.DisplayName</th>
+                            @* The diagonal is an ordinary cell. It used to be greyed out unless the
+                               dimension type carried a flag set on a different screen, which is a
+                               rule nobody could discover from the screen that enforces it — see
+                               ADR-0010's addendum. "May a Department contain a Department" is an
+                               axis-specific question for the same reason every other cell is. *@
                             @foreach (var child in vocabulary)
                             {
-                                @* A type that forbids nesting inside itself cannot be granted it by
-                                   any structure, so the diagonal is disabled rather than merely
-                                   unticked: an offer the validator would refuse is worse than none. *@
-                                var vetoed = parent.DimensionTypeId == child.DimensionTypeId && !parent.AllowsSelfNesting;
-
                                 <td class="text-center" data-child="@child.DimensionTypeId">
                                     <input class="form-check-input" type="checkbox" name="ContainmentPairs"
                                            value="@StructureEditViewModel.Pair(parent.DimensionTypeId, child.DimensionTypeId)"
                                            checked="@Model.Permits(parent.DimensionTypeId, child.DimensionTypeId)"
-                                           disabled="@vetoed"
-                                           title="@(vetoed ? T["This kind of unit does not allow nesting inside itself. Change that on the dimension type."].Value : null)"
                                            aria-label="@T["{0} may contain {1}", parent.DisplayName, child.DisplayName]" />
                                 </td>
                             }
@@ -175,7 +173,7 @@
                     <option value="">@T["Choose a dimension type"]</option>
                     @foreach (var option in Model.AvailableDimensionTypes)
                     {
-                        <option value="@option.DimensionTypeId" data-self-nesting="@(option.AllowsSelfNesting ? "true" : "false")">@option.DisplayLabel</option>
+                        <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
                     }
                 </select>
             </td>

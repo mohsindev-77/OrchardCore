@@ -349,6 +349,9 @@ public sealed class OrganisationDesignerAdminController : Controller
             model.Name,
             effectiveFrom,
             model.ToAttributeValues(),
+            // No sort order from the form: a unit added here belongs after the siblings that were
+            // already there, which is what the service's default does.
+            sortOrder: null,
             cancellationToken);
 
         if (!result.Succeeded)

@@ -165,6 +165,17 @@ public sealed class DimensionExportRoundTripTenantTests : IAsyncLifetime, IDispo
             var credit = await RecordAsync("rt-credit", department);
             var punjab = await RecordAsync("rt-punjab", region);
             var lahore = await RecordAsync("rt-lahore", branch);
+
+            // The values the Branch's schema declares. Exported since ADR-0011's addendum; before
+            // it, a round trip reproduced the branch and silently lost its branch code.
+            var valued = await records.SetAttributeValuesAsync(
+                lahore,
+                [
+                    new DimensionAttributeValue("BranchCode", "LHR-001"),
+                    new DimensionAttributeValue("OpenedOn", "2019-03-15"),
+                ]);
+
+            valued.Succeeded.Should().BeTrue(Why(valued.Errors));
             var lahoreCredit = await RecordAsync("rt-lahore-credit", department);
             var nested = await RecordAsync("rt-nested", department);
             var leaving = await RecordAsync("rt-leaving", department);
@@ -280,7 +291,16 @@ public sealed class DimensionExportRoundTripTenantTests : IAsyncLifetime, IDispo
 
         after.Types.Should().BeEquivalentTo(before.Types, "every type and its attribute schema travels");
         after.Structures.Should().BeEquivalentTo(before.Structures, "levels, root types, containment and flags travel");
-        after.Records.Should().BeEquivalentTo(before.Records, "every unit, its dates and its name travel");
+        after.Records.Should().BeEquivalentTo(before.Records, "every unit, its dates, its name and its attribute values travel");
+
+        // Named explicitly as well as compared, because "the records are equivalent" would pass if
+        // both sides lost the attributes — which is exactly what happened before ADR-0011's
+        // addendum, and exactly the kind of agreement between two wrongs a round trip can hide.
+        after.Records.Should().Contain(
+            line => line.Contains("rt-lahore", StringComparison.Ordinal)
+                && line.Contains("BranchCode=LHR-001", StringComparison.Ordinal)
+                && line.Contains("OpenedOn=2019-03-15", StringComparison.Ordinal),
+            "the imported branch carries the values the exported one had");
 
         // The closure, on a date either side of every change the seed made. This is the assertion
         // a flattened history fails and a tree comparison passes.
@@ -368,9 +388,20 @@ public sealed class DimensionExportRoundTripTenantTests : IAsyncLifetime, IDispo
 
             foreach (var record in allRecords)
             {
+                // The attribute values go on the record's own line, so a lost or altered value
+                // fails as a difference in that record rather than as a separate list nobody
+                // matches up against it.
+                var attributes = string.Join(", ", (await recordService.GetAttributeValuesAsync(record.RecordId))
+                    .OrderBy(value => value.Name, StringComparer.Ordinal)
+                    .Select(value => $"{value.Name}={value.Value}{(string.IsNullOrEmpty(value.ValueAr) ? "" : "/" + value.ValueAr)}"));
+
                 records.Add(
                     $"{record.Code} | {typeCodeById.GetValueOrDefault(record.DimensionTypeId, "?")} | {record.NameEn} | {record.NameAr} | "
-                    + $"{record.EffectiveRange.From:yyyy-MM-dd}..{record.EffectiveRange.To:yyyy-MM-dd}");
+                    + $"{record.EffectiveRange.From:yyyy-MM-dd}..{record.EffectiveRange.To:yyyy-MM-dd} | [{attributes}] | "
+                    // Sort order is what sibling order on the chart is made of. An import that
+                    // renumbered from its own tenant's highest would reproduce the same tree in a
+                    // different order and nothing else here would notice.
+                    + $"#{record.SortOrder}");
             }
 
             // Every date the seed turns on, and a day either side of each, so a period that is one

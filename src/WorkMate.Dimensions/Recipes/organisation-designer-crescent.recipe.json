@@ -1,0 +1,222 @@
+{
+  "name": "WorkMate.Demo.Crescent",
+  "displayName": "WorkMate demo: Crescent Microfinance",
+  "description": "TEST DATA — a microfinance lender with a head office and a branch network, as a worked example of a ragged tree. One Division holds Departments directly while its sibling holds Regions, and Departments appear again three levels further down under a Branch. Self-contained: every code is prefixed crescent-, so it adds to a tenant without colliding with the other demo recipes and can be applied in any order alongside them.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate", "demo"],
+  "tags": ["workmate", "demo", "test-data"],
+
+  "$notes": [
+    "The shape this exists to demonstrate: depth is not uniform. Head Office > Credit Risk is two levels deep; Branch Network > Punjab Region > Lahore Main Branch > Credit is four. The same Department type is reachable at both, which a chain of level ordinals cannot express at all.",
+    "Two branches have no departments under them. A leaf at depth three beside a sibling that goes one deeper is the ordinary case for a branch network, not an edge case.",
+    "Department codes carry the branch they belong to — crescent-dept-lhr-credit, crescent-dept-khi-credit — because a code is unique across the whole tenant, not within a parent. Two branches each having a 'Credit' department is exactly where that bites.",
+    "Branch carries a real attribute schema — location, cost centre, branch code — and every branch carries values for it. Both halves travel through export and import since ADR-0011."
+  ],
+
+  "steps": [
+    {
+      "name": "dimension-types",
+      "types": [
+        { "code": "crescent-division", "nameEn": "Division", "nameAr": "قطاع", "allowsSelfNesting": false },
+        { "code": "crescent-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
+        { "code": "crescent-region", "nameEn": "Region", "nameAr": "منطقة", "allowsSelfNesting": false },
+        {
+          "code": "crescent-branch",
+          "nameEn": "Branch",
+          "nameAr": "فرع",
+          "allowsSelfNesting": false,
+          "attributes": [
+            { "name": "Location", "labelEn": "Location", "labelAr": "الموقع", "kind": "Text", "isRequired": true },
+            { "name": "CostCentre", "labelEn": "Cost centre", "labelAr": "مركز التكلفة", "kind": "Text", "isRequired": true },
+            { "name": "BranchCode", "labelEn": "Branch code", "labelAr": "رمز الفرع", "kind": "Text", "isRequired": true }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "structures",
+      "structures": [
+        {
+          "code": "crescent-org",
+          "nameEn": "Crescent Microfinance",
+          "nameAr": "كريسنت للتمويل الأصغر",
+          "levelTypeCodes": ["crescent-division", "crescent-region", "crescent-branch", "crescent-department"],
+          "rootTypeCodes": ["crescent-division"],
+          "containment": {
+            "crescent-division": ["crescent-department", "crescent-region"],
+            "crescent-region": ["crescent-branch"],
+            "crescent-branch": ["crescent-department"]
+          },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        }
+      ]
+    },
+
+    {
+      "name": "dimension-records",
+      "records": [
+        {
+          "code": "crescent-div-head-office",
+          "typeCode": "crescent-division",
+          "nameEn": "Head Office",
+          "nameAr": "المركز الرئيسي",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": null, "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-div-branch-network",
+          "typeCode": "crescent-division",
+          "nameEn": "Branch Network",
+          "nameAr": "شبكة الفروع",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": null, "effectiveFrom": "2024-01-01" }]
+        },
+
+        {
+          "code": "crescent-dept-credit-risk",
+          "typeCode": "crescent-department",
+          "nameEn": "Credit Risk",
+          "nameAr": "مخاطر الائتمان",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-div-head-office", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-dept-treasury",
+          "typeCode": "crescent-department",
+          "nameEn": "Treasury",
+          "nameAr": "الخزينة",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-div-head-office", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-dept-hr",
+          "typeCode": "crescent-department",
+          "nameEn": "HR",
+          "nameAr": "الموارد البشرية",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-div-head-office", "effectiveFrom": "2024-01-01" }]
+        },
+
+        {
+          "code": "crescent-region-punjab",
+          "typeCode": "crescent-region",
+          "nameEn": "Punjab Region",
+          "nameAr": "منطقة البنجاب",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-div-branch-network", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-region-sindh",
+          "typeCode": "crescent-region",
+          "nameEn": "Sindh Region",
+          "nameAr": "منطقة السند",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-div-branch-network", "effectiveFrom": "2024-01-01" }]
+        },
+
+        {
+          "code": "crescent-branch-lahore-main",
+          "typeCode": "crescent-branch",
+          "nameEn": "Lahore Main Branch",
+          "nameAr": "فرع لاهور الرئيسي",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-region-punjab", "effectiveFrom": "2024-01-01" }],
+          "attributes": [
+            { "name": "Location", "value": "Gulberg III, Lahore" },
+            { "name": "CostCentre", "value": "CC-1100" },
+            { "name": "BranchCode", "value": "LHR-001" }
+          ]
+        },
+        {
+          "code": "crescent-branch-gujranwala",
+          "typeCode": "crescent-branch",
+          "nameEn": "Gujranwala Branch",
+          "nameAr": "فرع غوجرانوالا",
+          "effectiveFrom": "2024-04-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-region-punjab", "effectiveFrom": "2024-04-01" }],
+          "attributes": [
+            { "name": "Location", "value": "GT Road, Gujranwala" },
+            { "name": "CostCentre", "value": "CC-1102" },
+            { "name": "BranchCode", "value": "GUJ-004" }
+          ]
+        },
+        {
+          "code": "crescent-branch-sialkot",
+          "typeCode": "crescent-branch",
+          "nameEn": "Sialkot Branch",
+          "nameAr": "فرع سيالكوت",
+          "effectiveFrom": "2024-07-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-region-punjab", "effectiveFrom": "2024-07-01" }],
+          "attributes": [
+            { "name": "Location", "value": "Kashmir Road, Sialkot" },
+            { "name": "CostCentre", "value": "CC-1103" },
+            { "name": "BranchCode", "value": "SKT-007" }
+          ]
+        },
+        {
+          "code": "crescent-branch-karachi-main",
+          "typeCode": "crescent-branch",
+          "nameEn": "Karachi Main Branch",
+          "nameAr": "فرع كراتشي الرئيسي",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-region-sindh", "effectiveFrom": "2024-01-01" }],
+          "attributes": [
+            { "name": "Location", "value": "I. I. Chundrigar Road, Karachi" },
+            { "name": "CostCentre", "value": "CC-1200" },
+            { "name": "BranchCode", "value": "KHI-001" }
+          ]
+        },
+        {
+          "code": "crescent-branch-hyderabad",
+          "typeCode": "crescent-branch",
+          "nameEn": "Hyderabad Branch",
+          "nameAr": "فرع حيدر آباد",
+          "effectiveFrom": "2024-05-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-region-sindh", "effectiveFrom": "2024-05-01" }],
+          "attributes": [
+            { "name": "Location", "value": "Saddar, Hyderabad" },
+            { "name": "CostCentre", "value": "CC-1202" },
+            { "name": "BranchCode", "value": "HYD-003" }
+          ]
+        },
+
+        {
+          "code": "crescent-dept-lhr-credit",
+          "typeCode": "crescent-department",
+          "nameEn": "Credit",
+          "nameAr": "الائتمان",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-branch-lahore-main", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-dept-lhr-operations",
+          "typeCode": "crescent-department",
+          "nameEn": "Operations",
+          "nameAr": "العمليات",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-branch-lahore-main", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-dept-khi-credit",
+          "typeCode": "crescent-department",
+          "nameEn": "Credit",
+          "nameAr": "الائتمان",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-branch-karachi-main", "effectiveFrom": "2024-01-01" }]
+        },
+        {
+          "code": "crescent-dept-khi-operations",
+          "typeCode": "crescent-department",
+          "nameEn": "Operations",
+          "nameAr": "العمليات",
+          "effectiveFrom": "2024-01-01",
+          "placements": [{ "structureCode": "crescent-org", "parentCode": "crescent-branch-karachi-main", "effectiveFrom": "2024-01-01" }]
+        }
+      ]
+    }
+  ]
+}

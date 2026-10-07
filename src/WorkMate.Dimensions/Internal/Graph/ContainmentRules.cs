@@ -12,6 +12,11 @@ namespace WorkMate.Dimensions.Internal.Graph;
 /// <c>IsStrict</c> altogether, so on a non-strict axis the validator accepted placements the picker
 /// would never offer: exactly the case that flag exists for. ADR-0010 makes both call this, and a
 /// property test asserts they agree over every ordered pair of a structure's types.
+///
+/// The structure's map is the whole answer, the diagonal included. A dimension type used to hold a
+/// veto over nesting inside itself, which no axis could grant past; ADR-0010's addendum removed it,
+/// because "may a Department contain a Department" is an axis-specific question for the same reason
+/// "may a Division contain a Department" is. See the addendum for what that cost on the screen.
 /// </remarks>
 internal static class ContainmentRules
 {
@@ -25,54 +30,38 @@ internal static class ContainmentRules
         NotDeclared,
 
         /// <summary>
-        /// Parent and child are the same type and that type forbids nesting inside itself. Always
-        /// refused: the type holds a veto, and no axis can grant past it.
-        /// </summary>
-        SelfNestingVetoedByType,
-
-        /// <summary>
-        /// Parent and child are the same type, the type permits self-nesting, and this axis does
-        /// not declare it. Refused when strict, advisory when not — an undeclared pair like any
-        /// other, reported separately only so the message can say which of the two was missing.
+        /// Parent and child are the same type and this axis does not declare the pairing. An
+        /// undeclared pair like any other — refused when strict, advisory when not — reported
+        /// separately only so the message can name what is actually missing.
         /// </summary>
         SelfNestingNotDeclared,
     }
 
-    /// <summary>
-    /// Decides one pairing. <paramref name="childTypeAllowsSelfNesting"/> is the child type's own
-    /// flag and is read only when the two types are the same.
-    /// </summary>
+    /// <summary>Decides one pairing.</summary>
     public static Outcome Decide(
         StructureDocument structure,
         string parentDimensionTypeId,
-        string childDimensionTypeId,
-        bool childTypeAllowsSelfNesting)
+        string childDimensionTypeId)
     {
         ArgumentNullException.ThrowIfNull(structure);
-
-        var sameType = string.Equals(parentDimensionTypeId, childDimensionTypeId, StringComparison.Ordinal);
-
-        if (sameType && !childTypeAllowsSelfNesting)
-        {
-            return Outcome.SelfNestingVetoedByType;
-        }
 
         if (structure.Permits(parentDimensionTypeId, childDimensionTypeId))
         {
             return Outcome.Permitted;
         }
 
-        return sameType ? Outcome.SelfNestingNotDeclared : Outcome.NotDeclared;
+        return string.Equals(parentDimensionTypeId, childDimensionTypeId, StringComparison.Ordinal)
+            ? Outcome.SelfNestingNotDeclared
+            : Outcome.NotDeclared;
     }
 
     /// <summary>
-    /// Whether an outcome stops the write. The type's veto always does; everything else does only
-    /// on a strict axis, where it is refused rather than warned about.
+    /// Whether an outcome stops the write. An undeclared pairing does so only on a strict axis,
+    /// where it is refused rather than warned about.
     /// </summary>
     public static bool Blocks(Outcome outcome, bool isStrict) => outcome switch
     {
         Outcome.Permitted => false,
-        Outcome.SelfNestingVetoedByType => true,
         _ => isStrict,
     };
 
@@ -83,13 +72,12 @@ internal static class ContainmentRules
     public static bool Offerable(
         StructureDocument structure,
         string parentDimensionTypeId,
-        string childDimensionTypeId,
-        bool childTypeAllowsSelfNesting)
+        string childDimensionTypeId)
     {
         ArgumentNullException.ThrowIfNull(structure);
 
         return !Blocks(
-            Decide(structure, parentDimensionTypeId, childDimensionTypeId, childTypeAllowsSelfNesting),
+            Decide(structure, parentDimensionTypeId, childDimensionTypeId),
             structure.IsStrict);
     }
 }

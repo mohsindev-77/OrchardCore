@@ -832,6 +832,78 @@ public sealed class DimensionsRecipeStepsTenantTests
     }
 
     /// <summary>
+    /// A recipe written before ADR-0010's addendum — a type that states <c>allowsSelfNesting</c>
+    /// and a structure described as a plain chain — still applies, and still derives exactly the
+    /// map it always did.
+    /// </summary>
+    /// <remarks>
+    /// The addendum took the flag out of the placement decision and off the dimension type screen.
+    /// It deliberately did not take it out of the file format or the stored document, because a
+    /// chain-shaped structure row has nothing else to derive its diagonal from: dropping it would
+    /// leave an old recipe applying cleanly and quietly meaning something narrower. So the flag
+    /// keeps one job — translating a legacy description into a map — and this is the test that
+    /// says so.
+    /// </remarks>
+    [Fact]
+    public async Task ARecipeThatStatesTheOldSelfNestingFlagStillDerivesTheSameMap()
+    {
+        const string json = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-types",
+                    "types": [
+                        { "code": "legacy-division", "nameEn": "Legacy Division", "nameAr": "قسم", "allowsSelfNesting": false },
+                        { "code": "legacy-section", "nameEn": "Legacy Section", "nameAr": "شعبة", "allowsSelfNesting": true }
+                    ]
+                },
+                {
+                    "name": "structures",
+                    "structures": [
+                        {
+                            "code": "legacy-structure",
+                            "nameEn": "Legacy Structure",
+                            "nameAr": "هيكل",
+                            "levelTypeCodes": ["legacy-division", "legacy-section"],
+                            "allowSkipLevel": false,
+                            "isStrict": true,
+                            "isPrimaryOrganisation": false
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            (await ExecuteRecipeAsync(services, json)).Succeeded.Should().BeTrue();
+
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var division = (await types.GetByCodeAsync("legacy-division"))!;
+            var section = (await types.GetByCodeAsync("legacy-section"))!;
+
+            section.AllowsSelfNesting.Should().BeTrue("the row stated it and the step still stores it");
+
+            var structure = await services.GetRequiredService<IStructureService>()
+                .GetByCodeAsync("legacy-structure");
+
+            structure!.Permits(division.DimensionTypeId, section.DimensionTypeId).Should().BeTrue(
+                "the chain says a Section sits under a Division");
+
+            structure.Permits(section.DimensionTypeId, section.DimensionTypeId).Should().BeTrue(
+                "the derivation ticked the diagonal for the type whose flag was on, as it always has");
+
+            structure.Permits(division.DimensionTypeId, division.DimensionTypeId).Should().BeFalse(
+                "and left it unticked for the type whose flag was off");
+
+            // And it re-runs clean: the flag is still compared, so a row that still states it is
+            // still recognised as identical rather than as a difference.
+            (await ExecuteRecipeAsync(services, json)).Succeeded.Should().BeTrue();
+        });
+    }
+
+    /// <summary>
     /// Stating both descriptions of the rules is refused rather than merged.
     /// </summary>
     /// <remarks>

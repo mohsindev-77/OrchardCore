@@ -37,16 +37,22 @@ internal static class RecipeNameComparison
     /// two empty quote pairs, which tells an operator nothing about which side is missing and
     /// looks like a bug in the message rather than a difference in the data.
     /// </remarks>
-    public static string Describe(string language, string? tenant, string? recipe)
+    /// <param name="subject">
+    /// What differs, as a noun phrase the sentence is built around — "English name", "Arabic
+    /// name", "attribute 'BranchCode'". Named by the caller rather than assembled here, because
+    /// the same comparison now serves names and attribute values and "the attribute 'BranchCode'
+    /// name" is not a thing.
+    /// </param>
+    public static string Describe(string subject, string? tenant, string? recipe)
     {
         var inTenant = Normalise(tenant);
         var inRecipe = Normalise(recipe);
 
         return (inTenant.Length, inRecipe.Length) switch
         {
-            (0, _) => $"the {language} name is not set in the tenant but is '{inRecipe}' in the recipe",
-            (_, 0) => $"the {language} name is '{inTenant}' in the tenant but is not set in the recipe",
-            _ => $"the {language} name is '{inTenant}' in the tenant but '{inRecipe}' in the recipe",
+            (0, _) => $"the {subject} is not set in the tenant but is '{inRecipe}' in the recipe",
+            (_, 0) => $"the {subject} is '{inTenant}' in the tenant but is not set in the recipe",
+            _ => $"the {subject} is '{inTenant}' in the tenant but '{inRecipe}' in the recipe",
         };
     }
 

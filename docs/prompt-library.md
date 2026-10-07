@@ -377,6 +377,50 @@ record/effective-from that already exists is compared field by field — identic
 is skipped, different fails the step naming what differs. The natural key for
 that comparison is the four together, not a generated id.
 
+**Backlog note, 7 October 2026 — the Zenith matrix, and demo headcounts to seed.**
+Raised while writing the two demo company recipes in prompt 3 (stage D3). Both
+organisations exist now, with no people on them; these are the figures and the
+shape to seed once an employee can exist.
+
+*The matrix, which Zenith is the worked example of.* An employee has a **home
+Department** — their primary assignment, and what grade, leave entitlement and
+appraisal hang off — **and** a secondary assignment to a **Project or Team**,
+which is what attendance, site allowances and cost are recorded against. Both
+are `EmployeeAssignment` rows on the same structure, distinguished by
+`IsPrimary`; the primary flag is what architecture section 6 already requires to
+"resolve matrix cases without ambiguity", and this is the case it meant. The
+consequence for reporting is the point of the example: **cost rolls up by
+project, HR rolls up by department**, over the same people, from the same rows —
+so the two reports must read the closure from different anchors rather than one
+of them inferring the other.
+
+*Where employees attach.* To whatever unit is the **leaf**: a Department under a
+Division, a Department under a Branch, a Team under a Project, or a Branch that
+has no departments. Never to a Division, a Region or a Project directly — those
+are containers in both demo organisations, and an employee attached to one would
+be counted by every roll-up beneath it.
+
+*Headcounts to seed.*
+
+| Zenith | | Crescent | |
+| --- | ---: | --- | ---: |
+| Civil | 14 | Credit Risk | 6 |
+| Electrical | 8 | Treasury | 3 |
+| Mechanical | 9 | HR | 4 |
+| Finance | 5 | Lahore — Credit | 12 |
+| HR & site admin | 6 | Lahore — Operations | 9 |
+| Site Team A | 1 site engineer, foremen, 40 labour | Gujranwala | manager + 6 |
+| Site Team B | 1 site engineer, 30 labour | Sialkot | manager + 4 |
+| Electrical Works | 2 electrical engineers, 18 technicians | Karachi — Credit | 10 |
+| Civil Works | 1 civil engineer, 25 labour | Karachi — Operations | 7 |
+| | | Hyderabad | manager + 5 |
+
+Zenith's site teams are where the matrix shows: those people also hold a home
+department in the Engineering Division, so Civil's headcount of 14 is its
+*permanent* staff and the labour on Site Team A is counted by the project, not by
+Civil. Seeding them with only one assignment each would produce an organisation
+that looks right and cannot demonstrate the thing it exists to demonstrate.
+
 *Export, per ADR-0011*: `DimensionsDeploymentStep` gains a fourth switch,
 `IncludeAssignments`, and `DimensionsDeploymentSource` a fourth step emitted last.
 It must carry the **full dated history** — every assignment row with its own

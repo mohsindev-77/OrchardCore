@@ -18,7 +18,9 @@ namespace WorkMate.Dimensions.Models;
 /// <param name="ParentDimensionTypeId">The containing type.</param>
 /// <param name="ChildDimensionTypeId">
 /// The type it may contain. Equal to <paramref name="ParentDimensionTypeId"/> for self-nesting,
-/// which additionally needs the dimension type's own <c>AllowsSelfNesting</c> — the type holds a
-/// veto, the structure holds the grant.
+/// which this pair is the whole of: the dimension type used to hold a veto over it that no
+/// structure could grant past, and ADR-0010's addendum removed it. A Department inside a Department
+/// is normal in one company and wrong in another, which makes it the same kind of fact as every
+/// other cell in this map.
 /// </param>
 public sealed record StructureContainment(string ParentDimensionTypeId, string ChildDimensionTypeId);

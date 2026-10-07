@@ -27,11 +27,11 @@ namespace WorkMate.Dimensions.Recipes;
 /// invalid" — and the step throws <see cref="RecipeExecutionException"/> naming every problem at
 /// once rather than stopping at the first.
 ///
-/// Does not carry an attribute schema: no recipe in this codebase needs one yet, and a JSON shape
-/// invented ahead of a real caller tends to be wrong in a way nobody notices until the first real
-/// one arrives. Every type this step creates has an empty schema; a type that needs fields is
-/// still built through the admin screen. Existing-content comparison is scoped to the fields a row
-/// actually carries for the same reason — name and self-nesting, not a schema the row never states.
+/// Carries an optional attribute schema since ADR-0011: an export that cannot reproduce a
+/// Project's start date does not reproduce the tenant it came from. Optional, so a recipe written
+/// before that still means what it said, and the existing-content comparison stays scoped to the
+/// fields a row actually states — a row with no "attributes" key says nothing about the schema
+/// rather than claiming the type has none.
 /// </remarks>
 internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
 {
@@ -128,12 +128,12 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
 
         if (!RecipeNameComparison.Same(existing.Name.En, type.NameEn))
         {
-            differences.Add(RecipeNameComparison.Describe("English", existing.Name.En, type.NameEn));
+            differences.Add(RecipeNameComparison.Describe("English name", existing.Name.En, type.NameEn));
         }
 
         if (!RecipeNameComparison.Same(existing.Name.Ar, type.NameAr))
         {
-            differences.Add(RecipeNameComparison.Describe("Arabic", existing.Name.Ar, type.NameAr));
+            differences.Add(RecipeNameComparison.Describe("Arabic name", existing.Name.Ar, type.NameAr));
         }
 
         if (existing.AllowsSelfNesting != type.AllowsSelfNesting)
@@ -181,6 +181,19 @@ internal sealed class DimensionTypeStepEntry
 
     public string NameAr { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Legacy. Whether this type once permitted a record of it inside another of it.
+    /// </summary>
+    /// <remarks>
+    /// Nothing reads it when deciding a placement any more — ADR-0010's addendum made the
+    /// structure's containment map the only authority for self-nesting, diagonal included — and no
+    /// screen sets it. It is still accepted, still stored and still compared on re-run, because one
+    /// thing still consumes it: a <c>structures</c> row written as a plain chain
+    /// (<c>levelTypeCodes</c> + <c>allowSkipLevel</c>) derives its map from the types' flags, and
+    /// dropping it would silently change what such a row means. A row that states
+    /// <c>rootTypeCodes</c> and <c>containment</c>, which is what every recipe here and every
+    /// export now writes, never consults it.
+    /// </remarks>
     public bool AllowsSelfNesting { get; set; }
 
     /// <summary>

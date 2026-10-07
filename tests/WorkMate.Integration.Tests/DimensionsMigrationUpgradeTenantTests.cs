@@ -210,8 +210,16 @@ public sealed class DimensionsMigrationUpgradeTenantTests
                         : childOrdinal > parentOrdinal &&
                             (childOrdinal - parentOrdinal == 1 || allowSkipLevel);
 
-                    var after = upgraded.Permits(parent, child) &&
-                        (parent != child || selfNesting.Contains(child));
+                    // The map, and only the map. This clause used to read
+                    // "&& (parent != child || selfNesting.Contains(child))", because the dimension
+                    // type held a veto over its own diagonal that was applied on top of whatever
+                    // the structure said. ADR-0010's addendum removed that second authority, so
+                    // the question is now whether the derived map on its own still permits exactly
+                    // what version 4's arithmetic plus that veto did — diagonal included. It does,
+                    // because the derivation wrote an X → X pair for precisely the types whose flag
+                    // was on, which is what makes the addendum a change of authority rather than a
+                    // change of behaviour for any tenant that already upgraded.
+                    var after = upgraded.Permits(parent, child);
 
                     if (before != after)
                     {

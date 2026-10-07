@@ -315,7 +315,6 @@ public sealed class StructuresAdminController : Controller
                     Code = type.Code,
                     NameEn = type.Name.En,
                     NameAr = type.Name.Ar,
-                    AllowsSelfNesting = type.AllowsSelfNesting,
                 }),
         ];
 

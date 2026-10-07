@@ -19,12 +19,18 @@ public interface IDimensionService
     /// Creates a record of a dimension type, with its self pairs on every axis the type is a
     /// level of, and the first period of its name history.
     /// </summary>
+    /// <param name="sortOrder">
+    /// Where this record sorts among its siblings. Omit it and the record is placed after every
+    /// record already in the tenant, so records come out in the order they were created — which
+    /// for an import is the order the recipe lists them in.
+    /// </param>
     Task<DimensionResult<DimensionNodeRef>> CreateAsync(
         string dimensionTypeId,
         string code,
         BilingualText name,
         EffectiveRange effectiveRange,
         DimensionValidationBatch? batch = null,
+        int? sortOrder = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -35,6 +41,8 @@ public interface IDimensionService
     /// Values for the custom attributes the dimension type declares. Attributes the type does not
     /// declare are rejected; attributes it declares and requires must be present.
     /// </param>
+    /// <param name="sortOrder">As on <see cref="CreateAsync"/>: omit it and the new unit sorts
+    /// after the siblings that were already there.</param>
     /// <remarks>
     /// One method rather than <see cref="CreateAsync"/> followed by <see cref="MoveAsync"/>,
     /// for two reasons.
@@ -61,6 +69,7 @@ public interface IDimensionService
         BilingualText name,
         DateOnly effectiveFrom,
         IReadOnlyList<Models.DimensionAttributeValue>? attributes = null,
+        int? sortOrder = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Changes the fields that are not the name and not the placement.</summary>
@@ -209,6 +218,41 @@ public interface IDimensionService
         string sourceRecordId,
         string targetRecordId,
         DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The custom attribute values this record carries, one per populated field of its type's
+    /// schema.
+    /// </summary>
+    /// <remarks>
+    /// Undated, because the values are not dated. A record's attributes are fields on its own
+    /// content part with no effective range of their own — unlike its name, its placement and its
+    /// own existence, all three of which are. That is a deliberate limit of the engine as it
+    /// stands, not an oversight of this method: if a customer ever needs "what was this branch's
+    /// cost centre last March" the attribute would have to become a dated thing in its own right,
+    /// which is a model change rather than a reader change.
+    ///
+    /// Empty entries are omitted. An attribute nobody filled in is absent, not present-and-blank,
+    /// which is what lets an export and a re-run comparison treat "not set" the same way the
+    /// editor does.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionAttributeValue>> GetAttributeValuesAsync(
+        string recordId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes custom attribute values onto an existing record, validated against its type's schema.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="CreateAsync"/> because the paths that need it already create the
+    /// record first: a recipe import creates a record, places it, and then has values to write;
+    /// the designer's Add unit screen does all three in one call through
+    /// <c>AddUnitAsync</c>. One writer behind both, so a value written by a recipe and a value
+    /// written by a form go through the same conversion and the same validation.
+    /// </remarks>
+    Task<DimensionResult<DimensionNodeRef>> SetAttributeValuesAsync(
+        string recordId,
+        IReadOnlyList<DimensionAttributeValue> attributes,
         CancellationToken cancellationToken = default);
 
     /// <summary>

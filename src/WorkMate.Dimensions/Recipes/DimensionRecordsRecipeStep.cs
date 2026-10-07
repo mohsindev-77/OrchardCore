@@ -3,6 +3,7 @@ using Microsoft.Extensions.Localization;
 using OrchardCore.Recipes.Models;
 using OrchardCore.Recipes.Services;
 using WorkMate.Core;
+using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
 
@@ -122,6 +123,7 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                 {
                     var differences = DifferencesFrom(existing, record, type.DimensionTypeId, range);
                     differences.AddRange(await PlacementDifferencesAsync(existing, record, structureIdByCode));
+                    differences.AddRange(await AttributeDifferencesAsync(existing, record));
 
                     if (differences.Count > 0)
                     {
@@ -167,7 +169,12 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                     opening is null
                         ? new BilingualText(record.NameEn, record.NameAr)
                         : new BilingualText(opening.NameEn, opening.NameAr),
-                    new EffectiveRange(record.EffectiveFrom, record.EffectiveTo));
+                    new EffectiveRange(record.EffectiveFrom, record.EffectiveTo),
+                    batch: null,
+                    // Stated, or the order the recipe lists them in: records are created here in
+                    // list order and an unstated sort order is assigned from the tenant's highest,
+                    // so "Engineering, Projects, Corporate" in the file is what the chart shows.
+                    record.SortOrder);
 
                 if (!created.Succeeded)
                 {
@@ -181,6 +188,27 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                 }
 
                 recordIdByCode[record.Code] = created.Value!.RecordId;
+
+                // Before the placements, so a record is complete the moment it is on the tree.
+                // Validated against its type's schema by the service, so an attribute the type
+                // does not declare, or a value that is not of its declared kind, fails the step
+                // naming the attribute rather than being written and ignored.
+                if (record.Attributes.Count > 0)
+                {
+                    var written = await _dimensionService.SetAttributeValuesAsync(
+                        created.Value.RecordId, record.ToAttributeValues());
+
+                    if (!written.Succeeded)
+                    {
+                        RecipeStepFailures.Throw(
+                            context,
+                            written.Errors.Count > 0
+                                ? written.Errors.Select(error => error.Message.Value)
+                                : [S["'{0}' could not be given its attribute values.", record.Code].Value]);
+
+                        return;
+                    }
+                }
 
                 foreach (var placement in record.Placements)
                 {
@@ -241,6 +269,52 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
         }
     }
 
+    /// <summary>
+    /// How the tenant's attribute values differ from the ones this row states, per ADR-0008.
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the attributes the row actually states, like every other comparison in these
+    /// steps: a row written before attributes could be carried says nothing about them, and
+    /// reporting "the tenant has three and the recipe has none" would refuse a re-run of a recipe
+    /// that is still perfectly correct. An attribute the row states and the tenant does not hold
+    /// <em>is</em> a difference — that is the row making a claim the tenant contradicts.
+    ///
+    /// Named individually rather than as "the attributes differ", because the whole point of the
+    /// ADR-0008 message is that an operator can see what to change.
+    /// </remarks>
+    private async Task<List<string>> AttributeDifferencesAsync(
+        DimensionNodeRef existing, DimensionRecordStepEntry record)
+    {
+        var differences = new List<string>();
+
+        if (record.Attributes.Count == 0)
+        {
+            return differences;
+        }
+
+        var held = (await _dimensionService.GetAttributeValuesAsync(existing.RecordId))
+            .ToDictionary(value => value.Name, StringComparer.Ordinal);
+
+        foreach (var wanted in record.ToAttributeValues())
+        {
+            held.TryGetValue(wanted.Name, out var current);
+
+            if (!RecipeNameComparison.Same(current?.Value, wanted.Value))
+            {
+                differences.Add(RecipeNameComparison.Describe(
+                    $"attribute '{wanted.Name}'", current?.Value, wanted.Value));
+            }
+
+            if (!RecipeNameComparison.Same(current?.ValueAr, wanted.ValueAr))
+            {
+                differences.Add(RecipeNameComparison.Describe(
+                    $"Arabic half of attribute '{wanted.Name}'", current?.ValueAr, wanted.ValueAr));
+            }
+        }
+
+        return differences;
+    }
+
     private static List<string> DifferencesFrom(
         DimensionNodeRef existing, DimensionRecordStepEntry record, string typeId, EffectiveRange range)
     {
@@ -253,17 +327,24 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
 
         if (!RecipeNameComparison.Same(existing.NameEn, record.NameEn))
         {
-            differences.Add(RecipeNameComparison.Describe("English", existing.NameEn, record.NameEn));
+            differences.Add(RecipeNameComparison.Describe("English name", existing.NameEn, record.NameEn));
         }
 
         if (!RecipeNameComparison.Same(existing.NameAr, record.NameAr))
         {
-            differences.Add(RecipeNameComparison.Describe("Arabic", existing.NameAr, record.NameAr));
+            differences.Add(RecipeNameComparison.Describe("Arabic name", existing.NameAr, record.NameAr));
         }
 
         if (existing.EffectiveRange != range)
         {
             differences.Add($"the effective range is {existing.EffectiveRange} in the tenant but {range} in the recipe");
+        }
+
+        // Only when the row states one, per ADR-0008: a recipe that says nothing about sort order
+        // is not claiming the record has none, and the order it was created in is still correct.
+        if (record.SortOrder is { } sortOrder && existing.SortOrder != sortOrder)
+        {
+            differences.Add($"the sort order is {existing.SortOrder} in the tenant but {sortOrder} in the recipe");
         }
 
         return differences;
@@ -337,6 +418,17 @@ internal sealed class DimensionRecordStepEntry
     public DateOnly? EffectiveTo { get; set; }
 
     /// <summary>
+    /// Where this record sorts among its siblings, when the recipe cares enough to say.
+    /// </summary>
+    /// <remarks>
+    /// Usually absent, and absent means the order the file lists the records in: the step creates
+    /// them in that order and the service assigns each one the next sort order in the tenant. An
+    /// export states it, because an export is reproducing a tenant rather than describing an
+    /// intent, and the record's order there is a fact that has to survive the trip.
+    /// </remarks>
+    public int? SortOrder { get; set; }
+
+    /// <summary>
     /// Where this record has sat, over time. Empty for a record that has never been placed.
     /// </summary>
     /// <remarks>
@@ -360,6 +452,35 @@ internal sealed class DimensionRecordStepEntry
     /// difference between the two kinds of rename that architecture section 5 exists to keep.
     /// </remarks>
     public List<DimensionRecordNameStepEntry> NameHistory { get; set; } = [];
+
+    /// <summary>
+    /// The record's custom attribute values, by attribute name.
+    /// </summary>
+    /// <remarks>
+    /// Undated, because attribute values are: they are fields on the record's own content part
+    /// with no effective range, unlike everything else this entry carries. Optional, so every
+    /// recipe written before ADR-0011's addendum still means what it said.
+    /// </remarks>
+    public List<DimensionRecordAttributeStepEntry> Attributes { get; set; } = [];
+
+    public IReadOnlyList<DimensionAttributeValue> ToAttributeValues() =>
+        [.. Attributes.Select(attribute =>
+            new DimensionAttributeValue(attribute.Name, attribute.Value, attribute.ValueAr))];
+}
+
+/// <summary>One custom attribute value on a record, as a recipe states it.</summary>
+internal sealed class DimensionRecordAttributeStepEntry
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The value as text, read invariantly: <c>yyyy-MM-dd</c> for a date, an invariant decimal for
+    /// a number, <c>true</c>/<c>false</c> for a boolean, and the text itself otherwise.
+    /// </summary>
+    public string? Value { get; set; }
+
+    /// <summary>The Arabic half, for a bilingual attribute and nothing else.</summary>
+    public string? ValueAr { get; set; }
 }
 
 /// <summary>One period a record was called something, as a recipe states it.</summary>

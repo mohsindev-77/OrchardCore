@@ -556,12 +556,8 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 continue;
             }
 
-            var selfNesting =
-                string.Equals(child.DimensionTypeId, parent.DimensionTypeId, StringComparison.Ordinal) &&
-                (await _dimensionTypeLookup.GetAsync(child.DimensionTypeId, cancellationToken))?.AllowsSelfNesting == true;
-
             var outcome = ContainmentRules.Decide(
-                proposed, parent.DimensionTypeId, child.DimensionTypeId, selfNesting);
+                proposed, parent.DimensionTypeId, child.DimensionTypeId);
 
             if (!ContainmentRules.Blocks(outcome, proposed.IsStrict))
             {
@@ -616,7 +612,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             return [];
         }
 
-        return await PermittedChildTypeIdsAsync(structure, parent.DimensionTypeId, cancellationToken);
+        return PermittedChildTypeIds(structure, parent.DimensionTypeId);
     }
 
     /// <summary>
@@ -633,26 +629,13 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     /// not offered even when the axis is non-strict and the validator would tolerate it; there is
     /// no list of "every type in the tenant" that belongs in an organisation chart's picker.
     /// </remarks>
-    private async Task<IReadOnlyList<string>> PermittedChildTypeIdsAsync(
+    private static IReadOnlyList<string> PermittedChildTypeIds(
         Models.StructureDocument structure,
-        string parentDimensionTypeId,
-        CancellationToken cancellationToken)
-    {
-        var permitted = new List<string>();
-
-        foreach (var childTypeId in structure.DimensionTypeIds)
-        {
-            var selfNesting = string.Equals(childTypeId, parentDimensionTypeId, StringComparison.Ordinal) &&
-                (await _dimensionTypeLookup.GetAsync(childTypeId, cancellationToken))?.AllowsSelfNesting == true;
-
-            if (ContainmentRules.Offerable(structure, parentDimensionTypeId, childTypeId, selfNesting))
-            {
-                permitted.Add(childTypeId);
-            }
-        }
-
-        return permitted;
-    }
+        string parentDimensionTypeId) =>
+        [
+            .. structure.DimensionTypeIds.Where(childTypeId =>
+                ContainmentRules.Offerable(structure, parentDimensionTypeId, childTypeId)),
+        ];
 
     /// <summary>
     /// The mirror: which of this axis's types may be the <em>parent</em> of
@@ -664,20 +647,13 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     /// query each, for a question whose answer depends only on the candidate's <em>type</em>.
     /// Computed once here, the pickers filter a list they already have in memory.
     /// </remarks>
-    private async Task<HashSet<string>> PermittedParentTypeIdsAsync(
+    private static HashSet<string> PermittedParentTypeIds(
         Models.StructureDocument structure,
-        string childDimensionTypeId,
-        CancellationToken cancellationToken)
-    {
-        var selfNesting =
-            (await _dimensionTypeLookup.GetAsync(childDimensionTypeId, cancellationToken))?.AllowsSelfNesting == true;
-
-        return
+        string childDimensionTypeId) =>
         [
             .. structure.DimensionTypeIds.Where(parentTypeId =>
-                ContainmentRules.Offerable(structure, parentTypeId, childDimensionTypeId, selfNesting)),
+                ContainmentRules.Offerable(structure, parentTypeId, childDimensionTypeId)),
         ];
-    }
 
     public async Task MarkOrphanedByParentRetirementAsync(
         string structureId,
@@ -886,8 +862,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         // One set, computed once, instead of one index query per node on the axis. Which parents
         // can take this unit depends only on their type, so asking the question per record was
         // asking the same question as many times as there were records of that type.
-        var permittedParentTypes = await PermittedParentTypeIdsAsync(
-            structure, node.DimensionTypeId, cancellationToken);
+        var permittedParentTypes = PermittedParentTypeIds(structure, node.DimensionTypeId);
 
         return
         [

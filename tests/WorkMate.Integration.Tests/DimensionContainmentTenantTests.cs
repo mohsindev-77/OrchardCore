@@ -120,8 +120,8 @@ public sealed class DimensionContainmentTenantTests
             var structures = services.GetRequiredService<IStructureService>();
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
-            // The scenario's Section declares self-nesting, so the type's veto is not in the way.
-            // Which axis allows it is now a property of the axis.
+            // Which axis allows it is a property of the axis, and of nothing else: the dimension
+            // type is not consulted at all since ADR-0010's addendum.
             var nesting = await StructureAsync(
                 services, "nest-yes", [types.Division, types.Section],
                 roots: [types.Division],
@@ -140,33 +140,83 @@ public sealed class DimensionContainmentTenantTests
 
             var refused = await graph.MoveAsync(flat, inner, outer, Opened);
 
-            refused.Succeeded.Should().BeFalse("the other one does not, and the type's flag is a veto, not a grant");
+            refused.Succeeded.Should().BeFalse("the other one does not declare the pairing");
             refused.Errors.Should().Contain(error => error.Rule == DimensionRule.ParentTypeNotPermitted);
 
             structures.Should().NotBeNull();
         });
 
+    /// <summary>
+    /// A type that has never declared self-nesting nests inside itself wherever a structure's grid
+    /// says so — and only there.
+    /// </summary>
+    /// <remarks>
+    /// This is the assertion ADR-0010's addendum reversed. The dimension type used to hold a veto
+    /// no axis could grant past, which meant the one screen that asks "what may sit under what"
+    /// could not answer it: the diagonal was greyed out and the reason was a checkbox on another
+    /// screen entirely. The scenario's Department carries <c>AllowsSelfNesting = false</c> to this
+    /// day, which is exactly the point — nothing reads it.
+    /// </remarks>
     [Fact]
-    public async Task ATypeThatVetoesSelfNestingCannotBeGrantedItByAStructure() =>
+    public async Task ATypeThatNeverDeclaredSelfNestingStillNestsWhereTheStructureSaysSo() =>
         await _tenant.InTenantAsSystemAsync(async services =>
         {
             var types = await DimensionGraphScenario.TypesAsync(services);
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
-            // The scenario's Department does not declare self-nesting. Ticking the cell anyway is
-            // not enough, and must not be: no axis can grant past the type's own refusal.
-            var structureId = await StructureAsync(
-                services, "veto", [types.Division, types.Department],
+            (await services.GetRequiredService<IDimensionTypeService>().GetAsync(types.Department))!
+                .AllowsSelfNesting.Should().BeFalse("the stored flag is still off, and still ignored");
+
+            var granted = await StructureAsync(
+                services, "subdept-yes", [types.Division, types.Department],
                 roots: [types.Division],
                 containment: [(types.Division, types.Department), (types.Department, types.Department)]);
 
-            var outer = await RecordAsync(services, types.Department, "veto-outer", Opened);
-            var inner = await RecordAsync(services, types.Department, "veto-inner", Opened);
+            var withheld = await StructureAsync(
+                services, "subdept-no", [types.Division, types.Department],
+                roots: [types.Division],
+                containment: [(types.Division, types.Department)]);
 
-            var refused = await graph.MoveAsync(structureId, inner, outer, Opened);
+            var outer = await RecordAsync(services, types.Department, "subdept-outer", Opened);
+            var inner = await RecordAsync(services, types.Department, "subdept-inner", Opened);
 
-            refused.Succeeded.Should().BeFalse();
-            refused.Errors.Should().Contain(error => error.Rule == DimensionRule.SelfNesting);
+            (await graph.MoveAsync(granted, inner, outer, Opened))
+                .Succeeded.Should().BeTrue("this structure's grid ticks Department → Department");
+
+            // And the grant is this structure's alone. Two axes, one pair of records, opposite
+            // answers — which is the whole argument of ADR-0010 applied to the diagonal.
+            var refused = await graph.MoveAsync(withheld, inner, outer, Opened);
+
+            refused.Succeeded.Should().BeFalse("the other structure does not tick that cell");
+            refused.Errors.Should().Contain(error => error.Rule == DimensionRule.ParentTypeNotPermitted);
+        });
+
+    /// <summary>Every cell of the grid, the diagonal included, is offered to be ticked.</summary>
+    /// <remarks>
+    /// The screen's half of the same decision. A cell the editor will not let anyone tick is a
+    /// containment map that cannot express what the engine now permits, and the greyed-out
+    /// diagonal was the bug report: people could not find the setting that explained it.
+    /// </remarks>
+    [Fact]
+    public async Task EveryDiagonalCellOfTheGridCanBeTicked() =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var types = await DimensionGraphScenario.TypesAsync(services);
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            foreach (var typeId in new[] { types.Division, types.Department, types.Section })
+            {
+                var structureId = await StructureAsync(
+                    services, $"diag-{typeId[..6]}", [typeId],
+                    roots: [typeId],
+                    containment: [(typeId, typeId)]);
+
+                var outer = await RecordAsync(services, typeId, $"diag-{typeId[..6]}-outer", Opened);
+                var inner = await RecordAsync(services, typeId, $"diag-{typeId[..6]}-inner", Opened);
+
+                (await graph.MoveAsync(structureId, inner, outer, Opened))
+                    .Succeeded.Should().BeTrue("the structure ticks this type inside itself");
+            }
         });
 
     // ---- the picker and the validator agree ----------------------------------------------
@@ -190,13 +240,18 @@ public sealed class DimensionContainmentTenantTests
             var world = await ZenithAsync(services, $"agree{isStrict}", isStrict);
             var graph = services.GetRequiredService<IDimensionGraphService>();
 
-            // One record of every type, so every ordered pair can actually be attempted.
-            var byType = new Dictionary<string, string>(StringComparer.Ordinal);
+            // Two records of every type, not one. The diagonal has to be attempted with a parent
+            // and a child that are genuinely different records, or the cycle rule refuses it for a
+            // reason that has nothing to do with containment and the property reads as broken.
+            // That was masked while the type's veto also refused it — two wrongs agreeing.
+            var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+            var children = new Dictionary<string, string>(StringComparer.Ordinal);
             var allTypes = new[] { world.Division, world.Department, world.Project, world.Team };
 
             foreach (var typeId in allTypes)
             {
-                byType[typeId] = await RecordAsync(services, typeId, $"agree{isStrict}-{byType.Count}", Opened);
+                parents[typeId] = await RecordAsync(services, typeId, $"agree{isStrict}-p{parents.Count}", Opened);
+                children[typeId] = await RecordAsync(services, typeId, $"agree{isStrict}-c{children.Count}", Opened);
             }
 
             var disagreements = new List<string>();
@@ -204,7 +259,7 @@ public sealed class DimensionContainmentTenantTests
             foreach (var parentTypeId in allTypes)
             {
                 var offered = await graph.GetPermittedChildTypeIdsAsync(
-                    world.StructureId, byType[parentTypeId], Opened);
+                    world.StructureId, parents[parentTypeId], Opened);
 
                 foreach (var childTypeId in allTypes)
                 {
@@ -212,7 +267,7 @@ public sealed class DimensionContainmentTenantTests
                     // question is whether the picker's forwards reading of it agrees.
                     var errors = await services.GetRequiredService<IDimensionValidator>()
                         .ValidatePlacementAsync(
-                            world.StructureId, byType[childTypeId], byType[parentTypeId], Opened);
+                            world.StructureId, children[childTypeId], parents[parentTypeId], Opened);
 
                     var wouldRefuse = errors.Any(error => !error.IsAdvisory);
                     var isOffered = offered.Contains(childTypeId, StringComparer.Ordinal);

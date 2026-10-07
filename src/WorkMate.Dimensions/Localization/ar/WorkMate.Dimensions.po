@@ -278,11 +278,6 @@ msgstr "الرمز '{0}' مستخدم بالفعل في سجل بعد آخر ف�
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
-#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
-msgid "'{0}' and '{1}' are the same kind of unit, and that kind does not allow nesting inside itself."
-msgstr "'{0}' و'{1}' من النوع نفسه، وهذا النوع لا يسمح بالتداخل داخل نفسه."
-
-#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 msgid "'{0}' is not effective on {1}. The placement is allowed, but check the dates."
 msgstr "'{0}' غير ساري في {1}. التعيين مسموح به، لكن تحقق من التواريخ."
 
@@ -347,10 +342,6 @@ msgid "No dimension types have been created yet."
 msgstr "لم يتم إنشاء أي أنواع أبعاد بعد."
 
 #: Views/DimensionTypes/Index.cshtml
-msgid "Self-nesting"
-msgstr "التداخل الذاتي"
-
-#: Views/DimensionTypes/Index.cshtml
 msgid "Attributes"
 msgstr "السمات"
 
@@ -406,10 +397,6 @@ msgstr "حروف وأرقام وشرطات وشرطات سفلية. يُسمّى
 #: Views/DimensionTypes/Edit.cshtml
 msgid "The code cannot be changed once the dimension type exists."
 msgstr "لا يمكن تغيير الرمز بعد وجود نوع البعد."
-
-#: Views/DimensionTypes/Edit.cshtml
-msgid "Allow a record of this type to sit under another record of the same type"
-msgstr "السماح لسجل من هذا النوع بأن يقع تحت سجل آخر من النوع نفسه"
 
 #: Views/DimensionTypes/Edit.cshtml
 msgid "This type is defined by WorkMate. Its name and attribute schema may still be extended; it cannot be retired."
@@ -1205,10 +1192,6 @@ msgid "Add a type above, then say what may sit under what."
 msgstr "أضف نوعًا أعلاه، ثم حدّد ما يمكن أن يوضع تحت ماذا."
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "This kind of unit does not allow nesting inside itself. Change that on the dimension type."
-msgstr "هذا النوع من الوحدات لا يسمح بالتداخل داخل نفسه. غيّر ذلك في نوع البعد."
-
-#: Views/StructuresAdmin/Edit.cshtml
 msgid "Only the placements ticked below are allowed"
 msgstr "لا يُسمح إلا بالتعيينات المعلَّمة أدناه"
 
@@ -1305,3 +1288,7 @@ msgstr "يصدّر أنواع الأبعاد والهياكل والوحدات �
 #: WorkMate.Dimensions.Recipes.DimensionRecordsRecipeStep
 msgid "'{0}' could not be renamed."
 msgstr "تعذّر إعادة تسمية '{0}'."
+
+#: WorkMate.Dimensions.Recipes.DimensionRecordsRecipeStep
+msgid "'{0}' could not be given its attribute values."
+msgstr "تعذّر تعيين قيم سمات '{0}'."

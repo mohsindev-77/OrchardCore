@@ -93,20 +93,15 @@
         <div class="designer-card-body">
             @* title, because the chart gives every card the same fixed size and cuts anything that
                does not fit; the full name stays one hover away rather than being lost. *@
-            <div class="designer-card-name" dir="ltr" lang="en" title="@Model.NameEn">@Model.NameEn</div>
-            @* Always rendered, hidden when empty — the same rule as the toggle and its spacer
-               above, and for the same reason: this partial is also the <template> the script
-               clones for every lazily loaded child, and a template missing an element can never
-               grow one. Removing it outright took the Arabic line out of the clone's reach and
-               stopped every branch below the roots from loading at all.
+            @* One name per card, and it is the English one, in every UI language.
 
-               Hidden rather than empty because Arabic is optional since the ADR-0003 addendum: an
-               untranslated unit would otherwise carry a blank second line on every card, and a
-               blank line the row-levelling script would then reserve height for. The English line
-               above is never empty, so a reader of either language still has a name to read. *@
-            <div class="designer-card-name-ar" dir="rtl" lang="ar"
-                 title="@Model.NameAr"
-                 hidden="@(string.IsNullOrWhiteSpace(Model.NameAr) ? "hidden" : null)">@Model.NameAr</div>
+               A card is a shape on a chart before it is a sentence: a second line doubles the
+               height of every card, halves how much of the tree fits on screen, and buys a reader
+               of either language nothing they cannot get from the card they are already looking
+               at. The Arabic name is still stored, still edited on Add unit and Rename, still
+               searched, and still used in the sentences on the action screens — this is a decision
+               about the chart, not about the data. *@
+            <div class="designer-card-name" dir="ltr" lang="en" title="@Model.NameEn">@Model.NameEn</div>
             @if (Model.IsStructure)
             {
                 <div class="designer-card-meta">
