@@ -68,6 +68,23 @@
         </select>
         <div class="form-text">@T["Following the language is right for most tenants: Arabic reads right to left and English left to right."]</div>
     </div>
+
+    @{
+        // A checkbox with a hidden companion, the same shape the working-days boxes use: an
+        // unchecked box posts nothing at all, so the hidden "false" is what makes a bool bind
+        // either way.
+        var requireArabicName = Html.NameFor(m => m.RequireArabicNames);
+        var requireArabicId = Html.IdFor(m => m.RequireArabicNames);
+    }
+
+    <div class="form-check mb-3">
+        <input type="checkbox" class="form-check-input" id="@requireArabicId" name="@requireArabicName" value="true" checked="@Model.RequireArabicNames" />
+        <input type="hidden" name="@requireArabicName" value="false" />
+        <label class="form-check-label" for="@requireArabicId">@T["Require Arabic names"]</label>
+        <div class="form-text">
+            @T["Off by default. Names are always bilingual, but the Arabic half may be left empty while a customer is still translating; where it is, the English name is shown to Arabic readers instead. Turn this on to insist on both."]
+        </div>
+    </div>
 </fieldset>
 
 <fieldset class="mb-4">

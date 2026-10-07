@@ -69,15 +69,51 @@ internal sealed class DimensionLinkDocument
     /// <inheritdoc cref="OrphanedByParentRetirementOn"/>
     public string? OrphanedFromParentId { get; set; }
 
-    /// <summary>The parent in effect on <paramref name="asAt"/>, or null if the node is a root then.</summary>
+    /// <summary>
+    /// The parent in effect on <paramref name="asAt"/>, or null if the node has none then.
+    /// </summary>
+    /// <remarks>
+    /// Null covers three cases that are all "no parent" to a caller and are not the same to a
+    /// reader: off the axis entirely, never placed, and placed-then-taken-off. The third now has
+    /// an entry of its own with a null parent, which this reads exactly like the absence of one —
+    /// callers asking "who is above this today" need no new case, and the ones that care about the
+    /// difference ask <see cref="Parents"/> directly.
+    /// </remarks>
     public string? ParentOn(DateOnly asAt) =>
         OnAxisUntil is not null && asAt > OnAxisUntil
             ? null
             : Parents.FirstOrDefault(link => link.Range.Contains(asAt))?.ParentRecordId;
+
+    /// <summary>
+    /// The dated entry covering <paramref name="asAt"/>, whether or not it names a parent.
+    /// </summary>
+    public ParentLink? EntryOn(DateOnly asAt) =>
+        OnAxisUntil is not null && asAt > OnAxisUntil
+            ? null
+            : Parents.FirstOrDefault(link => link.Range.Contains(asAt));
 }
 
-/// <summary>One parent-child edge, effective-dated.</summary>
-internal sealed record ParentLink(string ParentRecordId, EffectiveRange Range);
+/// <summary>
+/// One period of a record's parentage on one axis. A null <paramref name="ParentRecordId"/> is a
+/// period with no parent at all, recorded deliberately.
+/// </summary>
+/// <remarks>
+/// Nullable since stage D2. Moving a unit to the top of a structure used to be recorded by
+/// <em>removing</em> the link that covered that date, which left no trace of the decision: the
+/// history before it still resolved correctly, but "when did this leave the tree, and under what"
+/// was answerable only from the audit trail. That cost three things — cancel-move could not see a
+/// move it had no entry for, the unplaced panel could not tell a unit taken off the tree from one
+/// never placed, and nothing on the record said a decision had been made at all.
+///
+/// So leaving the tree is an entry like any other move, and the only thing that distinguishes it
+/// is where it points. Readers must treat a null parent as "no ancestors from here": the closure
+/// skips these rows rather than trying to resolve them.
+/// </remarks>
+internal sealed record ParentLink(string? ParentRecordId, EffectiveRange Range)
+{
+    /// <summary>Whether this period places the record somewhere, as opposed to nowhere.</summary>
+    public bool IsPlacement => !string.IsNullOrEmpty(ParentRecordId);
+}
 
 /// <summary>
 /// A node's ancestor chain on one structure, dated.

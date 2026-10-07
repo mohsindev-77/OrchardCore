@@ -52,7 +52,8 @@ public sealed class OptimisticConcurrencyTests : IAsyncLifetime
             .Column<bool>(nameof(StructureIndex.IsPrimaryOrganisation))
             .Column<bool>(nameof(StructureIndex.AllowSkipLevel))
             .Column<bool>(nameof(StructureIndex.IsStrict))
-            .Column<int>(nameof(StructureIndex.LevelCount)));
+            .Column<int>(nameof(StructureIndex.LevelCount))
+            .Column<int>(nameof(StructureIndex.ContainmentRuleCount)));
 
         await transaction.CommitAsync();
 

@@ -174,19 +174,35 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
             ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
 
-        var rootTypeId = structure.DimensionTypeIdAt(0);
+        // The declared root types, not "whatever sits at ordinal zero". ADR-0010: an axis may have
+        // more than one kind of thing at its top, and level order is reading order rather than a
+        // rule. Falls back to the first level for a structure written before the map existed and
+        // not yet migrated, so a half-upgraded tenant still draws a tree.
+        var rootTypeIds = structure.RootDimensionTypeIds.Count > 0
+            ? structure.RootDimensionTypeIds
+            : structure.DimensionTypeIdAt(0) is { } first ? [first] : (IReadOnlyList<string>)[];
 
-        if (rootTypeId is null)
+        if (rootTypeIds.Count == 0)
         {
             return [];
         }
 
         var date = await ResolveDateAsync(asAt);
+        var roots = new List<DimensionNodeRef>();
 
-        var roots = (await RecordsOfTypeAsync(rootTypeId, cancellationToken))
-            .Where(record => record.EffectiveRange.Contains(date));
+        foreach (var rootTypeId in rootTypeIds)
+        {
+            roots.AddRange((await RecordsOfTypeAsync(rootTypeId, cancellationToken))
+                .Where(record => record.EffectiveRange.Contains(date)));
+        }
 
-        return [.. roots.OrderBy(root => root.SortOrder).ThenBy(root => root.NameEn, StringComparer.Ordinal)];
+        return
+        [
+            .. roots
+                .DistinctBy(root => root.RecordId, StringComparer.Ordinal)
+                .OrderBy(root => root.SortOrder)
+                .ThenBy(root => root.NameEn, StringComparer.Ordinal),
+        ];
     }
 
     public async Task<IReadOnlyList<DimensionNodeRef>> GetUnplacedAsync(
@@ -202,7 +218,15 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
         var candidates = new List<DimensionNodeRef>();
 
-        foreach (var level in structure.Levels.Where(level => level.Ordinal > 0))
+        // Every type except the ones that are roots of this axis: a parentless record of a root
+        // type is the top of the tree, not a unit that fell out of it. Keyed off the declared root
+        // types rather than ordinal zero, since ADR-0010 lets an axis have several.
+        var rootTypeIds = structure.RootDimensionTypeIds.Count > 0
+            ? structure.RootDimensionTypeIds
+            : structure.DimensionTypeIdAt(0) is { } first ? [first] : (IReadOnlyList<string>)[];
+
+        foreach (var level in structure.Levels
+            .Where(level => !rootTypeIds.Contains(level.DimensionTypeId, StringComparer.Ordinal)))
         {
             candidates.AddRange((await RecordsOfTypeAsync(level.DimensionTypeId, cancellationToken))
                 .Where(record => record.EffectiveRange.Contains(date)));
@@ -383,11 +407,15 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     public async Task<StructureLevelChangePlan> PlanLevelChangeAsync(
         string structureId,
         IReadOnlyList<string> newLevelDimensionTypeIds,
-        bool newAllowSkipLevel,
+        IReadOnlyList<string> newRootDimensionTypeIds,
+        IReadOnlyList<Models.StructureContainment> newContainment,
+        bool newIsStrict,
         DateOnly asAt,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(newLevelDimensionTypeIds);
+        ArgumentNullException.ThrowIfNull(newRootDimensionTypeIds);
+        ArgumentNullException.ThrowIfNull(newContainment);
 
         var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
             ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
@@ -407,8 +435,22 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             removalImpacts.Add(await RemovalImpactAsync(structureId, dimensionTypeId, asAt, cancellationToken));
         }
 
-        var violations = await ViolationsFromReorderingAsync(
-            structure, newLevelDimensionTypeIds, newAllowSkipLevel, asAt, cancellationToken);
+        // The change as a document, so the rules can be asked about it exactly as they are asked
+        // about a saved one. Replaying the proposal through a half-built copy of the real thing is
+        // what keeps the preview and the write from answering differently.
+        var proposed = new Models.StructureDocument
+        {
+            StructureId = structure.StructureId,
+            Code = structure.Code,
+            Name = structure.Name,
+            Levels = [.. newLevelDimensionTypeIds.Select((id, ordinal) => new Models.StructureLevel(ordinal, id))],
+            RootDimensionTypeIds = newRootDimensionTypeIds,
+            Containment = newContainment,
+            IsStrict = newIsStrict,
+        };
+
+        var violations = await ViolationsFromContainmentChangeAsync(
+            structure, proposed, asAt, cancellationToken);
 
         return new StructureLevelChangePlan(structureId, added, removed, removalImpacts, violations);
     }
@@ -459,15 +501,19 @@ internal sealed class DimensionGraphService : IDimensionGraphService
     }
 
     /// <summary>
-    /// Every existing, today-effective placement that the proposed level order would make
-    /// invalid. Adding or removing a level never lands here — only reordering can, since a record
-    /// whose own type or whose parent's type is leaving the axis is already covered, safely, by
-    /// the self-pair capping <see cref="OnStructureLevelsChangedAsync"/> does.
+    /// Every existing, today-effective placement the proposed containment map would make invalid.
     /// </summary>
-    private async Task<IReadOnlyList<DimensionError>> ViolationsFromReorderingAsync(
+    /// <remarks>
+    /// A record whose own type or whose parent's type is leaving the axis altogether never lands
+    /// here: that is already covered, safely, by the self-pair capping
+    /// <see cref="OnStructureLevelsChangedAsync"/> does. What this catches is the pairing a
+    /// customer is about to stop allowing while units are still placed that way — untick
+    /// Division → Section with three Sections sitting under Divisions, and this is what names
+    /// them before anything is saved.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ViolationsFromContainmentChangeAsync(
         Models.StructureDocument structure,
-        IReadOnlyList<string> newLevelDimensionTypeIds,
-        bool newAllowSkipLevel,
+        Models.StructureDocument proposed,
         DateOnly asAt,
         CancellationToken cancellationToken)
     {
@@ -488,10 +534,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 .ListAsync(cancellationToken))
             .ToDictionary(row => row.ContentItemId, row => (row.Code, row.DimensionTypeId), StringComparer.Ordinal);
 
-        var newOrdinalByType = newLevelDimensionTypeIds
-            .Select((dimensionTypeId, ordinal) => (dimensionTypeId, ordinal))
-            .ToDictionary(x => x.dimensionTypeId, x => x.ordinal, StringComparer.Ordinal);
-
+        var newVocabulary = proposed.DimensionTypeIds.ToHashSet(StringComparer.Ordinal);
         var violations = new List<DimensionError>();
 
         foreach (var link in links)
@@ -506,36 +549,32 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             }
 
             // The child's or the parent's own type is leaving the axis: a removal impact,
-            // already reported above, and safe. Reordering is not the question for this pair.
-            if (!newOrdinalByType.TryGetValue(child.DimensionTypeId, out var childOrdinal) ||
-                !newOrdinalByType.TryGetValue(parent.DimensionTypeId, out var parentOrdinal))
+            // already reported above, and safe. Containment is not the question for this pair.
+            if (!newVocabulary.Contains(child.DimensionTypeId) ||
+                !newVocabulary.Contains(parent.DimensionTypeId))
             {
                 continue;
             }
 
-            if (childOrdinal <= parentOrdinal)
-            {
-                violations.Add(new DimensionError(
-                    DimensionRule.ParentTypeNotPermitted,
-                    child.Code,
-                    S["'{0}' is currently placed under '{1}'. The new level order for '{2}' would put '{1}' at or below '{0}', which is not permitted.",
-                        child.Code,
-                        parent.Code,
-                        structure.Code]));
+            var selfNesting =
+                string.Equals(child.DimensionTypeId, parent.DimensionTypeId, StringComparison.Ordinal) &&
+                (await _dimensionTypeLookup.GetAsync(child.DimensionTypeId, cancellationToken))?.AllowsSelfNesting == true;
 
+            var outcome = ContainmentRules.Decide(
+                proposed, parent.DimensionTypeId, child.DimensionTypeId, selfNesting);
+
+            if (!ContainmentRules.Blocks(outcome, proposed.IsStrict))
+            {
                 continue;
             }
 
-            if (childOrdinal - parentOrdinal > 1 && !newAllowSkipLevel)
-            {
-                violations.Add(new DimensionError(
-                    DimensionRule.LevelSkipping,
+            violations.Add(new DimensionError(
+                DimensionRule.ParentTypeNotPermitted,
+                child.Code,
+                S["'{0}' is currently placed under '{1}'. The new rules for '{2}' would not allow that.",
                     child.Code,
-                    S["'{0}' is currently placed under '{1}'. The new level order for '{2}' would skip a level between them, which this structure would not allow.",
-                        child.Code,
-                        parent.Code,
-                        structure.Code]));
-            }
+                    parent.Code,
+                    structure.Code]));
         }
 
         return violations;
@@ -554,13 +593,13 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             return [];
         }
 
-        var levels = structure.Levels.OrderBy(level => level.Ordinal).ToList();
-
         if (parentRecordId is null)
         {
-            // A root sits at the first level. Skipping does not apply upwards: there is nothing
-            // above the first level to skip past.
-            return [levels[0].DimensionTypeId];
+            // Nothing above a root to be contained by, so the question is which types this axis
+            // declares as roots rather than what may sit under something.
+            return structure.RootDimensionTypeIds.Count > 0
+                ? [.. structure.RootDimensionTypeIds]
+                : structure.DimensionTypeIdAt(0) is { } first ? [first] : [];
         }
 
         var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
@@ -577,32 +616,67 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             return [];
         }
 
-        var parentOrdinal = levels.FindIndex(level => level.DimensionTypeId == parent.DimensionTypeId);
+        return await PermittedChildTypeIdsAsync(structure, parent.DimensionTypeId, cancellationToken);
+    }
 
-        if (parentOrdinal < 0)
-        {
-            // The parent's type is not a level of this structure at all, which the validator
-            // would refuse; offering anything here would only produce a form that cannot save.
-            return [];
-        }
-
+    /// <summary>
+    /// Which of this axis's types may sit under a parent of <paramref name="parentDimensionTypeId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The forwards reading of the containment rule, and it asks
+    /// <see cref="ContainmentRules.Offerable"/> rather than reimplementing it — which is the whole
+    /// point of ADR-0010's single decision function. It is also why a non-strict axis now offers
+    /// its undeclared pairings instead of silently offering nothing: the validator was always
+    /// going to accept them.
+    ///
+    /// The vocabulary is the structure's own level list. A type this axis has never heard of is
+    /// not offered even when the axis is non-strict and the validator would tolerate it; there is
+    /// no list of "every type in the tenant" that belongs in an organisation chart's picker.
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> PermittedChildTypeIdsAsync(
+        Models.StructureDocument structure,
+        string parentDimensionTypeId,
+        CancellationToken cancellationToken)
+    {
         var permitted = new List<string>();
 
-        var parentType = await _dimensionTypeLookup.GetAsync(parent.DimensionTypeId, cancellationToken);
-
-        if (parentType?.AllowsSelfNesting == true)
+        foreach (var childTypeId in structure.DimensionTypeIds)
         {
-            permitted.Add(parent.DimensionTypeId);
-        }
+            var selfNesting = string.Equals(childTypeId, parentDimensionTypeId, StringComparison.Ordinal) &&
+                (await _dimensionTypeLookup.GetAsync(childTypeId, cancellationToken))?.AllowsSelfNesting == true;
 
-        var deepest = structure.AllowSkipLevel ? levels.Count - 1 : Math.Min(parentOrdinal + 1, levels.Count - 1);
-
-        for (var ordinal = parentOrdinal + 1; ordinal <= deepest; ordinal++)
-        {
-            permitted.Add(levels[ordinal].DimensionTypeId);
+            if (ContainmentRules.Offerable(structure, parentDimensionTypeId, childTypeId, selfNesting))
+            {
+                permitted.Add(childTypeId);
+            }
         }
 
         return permitted;
+    }
+
+    /// <summary>
+    /// The mirror: which of this axis's types may be the <em>parent</em> of
+    /// <paramref name="childDimensionTypeId"/>.
+    /// </summary>
+    /// <remarks>
+    /// What turns the placement pickers from an N+1 into a scan. They used to call
+    /// <see cref="GetPermittedChildTypeIdsAsync"/> once per candidate node on the axis — one index
+    /// query each, for a question whose answer depends only on the candidate's <em>type</em>.
+    /// Computed once here, the pickers filter a list they already have in memory.
+    /// </remarks>
+    private async Task<HashSet<string>> PermittedParentTypeIdsAsync(
+        Models.StructureDocument structure,
+        string childDimensionTypeId,
+        CancellationToken cancellationToken)
+    {
+        var selfNesting =
+            (await _dimensionTypeLookup.GetAsync(childDimensionTypeId, cancellationToken))?.AllowsSelfNesting == true;
+
+        return
+        [
+            .. structure.DimensionTypeIds.Where(parentTypeId =>
+                ContainmentRules.Offerable(structure, parentTypeId, childDimensionTypeId, selfNesting)),
+        ];
     }
 
     public async Task MarkOrphanedByParentRetirementAsync(
@@ -624,6 +698,45 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
             await _session.SaveCheckedAsync(link, cancellationToken);
         }
+    }
+
+    public async Task<IReadOnlyDictionary<string, DateOnly>> GetRemovedFromTreeAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var result = new Dictionary<string, DateOnly>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return result;
+        }
+
+        var date = await ResolveDateAsync(asAt);
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        var documents = await _session
+            .Query<DimensionLinkDocument, DimensionLinkIndex>(index =>
+                index.StructureId == structureId && index.ChildId.IsIn(ids))
+            .ListAsync(cancellationToken);
+
+        foreach (var document in documents
+            .Where(document => document.StructureId == structureId)
+            .DistinctBy(document => document.RecordId, StringComparer.Ordinal))
+        {
+            // The entry covering this date, and only when it is one that names nobody. A record
+            // with no entry at all on this date was never placed; one whose covering entry names a
+            // parent is not unplaced in the first place.
+            if (document.EntryOn(date) is { IsPlacement: false } departure)
+            {
+                result[document.RecordId] = departure.Range.From;
+            }
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyDictionary<string, OrphanedByParentRetirement>> GetOrphanedByParentRetirementAsync(
@@ -685,7 +798,10 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             result[document.RecordId] = new OrphanedByParentRetirement(
                 formerParentId,
                 name.NameEn ?? formerParentId,
-                name.NameAr ?? string.Empty,
+                // Both halves degrade the same way. English fell back to the record id and Arabic
+                // to nothing, so when the parent's row was missing an Arabic reader got a blank
+                // badge where an English reader at least got an id to search for.
+                name.NameAr ?? name.NameEn ?? formerParentId,
                 document.OrphanedByParentRetirementOn!.Value);
         }
 
@@ -760,25 +876,27 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 structureId, recordId, date, skip: 0, take: 500, cancellationToken))
             .Items.Select(descendant => descendant.RecordId));
 
-        var permitted = new List<DimensionNodeRef>();
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
 
-        foreach (var candidate in await AllNodesAsync(structureId, date, cancellationToken))
+        if (structure is null)
         {
-            if (excluded.Contains(candidate.RecordId))
-            {
-                continue;
-            }
-
-            var childTypes = await GetPermittedChildTypeIdsAsync(
-                structureId, candidate.RecordId, date, cancellationToken);
-
-            if (childTypes.Contains(node.DimensionTypeId, StringComparer.Ordinal))
-            {
-                permitted.Add(candidate);
-            }
+            return [];
         }
 
-        return [.. permitted.OrderBy(candidate => candidate.NameEn, StringComparer.Ordinal)];
+        // One set, computed once, instead of one index query per node on the axis. Which parents
+        // can take this unit depends only on their type, so asking the question per record was
+        // asking the same question as many times as there were records of that type.
+        var permittedParentTypes = await PermittedParentTypeIdsAsync(
+            structure, node.DimensionTypeId, cancellationToken);
+
+        return
+        [
+            .. (await AllNodesAsync(structureId, date, cancellationToken))
+                .Where(candidate =>
+                    !excluded.Contains(candidate.RecordId) &&
+                    permittedParentTypes.Contains(candidate.DimensionTypeId))
+                .OrderBy(candidate => candidate.NameEn, StringComparer.Ordinal),
+        ];
     }
 
     public async Task<IReadOnlyList<DimensionNodeRef>> GetMergeTargetsAsync(
@@ -852,8 +970,11 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             return [];
         }
 
+        // Only the entries that name somebody. A dated "no parent" entry is a move on the record
+        // like any other and is listed below; it just has no parent to go and fetch a name for.
         var parentIds = link.Parents
-            .Select(parent => parent.ParentRecordId)
+            .Where(parent => parent.IsPlacement)
+            .Select(parent => parent.ParentRecordId!)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -871,14 +992,22 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 .OrderByDescending(parent => parent.Range.From)
                 .Select(parent =>
                 {
-                    parents.TryGetValue(parent.ParentRecordId, out var named);
+                    if (!parent.IsPlacement)
+                    {
+                        return new RecordedMove(
+                            parent.Range.From, parent.Range.To, null, string.Empty, string.Empty, string.Empty);
+                    }
+
+                    parents.TryGetValue(parent.ParentRecordId!, out var named);
 
                     return new RecordedMove(
                         parent.Range.From,
                         parent.Range.To,
                         parent.ParentRecordId,
-                        named.NameEn ?? parent.ParentRecordId,
-                        named.NameAr ?? string.Empty,
+                        named.NameEn ?? parent.ParentRecordId!,
+                        // Symmetric with the English half, for the reason given on the orphan
+                        // badge above: a reader of either language gets something to act on.
+                        named.NameAr ?? named.NameEn ?? parent.ParentRecordId!,
                         named.Code ?? string.Empty);
                 }),
         ];
@@ -959,7 +1088,12 @@ internal sealed class DimensionGraphService : IDimensionGraphService
                 .OrderBy(entry => entry.Range.From)
                 .FirstOrDefault();
 
-            if (next is not null && await HydrateAsync([(next.ParentRecordId, 0)], cancellationToken) is [var after, ..])
+            // Only when the later entry puts the unit somewhere. One that takes it off the tree
+            // still bounds this move — the range arithmetic above already accounts for it — but it
+            // has no parent to name, and the warning that names one is suppressed rather than
+            // filled with a blank.
+            if (next is { IsPlacement: true } &&
+                await HydrateAsync([(next.ParentRecordId!, 0)], cancellationToken) is [var after, ..])
             {
                 supersededBy = after.NameEn;
                 supersededByAr = after.NameAr;
@@ -1342,6 +1476,14 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
         foreach (var parent in link?.Parents ?? [])
         {
+            // A dated "no parent" entry is a period with nothing above it, so there is no edge to
+            // intersect and no chain to walk. Skipped rather than followed: it is what the absence
+            // of an entry always meant, now written down. Stage D2.
+            if (!parent.IsPlacement)
+            {
+                continue;
+            }
+
             // The edge only exists while both the node and the link do.
             var edge = selfRange.Intersect(parent.Range);
 
@@ -1351,7 +1493,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             }
 
             var above = await ComputeAncestorsAsync(
-                structureId, parent.ParentRecordId, cache, visiting, cancellationToken);
+                structureId, parent.ParentRecordId!, cache, visiting, cancellationToken);
 
             foreach (var ancestor in above)
             {
@@ -1465,17 +1607,29 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             result.Add(link);
         }
 
-        if (newParentId is not null)
-        {
-            // The new link runs to wherever the one it displaced ran to, so it cannot swallow a
-            // later move. With nothing displaced, it runs until the next link starts.
-            var to = covering?.Range.To
-                ?? existing
-                    .Where(link => link.Range.From > effectiveFrom)
-                    .OrderBy(link => link.Range.From)
-                    .Select(link => (DateOnly?)link.Range.From.AddDays(-1))
-                    .FirstOrDefault();
+        // An entry is written whichever way the move goes. Taking a unit off the tree used to be
+        // recorded by writing nothing — the displaced link was truncated and the record simply had
+        // a gap from that date — which resolved correctly and said nothing: cancel-move had no
+        // entry to cancel and the unplaced panel could not tell this from never having been placed.
+        // Leaving is a decision, so it gets a row like every other decision. Stage D2.
+        //
+        // The new entry runs to wherever the one it displaced ran to, so it cannot swallow a later
+        // move. With nothing displaced, it runs until the next entry starts.
+        var to = covering?.Range.To
+            ?? existing
+                .Where(link => link.Range.From > effectiveFrom)
+                .OrderBy(link => link.Range.From)
+                .Select(link => (DateOnly?)link.Range.From.AddDays(-1))
+                .FirstOrDefault();
 
+        // Except where there is nothing to say. A record that has never been placed and is being
+        // placed nowhere gets no entry at all: writing "no parent from today" over a record that
+        // never had one invents a decision nobody made, and would put every untouched import row
+        // in the panel's "taken off the tree" state.
+        var worthRecording = newParentId is not null || existing.Count > 0;
+
+        if (worthRecording)
+        {
             result.Add(new ParentLink(newParentId, new EffectiveRange(effectiveFrom, to)));
         }
 

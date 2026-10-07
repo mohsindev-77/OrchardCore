@@ -3,6 +3,7 @@ using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
+using WorkMate.Platform.Services;
 using YesSql;
 
 namespace WorkMate.Dimensions.Internal.Graph;
@@ -26,6 +27,13 @@ internal sealed class DimensionValidator : IDimensionValidator
     private readonly IDimensionRecordLookup _recordLookup;
     private readonly IEnumerable<IDimensionDeletionBlockerProvider> _blockerProviders;
     private readonly IDimensionAuthorisation _authorisation;
+
+    /// <summary>
+    /// Whether this tenant insists on the Arabic half of a name. ADR-0003's addendum: English is
+    /// required, Arabic is optional unless the tenant says otherwise.
+    /// </summary>
+    private readonly IBilingualNamePolicy _namePolicy;
+
     private readonly IStringLocalizer S;
 
     public DimensionValidator(
@@ -35,6 +43,7 @@ internal sealed class DimensionValidator : IDimensionValidator
         IDimensionRecordLookup recordLookup,
         IEnumerable<IDimensionDeletionBlockerProvider> blockerProviders,
         IDimensionAuthorisation authorisation,
+        IBilingualNamePolicy namePolicy,
         IStringLocalizer<DimensionValidator> stringLocalizer)
     {
         _session = session;
@@ -43,6 +52,7 @@ internal sealed class DimensionValidator : IDimensionValidator
         _recordLookup = recordLookup;
         _blockerProviders = blockerProviders;
         _authorisation = authorisation;
+        _namePolicy = namePolicy;
         S = stringLocalizer;
     }
 
@@ -63,8 +73,8 @@ internal sealed class DimensionValidator : IDimensionValidator
 
         var errors = new List<DimensionError>();
 
-        errors.AddRange(ValidateName(name, code));
-        errors.AddRange(ValidateAttributeSchema(attributeSchema));
+        errors.AddRange(await ValidateNameAsync(name, code, cancellationToken));
+        errors.AddRange(await ValidateAttributeSchemaAsync(attributeSchema, cancellationToken));
 
         // The code is immutable once a type exists, so it is only validated on creation.
         if (dimensionTypeId is null)
@@ -105,16 +115,18 @@ internal sealed class DimensionValidator : IDimensionValidator
         string code,
         BilingualText name,
         IReadOnlyList<string> levelDimensionTypeIds,
+        StructureShape shape,
         bool isPrimaryOrganisation,
         DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(levelDimensionTypeIds);
+        ArgumentNullException.ThrowIfNull(shape);
 
         var errors = new List<DimensionError>();
 
-        errors.AddRange(ValidateName(name, code));
+        errors.AddRange(await ValidateNameAsync(name, code, cancellationToken));
 
         if (structureId is null)
         {
@@ -145,6 +157,7 @@ internal sealed class DimensionValidator : IDimensionValidator
         }
 
         errors.AddRange(await ValidateLevelsAsync(levelDimensionTypeIds, code, cancellationToken));
+        errors.AddRange(ValidateShape(levelDimensionTypeIds, shape, code));
 
         if (isPrimaryOrganisation)
         {
@@ -209,6 +222,54 @@ internal sealed class DimensionValidator : IDimensionValidator
         return errors;
     }
 
+    /// <summary>
+    /// The containment map has to be about this structure's own types, and it has to have a way
+    /// in.
+    /// </summary>
+    /// <remarks>
+    /// Both failures are silent rather than loud if they are not caught here. A pairing naming a
+    /// type the axis does not use is simply never consulted — the picker iterates the axis's
+    /// vocabulary — so the customer ticks something and nothing happens. No root types at all is
+    /// worse: every record is unplaced, the chart is empty, and nothing on screen says why. ADR-0010.
+    /// </remarks>
+    private List<DimensionError> ValidateShape(
+        IReadOnlyList<string> levelDimensionTypeIds,
+        StructureShape shape,
+        string subject)
+    {
+        if (levelDimensionTypeIds.Count == 0)
+        {
+            return [];
+        }
+
+        var vocabulary = levelDimensionTypeIds.ToHashSet(StringComparer.Ordinal);
+        var errors = new List<DimensionError>();
+
+        var strangers = shape.RootDimensionTypeIds
+            .Concat(shape.Containment.Select(pair => pair.ParentDimensionTypeId))
+            .Concat(shape.Containment.Select(pair => pair.ChildDimensionTypeId))
+            .Where(id => !vocabulary.Contains(id))
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (var stranger in strangers)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.StructureLevels,
+                stranger,
+                S["'{0}' is named in this structure's rules but is not one of its types.", stranger]));
+        }
+
+        if (shape.RootDimensionTypeIds.Count == 0)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.StructureLevels,
+                subject,
+                S["A structure needs at least one kind of unit that may sit at its top."]));
+        }
+
+        return errors;
+    }
+
     // ---- records ----------------------------------------------------------------------
 
     public async Task<IReadOnlyList<DimensionError>> ValidateRecordAsync(
@@ -246,7 +307,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             batch?.RememberRecordCode(code);
         }
 
-        errors.AddRange(ValidateName(name, code));
+        errors.AddRange(await ValidateNameAsync(name, code, cancellationToken));
 
         if (effectiveRange.From == default)
         {
@@ -386,7 +447,7 @@ internal sealed class DimensionValidator : IDimensionValidator
             return errors;
         }
 
-        errors.AddRange(await ValidateLevelRulesAsync(structure, child, parent, cancellationToken));
+        errors.AddRange(await ValidateContainmentAsync(structure, child, parent, cancellationToken));
 
         // Not effective splits into two cases that look alike and are not. A parent that has not
         // started yet is usually a customer pre-building next year's structure, which is legitimate
@@ -417,83 +478,76 @@ internal sealed class DimensionValidator : IDimensionValidator
     }
 
     /// <summary>
-    /// The three level rules from architecture section 6: permitted level, level skipping, and
-    /// self-nesting.
+    /// Containment: whether this axis permits a child of this type under a parent of that one.
     /// </summary>
-    private async Task<IReadOnlyList<DimensionError>> ValidateLevelRulesAsync(
+    /// <remarks>
+    /// The whole of what used to be three rules of arithmetic on level ordinals — permitted level,
+    /// level skipping, self-nesting — now that ADR-0010 has made the permitted pairings explicit.
+    /// The decision itself is <see cref="ContainmentRules.Decide"/>, which the pickers call too;
+    /// everything here is turning its answer into a sentence.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateContainmentAsync(
         StructureDocument structure,
         DimensionNodeRef child,
         DimensionNodeRef parent,
         CancellationToken cancellationToken)
     {
-        var errors = new List<DimensionError>();
+        // Undated: the lookup never filters by retirement, so there is no "as of which date"
+        // workaround needed here the way there was through IDimensionTypeService.
+        var childType = await _typeLookup.GetAsync(child.DimensionTypeId, cancellationToken);
 
-        var childLevel = structure.OrdinalOf(child.DimensionTypeId);
-        var parentLevel = structure.OrdinalOf(parent.DimensionTypeId);
+        var outcome = ContainmentRules.Decide(
+            structure, parent.DimensionTypeId, child.DimensionTypeId, childType?.AllowsSelfNesting == true);
 
-        if (childLevel is null || parentLevel is null)
+        if (outcome == ContainmentRules.Outcome.Permitted)
         {
-            // A non-strict structure tolerates a type that is not one of its levels, which is
-            // what an axis still being shaped needs. A strict one does not.
-            if (structure.IsStrict)
-            {
-                var stranger = childLevel is null ? child : parent;
-
-                errors.Add(new DimensionError(
-                    DimensionRule.ParentTypeNotPermitted,
-                    stranger.Code,
-                    S["'{0}' is not one of the levels of the structure '{1}', which is strict.",
-                        stranger.Code,
-                        structure.Code]));
-            }
-
-            return errors;
+            return [];
         }
 
-        if (string.Equals(child.DimensionTypeId, parent.DimensionTypeId, StringComparison.Ordinal))
+        if (outcome == ContainmentRules.Outcome.SelfNestingVetoedByType)
         {
-            // Undated: the lookup never filters by retirement, so there is no "as of which
-            // date" workaround needed here the way there was through IDimensionTypeService.
-            var type = await _typeLookup.GetAsync(child.DimensionTypeId, cancellationToken);
-
-            if (type?.AllowsSelfNesting != true)
-            {
-                errors.Add(new DimensionError(
+            return
+            [
+                new DimensionError(
                     DimensionRule.SelfNesting,
                     child.Code,
                     S["'{0}' and '{1}' are the same kind of unit, and that kind does not allow nesting inside itself.",
                         child.Code,
-                        parent.Code]));
-            }
-
-            return errors;
+                        parent.Code]),
+            ];
         }
 
-        if (parentLevel >= childLevel)
+        // Undeclared. On a strict axis that is a refusal; on one still being shaped it is worth
+        // saying and not worth refusing, which is the whole job of IsStrict and the one place it
+        // is read. ParentTypeNotDeclared is advisory by its rule, so no caller has to know that.
+        var rule = structure.IsStrict
+            ? DimensionRule.ParentTypeNotPermitted
+            : DimensionRule.ParentTypeNotDeclared;
+
+        if (outcome == ContainmentRules.Outcome.SelfNestingNotDeclared)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.ParentTypeNotPermitted,
+            return
+            [
+                new DimensionError(
+                    rule,
+                    child.Code,
+                    S["'{0}' and '{1}' are the same kind of unit, and the structure '{2}' does not allow that kind inside itself.",
+                        child.Code,
+                        parent.Code,
+                        structure.Code]),
+            ];
+        }
+
+        return
+        [
+            new DimensionError(
+                rule,
                 parent.Code,
-                S["'{0}' sits at or below '{1}' in the structure '{2}', so it cannot be its parent.",
-                    parent.Code,
+                S["The structure '{0}' does not allow a unit like '{1}' under one like '{2}'.",
+                    structure.Code,
                     child.Code,
-                    structure.Code]));
-
-            return errors;
-        }
-
-        if (childLevel - parentLevel > 1 && !structure.AllowSkipLevel)
-        {
-            errors.Add(new DimensionError(
-                DimensionRule.LevelSkipping,
-                child.Code,
-                S["Placing '{0}' under '{1}' skips a level, and the structure '{2}' does not allow that.",
-                    child.Code,
-                    parent.Code,
-                    structure.Code]));
-        }
-
-        return errors;
+                    parent.Code]),
+        ];
     }
 
     // ---- assignments ------------------------------------------------------------------
@@ -688,48 +742,89 @@ internal sealed class DimensionValidator : IDimensionValidator
 
     // ---- shared -----------------------------------------------------------------------
 
-    private IEnumerable<DimensionError> ValidateName(BilingualText name, string subject)
+    /// <summary>
+    /// English is required. Arabic is required only where the tenant has said so.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0003's addendum. The two halves are reported separately because they are different
+    /// problems: a missing English name is always a mistake, a missing Arabic one is a mistake
+    /// only in a tenant that has chosen to insist on it, and telling a customer who has not that
+    /// "a name is required in both" would be telling them something untrue of their tenant.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateNameAsync(
+        BilingualText name, string subject, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(name.En) || string.IsNullOrWhiteSpace(name.Ar))
+        var errors = new List<DimensionError>();
+
+        if (string.IsNullOrWhiteSpace(name.En))
         {
-            yield return new DimensionError(
+            errors.Add(new DimensionError(
                 DimensionRule.NameRequired,
                 subject,
-                S["A name is required in both English and Arabic."]);
+                S["A name is required in English."],
+                Field: "NameEn"));
         }
+
+        if (string.IsNullOrWhiteSpace(name.Ar) &&
+            await _namePolicy.RequiresArabicAsync(cancellationToken))
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.NameRequired,
+                subject,
+                S["A name is required in Arabic. This tenant requires Arabic names; that can be changed in WorkMate settings."],
+                Field: "NameAr"));
+        }
+
+        return errors;
     }
 
-    private IEnumerable<DimensionError> ValidateAttributeSchema(
-        IReadOnlyList<DimensionAttributeDefinition> attributeSchema)
+    private async Task<IReadOnlyList<DimensionError>> ValidateAttributeSchemaAsync(
+        IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
+        CancellationToken cancellationToken)
     {
+        var errors = new List<DimensionError>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Asked once for the whole schema rather than per attribute: it is one tenant setting, and
+        // a twelve-attribute type should not read it twelve times.
+        var requiresArabic = await _namePolicy.RequiresArabicAsync(cancellationToken);
 
         foreach (var attribute in attributeSchema)
         {
             if (!DimensionCodes.IsValidAttributeName(attribute.Name))
             {
-                yield return new DimensionError(
+                errors.Add(new DimensionError(
                     DimensionRule.AttributeSchema,
                     attribute.Name,
-                    S["An attribute name must start with a letter and may contain letters and digits only, up to fifty characters."]);
+                    S["An attribute name must start with a letter and may contain letters and digits only, up to fifty characters."]));
 
                 continue;
             }
 
             if (!seen.Add(attribute.Name))
             {
-                yield return new DimensionError(
+                errors.Add(new DimensionError(
                     DimensionRule.AttributeSchema,
                     attribute.Name,
-                    S["The attribute '{0}' is declared more than once.", attribute.Name]);
+                    S["The attribute '{0}' is declared more than once.", attribute.Name]));
             }
 
-            if (string.IsNullOrWhiteSpace(attribute.Label.En) || string.IsNullOrWhiteSpace(attribute.Label.Ar))
+            if (string.IsNullOrWhiteSpace(attribute.Label.En))
             {
-                yield return new DimensionError(
+                errors.Add(new DimensionError(
                     DimensionRule.AttributeSchema,
                     attribute.Name,
-                    S["The attribute '{0}' needs a label in both English and Arabic.", attribute.Name]);
+                    S["The attribute '{0}' needs a label in English.", attribute.Name]));
+            }
+
+            // A label is a name like any other, so it follows the same rule: optional in Arabic
+            // unless the tenant has said otherwise. ADR-0003's addendum.
+            if (requiresArabic && string.IsNullOrWhiteSpace(attribute.Label.Ar))
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.AttributeSchema,
+                    attribute.Name,
+                    S["The attribute '{0}' needs a label in Arabic. This tenant requires Arabic names.", attribute.Name]));
             }
         }
 
@@ -738,12 +833,14 @@ internal sealed class DimensionValidator : IDimensionValidator
         foreach (var attribute in attributeSchema.Where(attribute =>
             DimensionTypeService.StandardFieldNames.Contains(attribute.Name)))
         {
-            yield return new DimensionError(
+            errors.Add(new DimensionError(
                 DimensionRule.AttributeSchema,
                 attribute.Name,
                 S["'{0}' is a standard field that every dimension record already carries. Choose another attribute name.",
-                    attribute.Name]);
+                    attribute.Name]));
         }
+
+        return errors;
     }
 
     private async Task<DimensionTypeDocument?> TypeExistsAsync(

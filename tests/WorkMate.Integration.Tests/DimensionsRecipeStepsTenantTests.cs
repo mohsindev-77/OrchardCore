@@ -2,9 +2,12 @@ using System.Net.Http;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using OrchardCore.Entities;
 using OrchardCore.Recipes.Models;
 using OrchardCore.Recipes.Services;
+using OrchardCore.Settings;
 using WorkMate.Dimensions.Services;
+using WorkMate.Platform.Models;
 using WorkMate.Platform.Services;
 using Xunit;
 
@@ -641,6 +644,245 @@ public sealed class DimensionsRecipeStepsTenantTests
             var records = services.GetRequiredService<IDimensionService>();
             var record = await records.GetByCodeAsync("mismatch-rec-1");
             record!.NameEn.Should().Be("Original Division", "a mismatch must never silently overwrite the tenant's data");
+        });
+    }
+
+    /// <summary>
+    /// A recipe with no Arabic names applies, and is refused once the tenant asks for them.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0003's addendum has to hold in the recipe steps, not only in the screens — a customer
+    /// importing an English-only organisation does it by recipe, which is exactly the path that
+    /// would still have refused if the rule lived in the UI. It holds here for free because every
+    /// step routes its names through <c>IDimensionValidator</c>; this test is what says so.
+    /// </remarks>
+    [Fact]
+    public async Task ARecipeWithNoArabicNamesAppliesUnlessTheTenantRequiresThem()
+    {
+        const string json = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-types",
+                    "types": [
+                        { "code": "mono-division", "nameEn": "Monolingual Division", "allowsSelfNesting": false }
+                    ]
+                },
+                {
+                    "name": "structures",
+                    "structures": [
+                        {
+                            "code": "mono-structure",
+                            "nameEn": "Monolingual Structure",
+                            "levelTypeCodes": ["mono-division"],
+                            "allowSkipLevel": false,
+                            "isStrict": true,
+                            "isPrimaryOrganisation": false
+                        }
+                    ]
+                },
+                {
+                    "name": "dimension-records",
+                    "records": [
+                        {
+                            "code": "mono-div-1",
+                            "typeCode": "mono-division",
+                            "nameEn": "Head Office",
+                            "effectiveFrom": "2024-01-01",
+                            "placements": [
+                                { "structureCode": "mono-structure", "parentCode": null, "effectiveFrom": "2024-01-01" }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            (await ExecuteRecipeAsync(services, json)).Succeeded.Should().BeTrue(
+                "Arabic is optional, so a recipe that states only English is a complete recipe");
+
+            var structure = await services.GetRequiredService<IStructureService>().GetByCodeAsync("mono-structure");
+
+            structure.Should().NotBeNull();
+            structure!.Name.Ar.Should().BeEmpty();
+            structure.Name.Display(System.Globalization.CultureInfo.GetCultureInfo("ar"))
+                .Should().Be("Monolingual Structure", "an Arabic reader sees the English name, never a blank");
+        });
+
+        await InTenantAsSystemAsync(RequireArabicNamesAsync(required: true));
+
+        try
+        {
+            await InTenantAsSystemAsync(async services =>
+            {
+                const string second = """
+                {
+                    "steps": [
+                        {
+                            "name": "dimension-types",
+                            "types": [
+                                { "code": "mono-strict", "nameEn": "Strict Monolingual", "allowsSelfNesting": false }
+                            ]
+                        }
+                    ]
+                }
+                """;
+
+                var refused = await ExecuteRecipeAsync(services, second);
+
+                refused.Succeeded.Should().BeFalse(
+                    "the tenant has asked for Arabic names, and the recipe steps are a write path like any other");
+                refused.Errors.Should().ContainSingle(error =>
+                    error.Contains("Arabic", StringComparison.Ordinal));
+            });
+        }
+        finally
+        {
+            await InTenantAsSystemAsync(RequireArabicNamesAsync(required: false));
+        }
+    }
+
+    /// <summary>
+    /// Flips the tenant's "Require Arabic names" setting. Written onto the site document directly,
+    /// because <c>IWorkMateSettingsService</c> authorises against a signed-in user and there is
+    /// none in a service-level test.
+    /// </summary>
+    private static Func<IServiceProvider, Task> RequireArabicNamesAsync(bool required) =>
+        async services =>
+        {
+            var siteService = services.GetRequiredService<ISiteService>();
+            var site = await siteService.LoadSiteSettingsAsync();
+            var settings = site.GetOrCreate<WorkMateSettings>();
+
+            settings.RequireArabicNames = required;
+
+            site.Put(settings);
+
+            await siteService.UpdateSiteSettingsAsync(site);
+        };
+
+    // ---- ADR-0010: the explicit form, and the one combination that is refused ----------
+
+    /// <summary>
+    /// A structure row may state its rules directly, which is the only way to write a shape a
+    /// chain cannot describe.
+    /// </summary>
+    [Fact]
+    public async Task AStructureRowCanStateItsContainmentDirectly()
+    {
+        const string json = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-types",
+                    "types": [
+                        { "code": "cont-division", "nameEn": "Containment Division", "nameAr": "قسم", "allowsSelfNesting": false },
+                        { "code": "cont-department", "nameEn": "Containment Department", "nameAr": "إدارة", "allowsSelfNesting": false },
+                        { "code": "cont-project", "nameEn": "Containment Project", "nameAr": "مشروع", "allowsSelfNesting": false }
+                    ]
+                },
+                {
+                    "name": "structures",
+                    "structures": [
+                        {
+                            "code": "cont-structure",
+                            "nameEn": "Containment Structure",
+                            "nameAr": "هيكل",
+                            "levelTypeCodes": ["cont-division", "cont-department", "cont-project"],
+                            "rootTypeCodes": ["cont-division"],
+                            "containment": {
+                                "cont-division": ["cont-department", "cont-project"]
+                            },
+                            "isStrict": true,
+                            "isPrimaryOrganisation": false
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            (await ExecuteRecipeAsync(services, json)).Succeeded.Should().BeTrue();
+
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var division = (await types.GetByCodeAsync("cont-division"))!.DimensionTypeId;
+            var department = (await types.GetByCodeAsync("cont-department"))!.DimensionTypeId;
+            var project = (await types.GetByCodeAsync("cont-project"))!.DimensionTypeId;
+
+            var structure = await services.GetRequiredService<IStructureService>()
+                .GetByCodeAsync("cont-structure");
+
+            structure!.RootDimensionTypeIds.Should().Equal([division]);
+            structure.Permits(division, department).Should().BeTrue();
+            structure.Permits(division, project).Should().BeTrue(
+                "two types at one level is the shape a chain could not state");
+            structure.Permits(department, project).Should().BeFalse(
+                "and nothing the row did not state is permitted");
+
+            // Re-running changes nothing, per ADR-0008: the map is compared, deduplicated and
+            // ordered on both sides, so one spelling of it is not mistaken for a difference.
+            (await ExecuteRecipeAsync(services, json)).Succeeded.Should().BeTrue(
+                "an identical row is skipped, not re-applied and not reported as a conflict");
+        });
+    }
+
+    /// <summary>
+    /// Stating both descriptions of the rules is refused rather than merged.
+    /// </summary>
+    /// <remarks>
+    /// Merging them would make the recipe mean something nobody wrote: <c>allowSkipLevel</c> says
+    /// "derive the pairs from the order" and <c>containment</c> says "here are the pairs", and
+    /// picking one silently is how a recipe comes to do something its author cannot read off it.
+    /// </remarks>
+    [Fact]
+    public async Task AStructureRowStatingBothAllowSkipLevelAndContainmentIsRefused()
+    {
+        const string json = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-types",
+                    "types": [
+                        { "code": "clash-division", "nameEn": "Clash Division", "nameAr": "قسم", "allowsSelfNesting": false },
+                        { "code": "clash-department", "nameEn": "Clash Department", "nameAr": "إدارة", "allowsSelfNesting": false }
+                    ]
+                },
+                {
+                    "name": "structures",
+                    "structures": [
+                        {
+                            "code": "clash-structure",
+                            "nameEn": "Clash Structure",
+                            "nameAr": "هيكل",
+                            "levelTypeCodes": ["clash-division", "clash-department"],
+                            "allowSkipLevel": false,
+                            "containment": { "clash-division": ["clash-department"] },
+                            "isStrict": true,
+                            "isPrimaryOrganisation": false
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var result = await ExecuteRecipeAsync(services, json);
+
+            result.Succeeded.Should().BeFalse();
+            result.Errors.Should().ContainSingle(error =>
+                error.Contains("clash-structure", StringComparison.Ordinal) &&
+                error.Contains("allowSkipLevel", StringComparison.Ordinal) &&
+                error.Contains("containment", StringComparison.Ordinal));
+
+            (await services.GetRequiredService<IStructureService>().GetByCodeAsync("clash-structure"))
+                .Should().BeNull("the step writes nothing when a row in it is refused");
         });
     }
 }

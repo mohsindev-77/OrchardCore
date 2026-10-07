@@ -138,7 +138,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         model.Roots = await ToViewModelsAsync(selected.StructureId, roots, typesById, effective.Value, cancellationToken);
         model.Unplaced = await ToViewModelsAsync(selected.StructureId, unplaced, typesById, effective.Value, cancellationToken);
 
-        await ExplainWhyUnplacedAsync(selected.StructureId, model.Unplaced, cancellationToken);
+        await ExplainWhyUnplacedAsync(selected.StructureId, model.Unplaced, effective.Value, cancellationToken);
 
         if (!string.IsNullOrEmpty(expand))
         {
@@ -161,6 +161,7 @@ public sealed class OrganisationDesignerAdminController : Controller
     private async Task ExplainWhyUnplacedAsync(
         string structureId,
         List<DesignerNodeViewModel> unplaced,
+        DateOnly asAt,
         CancellationToken cancellationToken)
     {
         if (unplaced.Count == 0)
@@ -168,20 +169,35 @@ public sealed class OrganisationDesignerAdminController : Controller
             return;
         }
 
+        var recordIds = unplaced.Select(node => node.RecordId).ToList();
+
         var orphaned = await _graphService.GetOrphanedByParentRetirementAsync(
-            structureId, [.. unplaced.Select(node => node.RecordId)], cancellationToken);
+            structureId, recordIds, cancellationToken);
+
+        // The third reason, and the one that needs a date rather than a parent: somebody moved
+        // this unit off the tree on purpose. Asked as at the date on screen, because "removed on"
+        // is only true of a date the removal has actually happened by.
+        var removed = await _graphService.GetRemovedFromTreeAsync(
+            structureId, recordIds, asAt, cancellationToken);
 
         foreach (var node in unplaced)
         {
-            // Every one of them is drawn in the unplaced panel, whichever of the two reasons put
+            // Every one of them is drawn in the unplaced panel, whichever of the three reasons put
             // it there: that is what makes the card offer "Place under…" rather than "Move to…".
             node.IsUnplaced = true;
+
+            if (removed.TryGetValue(node.RecordId, out var removedOn))
+            {
+                node.RemovedFromTreeOn = removedOn;
+            }
 
             if (!orphaned.TryGetValue(node.RecordId, out var reason))
             {
                 continue;
             }
 
+            // A retirement that stranded this unit outranks the dated entry the retirement itself
+            // wrote: both are true, and "your parent closed under you" is the one that explains it.
             node.OrphanedFromParentName = reason.FormerParentNameEn;
             node.OrphanedFromParentNameAr = reason.FormerParentNameAr;
             node.OrphanedOn = reason.RetiredOn;
@@ -991,7 +1007,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         }
 
         var result = await _dimensionService.CancelMoveAsync(
-            model.StructureId, model.RecordId, effectiveFrom, model.Reason.Trim(), cancellationToken);
+            model.StructureId, model.RecordId, effectiveFrom, (model.Reason ?? string.Empty).Trim(), cancellationToken);
 
         if (!result.Succeeded)
         {
@@ -1011,7 +1027,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         model.RecordedMoves =
         [
             .. moves.Select(move => new RecordedMoveViewModel(
-                move.EffectiveFrom.ToIso(), move.ParentNameEn, move.ParentNameAr, move.ParentCode)),
+                move.EffectiveFrom.ToIso(), move.ParentNameEn, move.ParentNameAr, move.ParentCode, move.LeftTheTree)),
         ];
     }
 
@@ -1022,13 +1038,29 @@ public sealed class OrganisationDesignerAdminController : Controller
             return;
         }
 
-        async Task<string> NameOfAsync(string? recordId) =>
-            recordId is null
-                ? string.Empty
-                : (await _dimensionService.GetAsync(recordId, null, cancellationToken))?.NameEn ?? recordId;
+        // Both halves. Only the English one was fetched before, so the Arabic half was always
+        // empty and the display fallback always fired — an Arabic reader on this screen was
+        // permanently shown the English parent name even when the parent had a perfectly good
+        // Arabic one. A fallback that is always taken hides the bug rather than reporting it.
+        async Task<(string En, string Ar)> NameOfAsync(string? recordId)
+        {
+            if (recordId is null)
+            {
+                return (string.Empty, string.Empty);
+            }
 
-        model.CancelledParentName = await NameOfAsync(plan.CancelledParentId);
-        model.RestoredParentName = await NameOfAsync(plan.RestoredParentId);
+            var record = await _dimensionService.GetAsync(recordId, null, cancellationToken);
+
+            return record is null ? (recordId, string.Empty) : (record.NameEn, record.NameAr);
+        }
+
+        var cancelled = await NameOfAsync(plan.CancelledParentId);
+        var restored = await NameOfAsync(plan.RestoredParentId);
+
+        model.CancelledParentName = cancelled.En;
+        model.CancelledParentNameAr = cancelled.Ar;
+        model.RestoredParentName = restored.En;
+        model.RestoredParentNameAr = restored.Ar;
     }
 
     /// <summary>
@@ -1089,7 +1121,7 @@ public sealed class OrganisationDesignerAdminController : Controller
     {
         foreach (var error in errors.Where(error => !error.IsAdvisory))
         {
-            ModelState.AddModelError(string.Empty, error.Message.Value);
+            ModelState.AddModelError(error.Field ?? string.Empty, error.Message.Value);
         }
     }
 

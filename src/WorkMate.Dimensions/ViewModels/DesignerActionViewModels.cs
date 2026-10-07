@@ -340,9 +340,12 @@ public sealed class CancelMoveViewModel : DesignerActionViewModel
     public string RestoredParentNameAr { get; set; } = string.Empty;
 }
 
-/// <summary>One move on a unit's record, as an option on the cancel screen.</summary>
+/// <summary>
+/// One decision on a unit's record, as an option on the cancel screen. <paramref name="LeftTheTree"/>
+/// marks the one that took it off the chart rather than putting it somewhere.
+/// </summary>
 public sealed record RecordedMoveViewModel(
-    string EffectiveFrom, string ParentNameEn, string ParentNameAr, string ParentCode);
+    string EffectiveFrom, string ParentNameEn, string ParentNameAr, string ParentCode, bool LeftTheTree = false);
 
 /// <summary>One structure's answer to the children question on the retire screen.</summary>
 public sealed class StructureDispositionViewModel

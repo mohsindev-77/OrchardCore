@@ -108,6 +108,7 @@ internal sealed class StructureService : IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        StructureShape? shape = null,
         DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default)
     {
@@ -120,11 +121,14 @@ internal sealed class StructureService : IStructureService
             return DimensionResult.NotAuthorised<StructureDocument>();
         }
 
+        var resolved = await ResolveShapeAsync(shape, levelDimensionTypeIds, allowSkipLevel, cancellationToken);
+
         var errors = await _validator.ValidateStructureAsync(
             structureId: null,
             code,
             name,
             levelDimensionTypeIds,
+            resolved,
             isPrimaryOrganisation,
             batch,
             cancellationToken);
@@ -140,6 +144,8 @@ internal sealed class StructureService : IStructureService
             Code = code!,
             Name = name,
             Levels = ToLevels(levelDimensionTypeIds),
+            RootDimensionTypeIds = resolved.RootDimensionTypeIds,
+            Containment = resolved.Containment,
             AllowSkipLevel = allowSkipLevel,
             IsStrict = isStrict,
             IsPrimaryOrganisation = isPrimaryOrganisation,
@@ -172,6 +178,7 @@ internal sealed class StructureService : IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        StructureShape? shape = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -193,11 +200,14 @@ internal sealed class StructureService : IStructureService
                 S["There is no structure with the id '{0}' in this tenant.", structureId]));
         }
 
+        var resolved = await ResolveShapeAsync(shape, levelDimensionTypeIds, allowSkipLevel, cancellationToken);
+
         var errors = await _validator.ValidateStructureAsync(
             structureId,
             document.Code,
             name,
             levelDimensionTypeIds,
+            resolved,
             isPrimaryOrganisation,
             batch: null,
             cancellationToken);
@@ -208,7 +218,14 @@ internal sealed class StructureService : IStructureService
         }
 
         var today = await _authorisation.TodayAsync();
-        var plan = await _graph.PlanLevelChangeAsync(structureId, levelDimensionTypeIds, allowSkipLevel, today, cancellationToken);
+        var plan = await _graph.PlanLevelChangeAsync(
+            structureId,
+            levelDimensionTypeIds,
+            resolved.RootDimensionTypeIds,
+            resolved.Containment,
+            isStrict,
+            today,
+            cancellationToken);
 
         if (plan.HasViolations)
         {
@@ -220,6 +237,8 @@ internal sealed class StructureService : IStructureService
 
         document.Name = name;
         document.Levels = ToLevels(levelDimensionTypeIds);
+        document.RootDimensionTypeIds = resolved.RootDimensionTypeIds;
+        document.Containment = resolved.Containment;
         document.AllowSkipLevel = allowSkipLevel;
         document.IsStrict = isStrict;
         document.IsPrimaryOrganisation = isPrimaryOrganisation;
@@ -255,6 +274,8 @@ internal sealed class StructureService : IStructureService
         string structureId,
         IReadOnlyList<string> levelDimensionTypeIds,
         bool allowSkipLevel,
+        bool isStrict,
+        StructureShape? shape = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(levelDimensionTypeIds);
@@ -275,10 +296,50 @@ internal sealed class StructureService : IStructureService
                 S["There is no structure with the id '{0}' in this tenant.", structureId]));
         }
 
+        var resolved = await ResolveShapeAsync(shape, levelDimensionTypeIds, allowSkipLevel, cancellationToken);
+
         var plan = await _graph.PlanLevelChangeAsync(
-            structureId, levelDimensionTypeIds, allowSkipLevel, await _authorisation.TodayAsync(), cancellationToken);
+            structureId,
+            levelDimensionTypeIds,
+            resolved.RootDimensionTypeIds,
+            resolved.Containment,
+            isStrict,
+            await _authorisation.TodayAsync(),
+            cancellationToken);
 
         return DimensionResult.Success(plan);
+    }
+
+    /// <summary>
+    /// The shape to write: the caller's own if it supplied one, otherwise the one the chain and
+    /// the skip-level flag describe.
+    /// </summary>
+    /// <remarks>
+    /// Every caller reaches the same derivation. A screen posts the grid it drew; a recipe row
+    /// written before ADR-0010, or a test that still describes an axis as a chain, passes nothing
+    /// and gets the map its description always meant. Both are deduplicated and ordered here so
+    /// that two spellings of one map compare equal — which is what ADR-0008's "identical, so skip"
+    /// comparison in the recipe step rests on.
+    /// </remarks>
+    private async Task<StructureShape> ResolveShapeAsync(
+        StructureShape? shape,
+        IReadOnlyList<string> levelDimensionTypeIds,
+        bool allowSkipLevel,
+        CancellationToken cancellationToken)
+    {
+        if (shape is not null)
+        {
+            return new StructureShape(
+                Internal.StructureContainmentDerivation.DeduplicateRoots(shape.RootDimensionTypeIds),
+                Internal.StructureContainmentDerivation.Deduplicate(shape.Containment));
+        }
+
+        var selfNesting = (await _typeLookup.ListAsync(cancellationToken))
+            .Where(type => type.AllowsSelfNesting)
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return StructureShape.FromChain(levelDimensionTypeIds, allowSkipLevel, selfNesting);
     }
 
     /// <inheritdoc />

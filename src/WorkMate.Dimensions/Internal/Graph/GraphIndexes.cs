@@ -44,7 +44,12 @@ internal sealed class DimensionLinkIndexProvider : IndexProvider<DimensionLinkDo
                 {
                     StructureId = document.StructureId,
                     ChildId = document.RecordId,
-                    ParentId = link.ParentRecordId,
+                    // A dated "no parent" entry maps onto the same empty-string sentinel the
+                    // axis-membership row below already uses, so stage D2 needed no schema change
+                    // and no migration: the column has always been a string that is sometimes
+                    // empty, and the queries that look for children by parent id have never
+                    // matched an empty one.
+                    ParentId = link.ParentRecordId ?? NoParent,
                     EffectiveFrom = EffectiveDates.ToColumn(link.Range.From),
                     EffectiveToInclusive = EffectiveDates.ToInclusiveEndColumn(link.Range.To),
                 }).ToList();

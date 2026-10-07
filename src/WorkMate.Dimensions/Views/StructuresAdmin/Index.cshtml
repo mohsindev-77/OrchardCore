@@ -34,7 +34,12 @@ else
                     <td><code>@structure.Code</code></td>
                     <td>
                         <div dir="ltr" lang="en">@structure.NameEn</div>
-                        <div dir="rtl" lang="ar" class="text-muted small">@structure.NameAr</div>
+                        @* Only when there is Arabic to show. Optional since the ADR-0003 addendum,
+                           so an untranslated row would otherwise carry an empty second line. *@
+                        @if (!string.IsNullOrWhiteSpace(structure.NameAr))
+                        {
+                            <div dir="rtl" lang="ar" class="text-muted small">@structure.NameAr</div>
+                        }
                     </td>
                     <td>
                         @if (structure.LevelLabels.Count == 0)

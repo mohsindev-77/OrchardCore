@@ -303,6 +303,59 @@ public sealed class OrganisationDesignerBrowserTests
         }).First).ToBeVisibleAsync();
     }
 
+    /// <summary>
+    /// A unit with no Arabic name still has a name under Arabic: the English one, not a blank.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0003's addendum made Arabic optional, which is a validation change. This is the display
+    /// half of it, and the half that fails silently — the page renders, the card is there, and the
+    /// name is simply missing. Asserted on a unit created through the screen with the Arabic box
+    /// left empty, which is exactly what a customer setting a tenant up does.
+    /// </remarks>
+    [Fact]
+    public async Task AUnitWithNoArabicNameShowsItsEnglishNameUnderArabic()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync("/Admin/Dimensions/Designer/Index?view=Chart");
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        await OpenMenuAsync(page, "WorkMate Demo Organisation");
+        await page.ClickAsync(".designer-actions[open] a[data-designer-action='add']");
+
+        await page.FillAsync("#Code", "fallback-div");
+        await page.FillAsync("#NameEn", "Untranslated Division");
+        // The Arabic box is deliberately left as it came.
+        await page.ClickAsync("form[action*='AddUnit'] button[type=submit]");
+
+        await page.WaitForURLAsync(url => url.Contains("Designer/Index", StringComparison.Ordinal));
+        await Assertions.Expect(Node(page, "Untranslated Division")).ToBeVisibleAsync();
+
+        await page.EvaluateAsync("document.cookie = '.AspNetCore.Culture=c%3Dar%7Cuic%3Dar;path=/'");
+        await page.ReloadAsync();
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        var card = Node(page, "Untranslated Division");
+
+        await Assertions.Expect(card).ToBeVisibleAsync();
+
+        // No Arabic line reserving space where a name should be — present in the markup, because
+        // the template this card is cloned from needs it, and hidden because there is nothing in
+        // it — and the English name still on the card for an Arabic reader to read.
+        await Assertions.Expect(card.Locator(".designer-card-name-ar").First).ToBeHiddenAsync();
+        await Assertions.Expect(card.Locator(".designer-card-name").First).ToHaveTextAsync("Untranslated Division");
+    }
+
+    private static async Task OpenMenuAsync(IPage page, string nameEn)
+    {
+        var menu = Node(page, nameEn).Locator(".designer-actions").First;
+
+        await menu.Locator("summary").ClickAsync();
+        await Assertions.Expect(menu).ToHaveAttributeAsync(
+            "open", new System.Text.RegularExpressions.Regex(".*"));
+    }
+
     /// <summary>Opens every branch, so the assertions see the whole tree rather than its top.</summary>
     private static async Task ExpandEverythingAsync(IPage page)
     {

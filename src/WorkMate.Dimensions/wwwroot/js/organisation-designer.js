@@ -67,7 +67,14 @@
 
         li.setAttribute("data-record-id", node.recordId);
         li.querySelector(".designer-card-name").textContent = node.nameEn;
-        li.querySelector(".designer-card-name-ar").textContent = node.nameAr;
+
+        // Hidden when there is none, the same way the server renders it: Arabic is optional, and
+        // an empty line is a gap on the card rather than a name.
+        var arabic = li.querySelector(".designer-card-name-ar");
+
+        arabic.textContent = node.nameAr || "";
+        arabic.title = node.nameAr || "";
+        arabic.hidden = !node.nameAr;
         li.querySelector(".designer-card-type").textContent = node.dimensionTypeNameEn;
         li.querySelector(".designer-card-code").textContent = node.code;
 
@@ -208,6 +215,64 @@
     // Set by the pan handler when a drag turned into a click, so that dragging the chart by a card
     // does not also expand the card you happened to grab.
     var suppressNextClick = false;
+
+    // ---- the action menu ---------------------------------------------------------------
+
+    // The menu is a <details>, which is what makes it work with no script at all. What <details>
+    // does not do is close when you click somewhere else: left alone, every menu you opened stays
+    // open, and a chart ends up wearing three of them at once. Everything below is that one
+    // missing behaviour and nothing more — opening is still the element's own business.
+
+    // Set when a click outside an open menu dismissed it. That click belongs to the dismissal and
+    // to nothing else: it must not also toggle the card it landed on or begin a drag, which is the
+    // difference between "click away to close" and "click away to close and accidentally
+    // reorganise the company".
+    var dismissedMenu = false;
+
+    function openMenus() {
+        return Array.prototype.slice.call(surface.querySelectorAll("details.designer-actions[open]"));
+    }
+
+    function closeMenus(except) {
+        var closed = false;
+
+        openMenus().forEach(function (menu) {
+            if (menu !== except) {
+                menu.open = false;
+                closed = true;
+            }
+        });
+
+        return closed;
+    }
+
+    // Opening one closes the rest. "toggle" does not bubble, so this listens in the capture phase
+    // rather than on each <details> — the tree grows cards as branches load, and a listener per
+    // menu would have to be attached to each new one.
+    surface.addEventListener("toggle", function (event) {
+        var menu = event.target;
+
+        if (menu.classList && menu.classList.contains("designer-actions") && menu.open) {
+            closeMenus(menu);
+        }
+    }, true);
+
+    // Capture, and on the document: a click anywhere dismisses, including on the chart's own
+    // canvas, the side panel and the page around them. Capture so this runs before the handlers
+    // that would otherwise act on the same click.
+    document.addEventListener("pointerdown", function (event) {
+        var insideMenu = event.target.closest && event.target.closest("details.designer-actions");
+
+        if (closeMenus(insideMenu)) {
+            // Only when the pointer went down outside every menu. A click on another card's
+            // summary legitimately closes the first menu and opens the second, and that second
+            // opening is not something to suppress.
+            if (!insideMenu) {
+                dismissedMenu = true;
+                suppressNextClick = true;
+            }
+        }
+    }, true);
 
     // The whole card toggles, not only the little control on it. Reaching for the name of the unit
     // is what people do first, and a card that quietly ignores it reads as a broken screen. The
@@ -399,6 +464,13 @@
                 return;
             }
 
+            // This pointerdown was the one that dismissed an open menu. Clicking away to close a
+            // menu is not a gesture that should also pick a card up.
+            if (dismissedMenu) {
+                dismissedMenu = false;
+                return;
+            }
+
             suppressNextClick = false;
 
             var card = event.target.closest(".designer-card");
@@ -543,6 +615,30 @@
             }
         });
     }
+
+    // Escape closes an open menu, and puts the focus back on the control that opened it — a menu
+    // dismissed from the keyboard that leaves the focus nowhere is a menu a keyboard user cannot
+    // get out of. Registered outside the drag block above, because it is about the menu whether or
+    // not this view can be dragged at all.
+    document.addEventListener("keydown", function (event) {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        var open = openMenus();
+
+        if (open.length === 0) {
+            return;
+        }
+
+        var summary = open[0].querySelector("summary");
+
+        closeMenus(null);
+
+        if (summary) {
+            summary.focus();
+        }
+    });
 
     // ---- search ------------------------------------------------------------------------
 

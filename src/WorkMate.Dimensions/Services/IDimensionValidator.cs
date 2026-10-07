@@ -48,11 +48,17 @@ public interface IDimensionValidator
 
     /// <summary>Rules for creating or changing a structure.</summary>
     /// <param name="structureId">Null when creating; the structure's id when changing it.</param>
+    /// <param name="levelDimensionTypeIds">The axis's vocabulary, in reading order.</param>
+    /// <param name="shape">
+    /// Its root types and containment map, which must name only types from that vocabulary and
+    /// must leave at least one way in. ADR-0010.
+    /// </param>
     Task<IReadOnlyList<DimensionError>> ValidateStructureAsync(
         string? structureId,
         string code,
         BilingualText name,
         IReadOnlyList<string> levelDimensionTypeIds,
+        StructureShape shape,
         bool isPrimaryOrganisation,
         DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);

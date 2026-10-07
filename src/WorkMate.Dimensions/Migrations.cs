@@ -2,8 +2,11 @@ using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
 using WorkMate.Dimensions.Indexes;
+using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Internal.Graph;
+using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
+using YesSql;
 using YesSql.Sql;
 
 namespace WorkMate.Dimensions;
@@ -42,8 +45,17 @@ public sealed class Migrations : DataMigration
 
     private readonly IContentDefinitionManager _contentDefinitionManager;
 
-    public Migrations(IContentDefinitionManager contentDefinitionManager) =>
+    /// <summary>
+    /// For the one step that migrates data rather than schema. <see cref="UpdateFrom4Async"/> has
+    /// to read and rewrite every structure document, which <c>SchemaBuilder</c> cannot do.
+    /// </summary>
+    private readonly ISession _session;
+
+    public Migrations(IContentDefinitionManager contentDefinitionManager, ISession session)
+    {
         _contentDefinitionManager = contentDefinitionManager;
+        _session = session;
+    }
 
     public async Task<int> CreateAsync()
     {
@@ -80,7 +92,11 @@ public sealed class Migrations : DataMigration
             .Column<bool>(nameof(StructureIndex.IsPrimaryOrganisation))
             .Column<bool>(nameof(StructureIndex.AllowSkipLevel))
             .Column<bool>(nameof(StructureIndex.IsStrict))
-            .Column<int>(nameof(StructureIndex.LevelCount)));
+            .Column<int>(nameof(StructureIndex.LevelCount))
+            // Added for a new tenant here and for an existing one in UpdateFrom4Async, per the
+            // append-only rule: CreateAsync keeps producing the current schema, it never carries
+            // the upgrade.
+            .Column<int>(nameof(StructureIndex.ContainmentRuleCount)));
 
         await SchemaBuilder.AlterIndexTableAsync<StructureIndex>(table =>
         {
@@ -306,6 +322,65 @@ public sealed class Migrations : DataMigration
         }
 
         return 4;
+    }
+
+    /// <summary>
+    /// ADR-0010: gives every structure an explicit containment map, derived losslessly from the
+    /// chain of levels and the skip-level flag it already had.
+    /// </summary>
+    /// <remarks>
+    /// Two steps, in this order. The column first, so that saving a document below writes a
+    /// complete index row rather than one missing a column that does not exist yet. Then the
+    /// documents, through <see cref="StructureContainmentDerivation.FromChain"/> — the same
+    /// function the <c>structures</c> recipe step uses for a row still written in the old form, so
+    /// an upgraded tenant and a freshly seeded one cannot end up with different rules from the
+    /// same description.
+    ///
+    /// Self-nesting is read from <see cref="DimensionTypeIndex"/> rather than from the type
+    /// documents: it is one column on an index that already exists, and a migration that loads
+    /// every dimension type to read one boolean is a migration that gets slower with the tenant.
+    ///
+    /// Idempotent in the way that matters here. A structure that already carries a map — which can
+    /// only happen if this ran, since nothing else writes one — is left alone rather than
+    /// re-derived, so a half-finished run that is retried does not overwrite a map a customer has
+    /// since edited.
+    /// </remarks>
+    public async Task<int> UpdateFrom4Async()
+    {
+        // Guarded for the reason UpdateFrom3Async spells out at length: a brand-new tenant runs
+        // CreateAsync and then every UpdateFromNAsync in turn, so it arrives here with the column
+        // CreateAsync just made, while a tenant upgrading from version 4 does not. CreateAsync has
+        // to keep producing the current schema — it is never edited to carry an upgrade — so one
+        // of the two must look before it writes, and it has to be this one.
+        if (!await ColumnExistsAsync(nameof(StructureIndex), nameof(StructureIndex.ContainmentRuleCount)))
+        {
+            await SchemaBuilder.AlterIndexTableAsync<StructureIndex>(table =>
+                table.AddColumn<int>(nameof(StructureIndex.ContainmentRuleCount)));
+        }
+
+        var selfNesting = (await _session
+                .QueryIndex<DimensionTypeIndex>(index => index.AllowsSelfNesting)
+                .ListAsync())
+            .Select(index => index.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var structure in await _session.Query<StructureDocument, StructureIndex>().ListAsync())
+        {
+            if (structure.Containment.Count > 0 || structure.RootDimensionTypeIds.Count > 0)
+            {
+                continue;
+            }
+
+            var (roots, containment) = StructureContainmentDerivation.FromChain(
+                structure.DimensionTypeIds, structure.AllowSkipLevel, selfNesting);
+
+            structure.RootDimensionTypeIds = roots;
+            structure.Containment = containment;
+
+            await _session.SaveCheckedAsync(structure);
+        }
+
+        return 5;
     }
 
     /// <summary>

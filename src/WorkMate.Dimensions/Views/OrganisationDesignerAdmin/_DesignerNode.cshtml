@@ -94,7 +94,19 @@
             @* title, because the chart gives every card the same fixed size and cuts anything that
                does not fit; the full name stays one hover away rather than being lost. *@
             <div class="designer-card-name" dir="ltr" lang="en" title="@Model.NameEn">@Model.NameEn</div>
-            <div class="designer-card-name-ar" dir="rtl" lang="ar" title="@Model.NameAr">@Model.NameAr</div>
+            @* Always rendered, hidden when empty — the same rule as the toggle and its spacer
+               above, and for the same reason: this partial is also the <template> the script
+               clones for every lazily loaded child, and a template missing an element can never
+               grow one. Removing it outright took the Arabic line out of the clone's reach and
+               stopped every branch below the roots from loading at all.
+
+               Hidden rather than empty because Arabic is optional since the ADR-0003 addendum: an
+               untranslated unit would otherwise carry a blank second line on every card, and a
+               blank line the row-levelling script would then reserve height for. The English line
+               above is never empty, so a reader of either language still has a name to read. *@
+            <div class="designer-card-name-ar" dir="rtl" lang="ar"
+                 title="@Model.NameAr"
+                 hidden="@(string.IsNullOrWhiteSpace(Model.NameAr) ? "hidden" : null)">@Model.NameAr</div>
             @if (Model.IsStructure)
             {
                 <div class="designer-card-meta">
@@ -118,14 +130,11 @@
             }
             @if (Model.IsUnplaced)
             {
-                @* Two reasons a unit has no parent, and they are not the same thing: one came from
-                   an import and has never been anywhere, the other was somewhere until its parent
-                   closed underneath it.
-
-                   There is a third — a unit deliberately moved off the tree — which this still
-                   calls "never placed", because moving to no parent empties the link's parent list
-                   rather than adding to it, so nothing on the record tells the two apart. See the
-                   note in the module README; it is a wrong sentence, not a wrong placement.
+                @* Three reasons a unit has no parent, and they are not the same thing: one came
+                   from an import and has never been anywhere, one was somewhere until its parent
+                   closed underneath it, and one somebody deliberately took off the tree. The third
+                   was indistinguishable from the first until stage D2 gave leaving the tree a
+                   dated entry of its own.
 
                    One sentence, translated whole, with the name in the reader's language and the
                    date in the reader's format. An English sentence with an Arabic word after the
@@ -141,9 +150,17 @@
                         </span>
                     </div>
                 }
+                else if (Model.WasRemovedFromTree)
+                {
+                    <div class="designer-orphan-reason" data-designer-removed>
+                        @T["Removed from the tree on {0}.", BilingualDisplay.Date(Model.RemovedFromTreeOn)]
+                    </div>
+                }
                 else
                 {
-                    <div class="designer-orphan-reason">@T["Never placed in this structure."]</div>
+                    <div class="designer-orphan-reason" data-designer-never-placed>
+                        @T["Never placed in this structure."]
+                    </div>
                 }
             }
         </div>

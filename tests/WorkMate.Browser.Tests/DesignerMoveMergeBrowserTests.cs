@@ -461,9 +461,15 @@ public sealed class DesignerMoveMergeBrowserTests
 
             await Assertions.Expect(moved).ToBeVisibleAsync();
 
-            // No "Parent retired" badge on this one: nothing retired, somebody moved it. Which of
-            // the two sentences the panel then shows is covered in DesignerActionsBrowserTests.
+            // No "Parent retired" badge on this one: nothing retired, somebody moved it.
             await Assertions.Expect(moved.Locator("[data-designer-orphaned]")).ToHaveCountAsync(0);
+
+            // And not "never placed", which is what the panel used to say to a unit somebody had
+            // just taken off the tree. Stage D2 gave leaving a dated entry, so the panel can tell
+            // the three states apart and this one now names the day it happened.
+            await Assertions.Expect(moved.Locator("[data-designer-removed]")).ToBeVisibleAsync();
+            await Assertions.Expect(moved).ToContainTextAsync("Removed from the tree on");
+            await Assertions.Expect(moved.Locator("[data-designer-never-placed]")).ToHaveCountAsync(0);
 
             return department;
         }

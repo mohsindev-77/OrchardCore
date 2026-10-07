@@ -96,12 +96,13 @@ public sealed class StructuresAdminController : Controller
         }
 
         var result = await _structureService.CreateAsync(
-            model.Code.Trim(),
+            (model.Code ?? string.Empty).Trim(),
             model.Name,
             model.ToLevelDimensionTypeIds(),
             model.AllowSkipLevel,
             model.IsStrict,
             model.IsPrimaryOrganisation,
+            model.ToShape(),
             cancellationToken: cancellationToken);
 
         if (!result.IsAuthorised)
@@ -177,7 +178,12 @@ public sealed class StructuresAdminController : Controller
         // change would do to records already placed on the axis. UpdateAsync re-checks this exact
         // plan before saving, so confirming here can never bypass it.
         var planResult = await _structureService.PlanLevelChangeAsync(
-            document.StructureId, levelDimensionTypeIds, model.AllowSkipLevel, cancellationToken);
+            document.StructureId,
+            levelDimensionTypeIds,
+            model.AllowSkipLevel,
+            model.IsStrict,
+            model.ToShape(),
+            cancellationToken);
 
         if (!planResult.IsAuthorised)
         {
@@ -225,6 +231,8 @@ public sealed class StructuresAdminController : Controller
             IsStrict = confirmation.IsStrict,
             IsPrimaryOrganisation = confirmation.IsPrimaryOrganisation,
             LevelDimensionTypeIds = confirmation.LevelDimensionTypeIds,
+            RootDimensionTypeIds = confirmation.RootDimensionTypeIds,
+            ContainmentPairs = confirmation.ContainmentPairs,
         };
 
         return await ApplyUpdateAsync(confirmation.StructureId, model, cancellationToken);
@@ -240,6 +248,7 @@ public sealed class StructuresAdminController : Controller
             model.AllowSkipLevel,
             model.IsStrict,
             model.IsPrimaryOrganisation,
+            model.ToShape(),
             cancellationToken);
 
         if (!result.IsAuthorised)
@@ -275,12 +284,14 @@ public sealed class StructuresAdminController : Controller
         {
             StructureId = model.StructureId!,
             Code = model.Code,
-            NameEn = model.NameEn,
-            NameAr = model.NameAr,
+            NameEn = model.NameEn ?? string.Empty,
+            NameAr = model.NameAr ?? string.Empty,
             AllowSkipLevel = model.AllowSkipLevel,
             IsStrict = model.IsStrict,
             IsPrimaryOrganisation = model.IsPrimaryOrganisation,
             LevelDimensionTypeIds = [.. model.LevelDimensionTypeIds],
+            RootDimensionTypeIds = [.. model.RootDimensionTypeIds],
+            ContainmentPairs = [.. model.ContainmentPairs],
             AddedLevelLabels = [.. plan.AddedDimensionTypeIds.Select(LabelFor)],
             RemovalImpacts =
             [
@@ -303,17 +314,28 @@ public sealed class StructuresAdminController : Controller
                     DimensionTypeId = type.DimensionTypeId,
                     Code = type.Code,
                     NameEn = type.Name.En,
+                    NameAr = type.Name.Ar,
+                    AllowsSelfNesting = type.AllowsSelfNesting,
                 }),
         ];
 
     private Task<bool> IsAuthorisedAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ManageStructures);
 
+    /// <summary>
+    /// Puts each violation where the reader has to act on it: under its own field when the rule
+    /// names one, in the summary when it does not.
+    /// </summary>
+    /// <remarks>
+    /// A missing English name belongs under the English box, not in a list at the top of the page
+    /// that the reader then has to match up against the form. It must also never arrive as an
+    /// unhandled exception: a validation problem is an answer, not a failure.
+    /// </remarks>
     private void AddErrors(IReadOnlyList<DimensionError> errors)
     {
         foreach (var error in errors)
         {
-            ModelState.AddModelError(string.Empty, error.Message.Value);
+            ModelState.AddModelError(error.Field ?? string.Empty, error.Message.Value);
         }
     }
 }

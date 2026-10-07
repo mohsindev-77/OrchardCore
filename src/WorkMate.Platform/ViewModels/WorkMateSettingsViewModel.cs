@@ -30,6 +30,9 @@ public class WorkMateSettingsViewModel
 
     public string CustomerCode { get; set; } = string.Empty;
 
+    /// <summary>Whether a name must be given in Arabic as well as English. Off by default.</summary>
+    public bool RequireArabicNames { get; set; }
+
     public bool WorksMonday { get; set; }
 
     public bool WorksTuesday { get; set; }
@@ -67,6 +70,7 @@ public class WorkMateSettingsViewModel
         model.CurrencyCode = settings.CurrencyCode;
         model.WeekStartsOn = settings.WeekStartsOn;
         model.CustomerCode = settings.CustomerCode;
+        model.RequireArabicNames = settings.RequireArabicNames;
         model.WorksSunday = settings.WorkingDays.Contains(DayOfWeek.Sunday);
         model.WorksMonday = settings.WorkingDays.Contains(DayOfWeek.Monday);
         model.WorksTuesday = settings.WorkingDays.Contains(DayOfWeek.Tuesday);
@@ -87,6 +91,7 @@ public class WorkMateSettingsViewModel
         CurrencyCode = (CurrencyCode ?? string.Empty).Trim().ToUpperInvariant(),
         WeekStartsOn = WeekStartsOn,
         CustomerCode = (CustomerCode ?? string.Empty).Trim().ToLowerInvariant(),
+        RequireArabicNames = RequireArabicNames,
         WorkingDays = [.. SelectedWorkingDays()],
     };
 

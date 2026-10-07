@@ -11,14 +11,21 @@ contracted in section 4 of `/docs/technical-specification.md`.
   Cost Centre, anything a customer invents): code, bilingual name,
   system-defined flag, self-nesting rule, attribute schema, and the name of the
   content type generated for it. Indexed by `DimensionTypeIndex`.
-- **`StructureDocument`** — a named axis with ordered levels: `AllowSkipLevel`,
-  `IsStrict`, `IsPrimaryOrganisation`. Indexed by `StructureIndex`.
+- **`StructureDocument`** — a named axis. `Levels` is its vocabulary in reading
+  order; `RootDimensionTypeIds` and `Containment` are its rules, per ADR-0010;
+  `IsStrict` and `IsPrimaryOrganisation` are flags. `AllowSkipLevel` survives as
+  the record of what the map was derived from and is no longer read by any rule.
+  Indexed by `StructureIndex`.
+- **`StructureContainment`** — one permitted `(parent type → child type)` pair.
 - **`IDimensionTypeService`** — creates, updates and retires types, and owns the
   backing content type. `CreateAsync` generates a content type named for the
   code with `DimensionRecordPart` attached, `TitlePart` generating its title
   from the English name, the attribute schema's fields on a part named for the
   type, and the type creatable, listable, securable and not draftable.
-- **`IStructureService`** — defines axes, their ordered levels and their rules.
+- **`IStructureService`** — defines axes, their vocabulary and their containment
+  rules. A caller that already knows the pairings passes a `StructureShape`; one
+  that still describes an axis as a chain passes nothing and has the map derived
+  by `StructureContainmentDerivation`, the same function the migration uses.
 - **`IDimensionTypeLookup` / `IStructureLookup` / `IDimensionRecordLookup`** —
   the read side of each aggregate: does this reference exist, and what does it
   look like. See **"The lookup pattern"** below.
@@ -65,9 +72,9 @@ contracted in section 4 of `/docs/technical-specification.md`.
 
 A record created outside the designer is **unplaced**: it exists with no parent
 on any structure. That is a legitimate state, not an error, and it carries no
-flag — unplaced is derivable as *no link on a structure whose levels include
-its type, and its type is not at ordinal zero*. The organisation designer lists
-those in prompt 3.
+flag — unplaced is derivable as *no link on a structure whose types include its
+own, and its type is not one of that structure's root types*. The organisation
+designer lists those in prompt 3.
 
 ### Graph layer — built
 The three tables live in the internal namespace `Internal.Graph`, so nothing
@@ -135,10 +142,55 @@ write.
 
 Every rule in architecture section 6 is now enforced. Five were not enforced
 anywhere before this session: **record code uniqueness** (including against
-retired records), **permitted level**, **level skipping**, **self-nesting**,
-and the advisory **parent not yet effective** — advisory because pre-building
-next year's structure is legitimate and refusing it would make the engine
-unusable for a case it was designed for.
+retired records), **containment**, **self-nesting**, and the advisory **parent
+not yet effective** — advisory because pre-building next year's structure is
+legitimate and refusing it would make the engine unusable for a case it was
+designed for.
+
+### Containment: what may sit under what (ADR-0010)
+
+A structure's `Containment` is a set of permitted `(parent type → child type)`
+pairs and `RootDimensionTypeIds` is the set of types that may sit at its top.
+Together they replace the arithmetic on level ordinals that used to decide
+containment, because a chain can only say that one type is above another and
+real organisations branch: under a Division either a Department or a Project;
+under one Division Departments and under its sibling Regions. The only way a
+chain could express either was to switch on level skipping, which permitted
+everything below anything above.
+
+`ContainmentRules.Decide` is the only implementation of the rule, and both the
+validator and every picker call it. That is deliberate: before ADR-0010 the rule
+was written twice — backwards in `DimensionValidator`, forwards in
+`GetPermittedChildTypeIdsAsync` — and the forwards copy ignored `IsStrict`, so
+on the one kind of axis that flag exists for the picker and the validator
+disagreed. `DimensionContainmentTenantTests` asserts they agree over every
+ordered pair of a structure's types, strict and non-strict.
+
+Three things interlock:
+
+| | |
+| --- | --- |
+| `Levels` | Vocabulary and reading order. Gives the editor's grid its rows and columns and the pickers their order. Carries no rule. |
+| `IsStrict` | Whether an undeclared pairing is refused (`ParentTypeNotPermitted`) or merely reported (`ParentTypeNotDeclared`, which is advisory). |
+| `AllowsSelfNesting` on the type | A **veto**, not a grant. `X → X` needs the type's flag *and* the structure's pair, which is what finally lets Section nest inside Section on the org chart but not on the cost structure. |
+
+`DimensionRule.LevelSkipping` is retained in the enum and no longer emitted: a
+skipped level is now simply a pairing the structure does not declare. Audit
+entries written before the change name it, and a persisted enum member is a
+contract.
+
+Having no parent is **not** constrained by containment. A record with no parent
+is either a root of the chart or a unit in the unplaced panel, and
+`RootDimensionTypeIds` decides which — it does not forbid a non-root type from
+being parentless, because moving a unit off the tree is a supported operation.
+
+`Migrations.UpdateFrom4Async` derives the map for every existing structure
+through `StructureContainmentDerivation.FromChain`: adjacent pairs always, the
+transitive pairs only where skipping was on, and a self-pair per self-nesting
+type. That is exactly the set the old arithmetic permitted, and
+`DimensionsMigrationUpgradeTenantTests` proves it pairwise rather than by
+inspection — for every ordered pair of level types, the derived map's answer
+equals the v4 arithmetic's answer, for both values of the flag.
 
 **`BeginBatch()` is what makes an import correct.** Two rows of one file
 sharing a code are each individually fine and together are not, and nothing in
@@ -268,12 +320,24 @@ Three screens, each calling the same services the API and the recipe steps
 use — no screen holds a privileged path:
 
 - **`DimensionTypesAdminController`** — list and editor for dimension types.
-- **`StructuresAdminController`** — list and editor for structures and their
-  ordered levels. Editing the levels of a structure that already has records
-  placed on it previews the impact first (`IStructureService.PlanLevelChangeAsync`)
-  and requires confirmation for a level removal, or refuses outright, naming
-  the record at fault, for a reorder that would leave an existing placement
-  invalid — the same dry-run-then-apply shape as move and merge.
+- **`StructuresAdminController`** — list and editor for structures. The editor
+  is four blocks: the types this structure uses in reading order; which of them
+  may sit at the top; a grid of what may sit under what; and a **build from a
+  simple chain** button that fills the last two from the first, so the common
+  one-chain case stays a single action. The grid posts one entry per ticked cell
+  under `ContainmentPairs` — an unticked checkbox posts nothing, which is exactly
+  what a grid wants and what indexed binding would need a hidden companion per
+  cell to fake. Changing a structure that already has records placed on it
+  previews the impact first (`IStructureService.PlanLevelChangeAsync`) and
+  requires confirmation for a type removal, or refuses outright, naming the
+  record at fault, if a rule live placements rely on is being untick­ed — the same
+  dry-run-then-apply shape as move and merge.
+
+  The grid is server-rendered first and kept in step by `structures.js`, so the
+  screen works with no script at all. A post carrying no ticks at all — a Create
+  form, or a client with no script — is read as "describe this as a chain" and
+  the map is derived; tick one root and the grid becomes the authority, including
+  about what is *not* ticked.
 - **`OrganisationDesignerAdminController`** — the read-only tree: a
   structure's roots (`IDimensionGraphService.GetRootsAsync`), lazily loaded
   children (`GetChildrenAsync`, fetched from the browser as each node is
@@ -355,6 +419,10 @@ the caller, because a retired record does not resolve on any date the caller
 would naturally ask for, and one retired on the day it opened does not resolve on
 any date at all.
 
+**Three reasons a unit has no parent, and the panel names which.** Never placed, parent retired,
+or deliberately taken off the tree. The third was indistinguishable from the first until stage D2
+gave leaving the tree a dated entry of its own — see **Leaving the tree is a decision** below.
+
 **The panel's cards are the tree's cards.** It renders `_DesignerNode`, the same
 partial, so an unplaced unit has the same action menu, the same drag behaviour
 and the same markup as one on the chart — the menu's move entry just reads
@@ -366,13 +434,34 @@ the suite ever asked the panel the question. `EveryCardOnTheScreenHasAnAction
 MenuForAUserWhoMayEdit` now asks it of every `.designer-node` on the page rather
 than of a list of the ones somebody remembered.
 
-*Known gap.* There is a third way to have no parent — somebody moving a unit to
-"(top of the structure)" — and the panel still calls that one "never placed in
-this structure". Moving to no parent empties the link's dated parent list rather
-than appending to it, so `GetRecordedMovesAsync` cannot tell it from a record
-that was never placed at all. Telling the two apart needs the link to keep the
-vacating entry; it is a wrong sentence on a correctly placed record, not a wrong
-placement.
+### Leaving the tree is a decision (stage D2)
+
+`ParentLink.ParentRecordId` is nullable, and moving a unit to "(top of the
+structure)" writes an entry with no parent rather than removing the entry that
+covered that date. History always resolved correctly either way — the displaced
+entry was truncated to the day before — but the *decision* left no trace, and
+three things followed from that: `GetRecordedMovesAsync` had nothing to offer, so
+cancel move could not undo the one operation that takes a whole branch off the
+chart; the unplaced panel could not tell this from a unit that had never been
+placed, and said "never placed in this structure" to a unit somebody had moved
+off it last week; and nothing on the record said anybody had decided anything.
+
+Three readers treat a null parent as "nothing above here, from this date":
+`DimensionLinkDocument.ParentOn`, which already returned null for the absence of
+an entry; `ComputeAncestorsAsync`, which skips these entries rather than trying
+to resolve them; and `GetRemovedFromTreeAsync`, which exists to find exactly
+them. `EntryOn` is the reader for the case where the difference matters.
+
+**No schema change and no migration.** `DimensionLinkIndex.ParentId` has always
+been a string that is sometimes empty — the index provider already wrote the
+`NoParent` sentinel for the axis-membership row — so a dated "no parent" entry
+maps onto the column as it stands, and the queries that look for children by
+parent id have never matched an empty one.
+
+One case writes nothing: a record that has never been placed and is being placed
+nowhere. Recording "no parent from today" against it would invent a decision
+nobody made and put every untouched import row into the panel's "removed from the
+tree" state.
 
 All three record an audit entry under `DimensionRecordChanged`, naming the
 operation, the unit, the date it takes effect, and the name on either side of
@@ -400,6 +489,17 @@ range the new link would actually claim — `InsertLink`'s own arithmetic, asked
 rather than duplicated — and the screen says the move will apply only up to the
 day before the one already on record, names the parent that takes over, and
 points at cancelling as the way to remove that later move if it was the mistake.
+
+**The action menu dismisses.** It is a `<details>`, which is what makes it work
+and stay keyboard-reachable with no script. What `<details>` does not do is close
+when you click elsewhere, so the script adds exactly that and nothing else: a
+capture-phase `pointerdown` on the document closes any open menu, a capture-phase
+`toggle` listener closes the others when one opens, and Escape closes the open
+one and returns focus to the summary that opened it. A click that dismissed a
+menu is one gesture, not two — it is suppressed from also toggling the card it
+landed on (`suppressNextClick`) and from beginning a drag of it
+(`dismissedMenu`), which is the difference between "click away to close" and
+"click away to close and start reorganising the company".
 
 **Drag against pan.** One pointer, two gestures, told apart by where it goes
 down: empty canvas pans, a card begins a move. A card's drag only starts after
@@ -495,6 +595,34 @@ parse anywhere in that round trip resolves a different day for an Arabic user th
 for an English one, and under a culture whose default calendar is not Gregorian
 (ar-SA uses Umm al-Qura) a different year. Pinned by `IsoDateTests` across en,
 en-US, en-GB, ar and ar-SA.
+
+### Names: English required, Arabic optional
+
+ADR-0003's addendum. `WorkMateSettings.RequireArabicNames` is off by default, and
+the question is asked through `IBilingualNamePolicy` so that every write path —
+`DimensionValidator` for types, structures, records and attribute labels,
+`DimensionRecordPartHandler` for anything created outside the designer, the
+recipe steps through the validator, and Platform's own `BilingualTextField` —
+reads one answer. A caller that forgets to ask gets the permissive behaviour,
+which is the right way round for a rule being relaxed.
+
+**Empty is not null, and null is not a crash.** `BilingualText` normalises a null half to an empty
+string in its constructor — records deserialise through it, so stored data is normalised on the way
+out of the database too, which is why making Arabic optional needed no repair migration. The
+bilingual halves on a view model are declared `string?`, for two reasons that are easy to conflate:
+an empty text box binds to `null` (`ConvertEmptyStringToNull` is true by default) *and* a
+non-nullable reference type property gets an implicit `required` in model state, which would refuse
+an empty Arabic name before the controller ran. `ViewModelsSurviveNullBindingTests` guards the
+first; declaring the property nullable is what fixes the second.
+
+**A reader is never shown a blank name.** `BilingualText.Display(en, ar)` is the
+one implementation of the fallback: the reader's language, or the other one when
+theirs is empty. `BilingualDisplay.Name` delegates to it and
+`BilingualTextField.ForCulture` has always done the same. Three places had the
+"both halves are always present" assumption baked in and no longer do:
+`NameWithAlternate` drops the brackets when there is nothing to bracket, the
+card and list views render the Arabic line only when there is Arabic, and
+`workmate-bilingual` marks the English input `required` and never the Arabic one.
 
 ### Dates and names on the screen
 
@@ -606,7 +734,13 @@ Each step validates every row of its own JSON array against one
 `RecipeExecutionException` naming every problem at once if any row fails, so
 a bad row never leaves a partial write behind from its own step. `structures`
 resolves its level types by code against what `dimension-types` already
-created; `dimension-records` resolves its type and structure the same way,
+created, and states its rules either as a chain (`levelTypeCodes` +
+`allowSkipLevel`, derived through the same function the migration uses) or
+explicitly (`rootTypeCodes` + `containment`, a map of parent code to the child
+codes it may contain). Stating both is **refused** naming the conflict rather
+than merged: they are two descriptions of one thing, and picking one silently is
+how a recipe comes to do something its author cannot read off it.
+`dimension-records` resolves its type and structure the same way,
 and resolves a placement's parent by code too, once the record it names has
 actually been created — which is why a recipe must list a parent before its
 children, the same ordering constraint the record layer already has between

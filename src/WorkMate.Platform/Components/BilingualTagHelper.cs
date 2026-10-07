@@ -65,9 +65,13 @@ public sealed class BilingualTagHelper : TagHelper
             content.Append("</legend>");
         }
 
+        // English carries the browser's own required marker; Arabic never does. Since the
+        // ADR-0003 addendum Arabic is optional unless the tenant has turned "Require Arabic names"
+        // on, and a tenant setting is not something this control can see — so it marks the half it
+        // can be sure about and leaves the other to the server, which is the authority either way.
         content.Append("<div class=\"row g-2\">")
-               .Append(Column(English, "en", "ltr", S["English"].Value))
-               .Append(Column(Arabic, "ar", "rtl", S["Arabic"].Value))
+               .Append(Column(English, "en", "ltr", S["English"].Value, required: Required))
+               .Append(Column(Arabic, "ar", "rtl", S["Arabic"].Value, required: false))
                .Append("</div>");
 
         if (!string.IsNullOrWhiteSpace(Hint))
@@ -80,18 +84,31 @@ public sealed class BilingualTagHelper : TagHelper
         output.Content.SetHtmlContent(content.ToString());
     }
 
-    private string Column(ModelExpression expression, string language, string direction, string caption)
+    private string Column(
+        ModelExpression expression, string language, string direction, string caption, bool required)
     {
         var name = ViewContext.ViewData.TemplateInfo.GetFullHtmlFieldName(expression.Name);
         var id = TagBuilder.CreateSanitizedId(name, "_");
         var value = System.Net.WebUtility.HtmlEncode(expression.Model?.ToString() ?? string.Empty);
         var maxLength = MaxLength > 0 ? $" maxlength=\"{MaxLength}\"" : string.Empty;
+        var isRequired = required ? " required" : string.Empty;
+
+        // Any error the server already put against this field, rendered into the same span the
+        // client-side validator writes into. Without this a service-level refusal — "a name is
+        // required in English" — could only appear in the summary at the top of the page, leaving
+        // the reader to work out which of the two boxes it was about.
+        var state = ViewContext.ViewData.ModelState[name];
+        var problem = state?.Errors.Count > 0 ? state.Errors[0].ErrorMessage : null;
+
+        var invalid = problem is null ? string.Empty : " is-invalid";
+        var validationClass = problem is null ? "field-validation-valid" : "field-validation-error";
+        var message = problem is null ? string.Empty : System.Net.WebUtility.HtmlEncode(problem);
 
         return $"""
             <div class="col-md-6">
               <label class="form-label small text-muted" for="{id}">{System.Net.WebUtility.HtmlEncode(caption)}</label>
-              <input class="form-control" type="text" id="{id}" name="{name}" value="{value}" dir="{direction}" lang="{language}"{maxLength} />
-              <span class="text-danger field-validation-valid" data-valmsg-for="{name}" data-valmsg-replace="true"></span>
+              <input class="form-control{invalid}" type="text" id="{id}" name="{name}" value="{value}" dir="{direction}" lang="{language}"{maxLength}{isRequired} />
+              <span class="text-danger {validationClass}" data-valmsg-for="{name}" data-valmsg-replace="true">{message}</span>
             </div>
             """;
     }

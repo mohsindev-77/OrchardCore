@@ -122,14 +122,14 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
     {
         var differences = new List<string>();
 
-        if (!string.Equals(existing.Name.En, type.NameEn, StringComparison.Ordinal))
+        if (!RecipeNameComparison.Same(existing.Name.En, type.NameEn))
         {
-            differences.Add($"the English name is '{existing.Name.En}' in the tenant but '{type.NameEn}' in the recipe");
+            differences.Add(RecipeNameComparison.Describe("English", existing.Name.En, type.NameEn));
         }
 
-        if (!string.Equals(existing.Name.Ar, type.NameAr, StringComparison.Ordinal))
+        if (!RecipeNameComparison.Same(existing.Name.Ar, type.NameAr))
         {
-            differences.Add($"the Arabic name is '{existing.Name.Ar}' in the tenant but '{type.NameAr}' in the recipe");
+            differences.Add(RecipeNameComparison.Describe("Arabic", existing.Name.Ar, type.NameAr));
         }
 
         if (existing.AllowsSelfNesting != type.AllowsSelfNesting)

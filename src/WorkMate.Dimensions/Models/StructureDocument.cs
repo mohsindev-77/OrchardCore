@@ -35,21 +35,54 @@ public sealed class StructureDocument
     /// </remarks>
     public BilingualText Name { get; set; } = new(string.Empty, string.Empty);
 
-    /// <summary>The levels, root first. Ordinals are contiguous from zero.</summary>
+    /// <summary>
+    /// The types this axis uses, in reading order. Ordinals are contiguous from zero.
+    /// </summary>
+    /// <remarks>
+    /// Per ADR-0010 this is the axis's <em>vocabulary and display order</em>, not its containment
+    /// rule: which types belong to this structure and in what order a reader expects to meet them.
+    /// It gives the editor's grid its rows and columns and every type picker its order. What may
+    /// sit under what is <see cref="Containment"/>, and nothing else.
+    /// </remarks>
     public IReadOnlyList<StructureLevel> Levels { get; set; } = [];
 
     /// <summary>
-    /// Whether a record may sit under a parent more than one level above it — a Section directly
-    /// under a Business Unit. Architecture section 6 makes this a structure setting rather than a
-    /// per-node exception on purpose: an exception granted per node is one nobody can audit.
+    /// The types a record may be a root of this axis as — the top row of the chart.
     /// </summary>
+    /// <remarks>
+    /// Not a constraint on being parentless. A record of any type may have no parent: that is
+    /// either a root or a unit in the unplaced panel, and this list is what decides which. Making
+    /// it a constraint would forbid moving a unit off the tree, which is a supported operation.
+    /// </remarks>
+    public IReadOnlyList<string> RootDimensionTypeIds { get; set; } = [];
+
+    /// <summary>
+    /// Every permitted parent-child pairing on this axis. The single authority on containment.
+    /// </summary>
+    public IReadOnlyList<StructureContainment> Containment { get; set; } = [];
+
+    /// <summary>
+    /// Whether a record may sit under a parent more than one level above it — a Section directly
+    /// under a Business Unit.
+    /// </summary>
+    /// <remarks>
+    /// Superseded by <see cref="Containment"/> and no longer read by the validator. Kept on the
+    /// document because it is what the map was derived from, and the editor shows it read-only so
+    /// that a customer who had it switched on can see where their extra pairs came from. ADR-0010.
+    /// </remarks>
     public bool AllowSkipLevel { get; set; }
 
     /// <summary>
-    /// Whether every record on this axis must sit at a declared level. A non-strict structure
-    /// tolerates a record whose type is not in <see cref="Levels"/> at all, which is what an axis
-    /// like Project needs while it is still being shaped.
+    /// Whether every placement on this axis must be one <see cref="Containment"/> declares. A
+    /// non-strict structure tolerates a pairing it has no rule for, which is what an axis like
+    /// Project needs while it is still being shaped.
     /// </summary>
+    /// <remarks>
+    /// Honoured by the pickers as well as the validator since ADR-0010. Before it, the validator
+    /// accepted undeclared placements on a non-strict axis and the picker never offered one — the
+    /// forwards and backwards readings of the rule disagreed on exactly the case the flag exists
+    /// for.
+    /// </remarks>
     public bool IsStrict { get; set; } = true;
 
     /// <summary>
@@ -63,10 +96,35 @@ public sealed class StructureDocument
         Levels.FirstOrDefault(level => level.Ordinal == ordinal)?.DimensionTypeId;
 
     /// <summary>
-    /// Where <paramref name="dimensionTypeId"/> sits on this axis, or null if it is not a level of
-    /// it. The level rules in architecture section 6 are all expressed as arithmetic on this.
+    /// Where <paramref name="dimensionTypeId"/> sits in this axis's reading order, or null if it is
+    /// not one of its types. Display only since ADR-0010 — no rule is arithmetic on it any more.
     /// </summary>
     public int? OrdinalOf(string dimensionTypeId) =>
         Levels.FirstOrDefault(level =>
             string.Equals(level.DimensionTypeId, dimensionTypeId, StringComparison.Ordinal))?.Ordinal;
+
+    /// <summary>This axis's types, in reading order. The vocabulary every rule is expressed over.</summary>
+    public IReadOnlyList<string> DimensionTypeIds =>
+        [.. Levels.OrderBy(level => level.Ordinal).Select(level => level.DimensionTypeId)];
+
+    /// <summary>Whether a record of this type may be a root of this axis.</summary>
+    public bool PermitsRoot(string dimensionTypeId) =>
+        RootDimensionTypeIds.Contains(dimensionTypeId, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether this axis declares that a child of one type may sit directly under a parent of
+    /// another. The whole containment rule, minus the dimension type's self-nesting veto, which
+    /// lives on the type and is applied by <c>ContainmentRules</c>.
+    /// </summary>
+    public bool Permits(string parentDimensionTypeId, string childDimensionTypeId) =>
+        Containment.Any(pair =>
+            string.Equals(pair.ParentDimensionTypeId, parentDimensionTypeId, StringComparison.Ordinal) &&
+            string.Equals(pair.ChildDimensionTypeId, childDimensionTypeId, StringComparison.Ordinal));
+
+    /// <summary>The types this axis declares may sit under <paramref name="parentDimensionTypeId"/>.</summary>
+    public IReadOnlyList<string> DeclaredChildTypeIdsOf(string parentDimensionTypeId) =>
+        [.. Containment
+            .Where(pair => string.Equals(pair.ParentDimensionTypeId, parentDimensionTypeId, StringComparison.Ordinal))
+            .Select(pair => pair.ChildDimensionTypeId)
+            .Distinct(StringComparer.Ordinal)];
 }

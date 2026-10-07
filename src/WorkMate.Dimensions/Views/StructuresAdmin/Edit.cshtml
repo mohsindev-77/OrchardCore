@@ -21,15 +21,16 @@
 
     <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"].Value" required="true" max-length="200" />
 
-    <div class="form-check mb-3">
-        <input asp-for="AllowSkipLevel" class="form-check-input" />
-        <label asp-for="AllowSkipLevel" class="form-check-label">@T["Allow skipping levels (for example, a Section directly under a Division)"]</label>
-    </div>
+    @* Not an input any more. ADR-0010 turned this setting into explicit ticks in the grid below,
+       once, when the structure was upgraded. It is still posted so that saving does not quietly
+       clear the record of what the map was derived from, but it is not shown: the grid is the
+       truth now, and a note about where its ticks came from is history the reader did not ask for. *@
+    <input type="hidden" asp-for="AllowSkipLevel" />
 
     <div class="form-check mb-3">
         <input asp-for="IsStrict" class="form-check-input" />
-        <label asp-for="IsStrict" class="form-check-label">@T["Every unit in this structure must sit at one of the levels below"]</label>
-        <div class="form-text">@T["Turn this off for a structure still being shaped, such as a new Project structure, where a unit may not yet fit a declared level."]</div>
+        <label asp-for="IsStrict" class="form-check-label">@T["Only the placements ticked below are allowed"]</label>
+        <div class="form-text">@T["Turn this off for a structure still being shaped, where a unit may not yet fit a rule you have written. Anything not ticked is then allowed with a warning rather than refused."]</div>
     </div>
 
     <div class="form-check mb-3">
@@ -39,15 +40,15 @@
     </div>
 
     <fieldset class="mb-3">
-        <legend class="fs-5">@T["Levels"]</legend>
+        <legend class="fs-5">@T["Types used in this structure"]</legend>
         <p class="text-muted">
-            @T["The dimension types permitted in this structure, top level first. A Section under a Department, for example, needs Department listed before Section."]
+            @T["The kinds of unit this structure is built from, in the order a reader meets them. This order is how the structure reads; what may sit under what is the grid below."]
         </p>
 
         <table class="table" id="levels-table">
             <thead>
                 <tr>
-                    <th>@T["Ordinal"]</th>
+                    <th>@T["Order"]</th>
                     <th>@T["Dimension type"]</th>
                     <th></th>
                 </tr>
@@ -62,7 +63,7 @@
                                 <option value="">@T["Choose a dimension type"]</option>
                                 @foreach (var option in Model.AvailableDimensionTypes)
                                 {
-                                    <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
+                                    <option value="@option.DimensionTypeId" data-self-nesting="@(option.AllowsSelfNesting ? "true" : "false")">@option.DisplayLabel</option>
                                 }
                             </select>
                         </td>
@@ -76,7 +77,92 @@
             </tbody>
         </table>
 
-        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-level-row">@T["Add level"]</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-level-row">@T["Add type"]</button>
+    </fieldset>
+
+    @{
+        // The grid's rows and columns: the types this structure actually uses, in reading order,
+        // resolved to the labels the picker offers. Rendered by the server so the screen works
+        // with no script at all; the script rebuilds it when the list above is edited.
+        var vocabulary = Model.ToLevelDimensionTypeIds()
+            .Select(id => Model.AvailableDimensionTypes.FirstOrDefault(option => option.DimensionTypeId == id))
+            .Where(option => option is not null)
+            .Select(option => option!)
+            .ToList();
+    }
+
+    <fieldset class="mb-3" id="structure-shape" data-empty-label="@T["Add a type above, then say what may sit under what."]">
+        <legend class="fs-5">@T["What may sit at the top"]</legend>
+        <p class="text-muted">
+            @T["The kinds of unit that may sit at the top of this structure, with nothing above them. Anything else with no parent appears in the unplaced panel instead."]
+        </p>
+
+        <div id="root-types" class="mb-4">
+            @foreach (var option in vocabulary)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="RootDimensionTypeIds"
+                           id="@($"root-{option.DimensionTypeId}")"
+                           value="@option.DimensionTypeId" checked="@Model.IsRoot(option.DimensionTypeId)" />
+                    <label class="form-check-label" for="@($"root-{option.DimensionTypeId}")">@option.DisplayLabel</label>
+                </div>
+            }
+        </div>
+
+        <legend class="fs-5">@T["What may sit under what"]</legend>
+        <p class="text-muted">
+            @T["Read a row as the container and a column as what it may contain. Tick Division → Department to allow a Department directly under a Division."]
+        </p>
+
+        <button type="button" class="btn btn-sm btn-outline-secondary mb-2" id="build-from-chain">
+            @T["Build from a simple chain"]
+        </button>
+        <div class="form-text mb-2">
+            @T["Fills both of these from the order above: each type may contain the next one, and the first may sit at the top. Start here, then adjust."]
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle" id="containment-grid">
+                <thead>
+                    <tr>
+                        <th scope="col">@T["May contain →"]</th>
+                        @foreach (var child in vocabulary)
+                        {
+                            <th scope="col" class="text-center">@child.DisplayName</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var parent in vocabulary)
+                    {
+                        <tr data-parent="@parent.DimensionTypeId">
+                            <th scope="row">@parent.DisplayName</th>
+                            @foreach (var child in vocabulary)
+                            {
+                                @* A type that forbids nesting inside itself cannot be granted it by
+                                   any structure, so the diagonal is disabled rather than merely
+                                   unticked: an offer the validator would refuse is worse than none. *@
+                                var vetoed = parent.DimensionTypeId == child.DimensionTypeId && !parent.AllowsSelfNesting;
+
+                                <td class="text-center" data-child="@child.DimensionTypeId">
+                                    <input class="form-check-input" type="checkbox" name="ContainmentPairs"
+                                           value="@StructureEditViewModel.Pair(parent.DimensionTypeId, child.DimensionTypeId)"
+                                           checked="@Model.Permits(parent.DimensionTypeId, child.DimensionTypeId)"
+                                           disabled="@vetoed"
+                                           title="@(vetoed ? T["This kind of unit does not allow nesting inside itself. Change that on the dimension type."].Value : null)"
+                                           aria-label="@T["{0} may contain {1}", parent.DisplayName, child.DisplayName]" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (vocabulary.Count == 0)
+        {
+            <p class="text-muted">@T["Add a type above, then say what may sit under what."]</p>
+        }
     </fieldset>
 
     <!-- A row of raw markup, never bound to a model, that the script below clones, reindexes and
@@ -89,7 +175,7 @@
                     <option value="">@T["Choose a dimension type"]</option>
                     @foreach (var option in Model.AvailableDimensionTypes)
                     {
-                        <option value="@option.DimensionTypeId">@option.DisplayLabel</option>
+                        <option value="@option.DimensionTypeId" data-self-nesting="@(option.AllowsSelfNesting ? "true" : "false")">@option.DisplayLabel</option>
                     }
                 </select>
             </td>

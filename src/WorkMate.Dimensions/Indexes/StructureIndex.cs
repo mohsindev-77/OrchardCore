@@ -24,4 +24,11 @@ public sealed class StructureIndex : MapIndex
     /// of every structure without loading each one.
     /// </summary>
     public int LevelCount { get; set; }
+
+    /// <summary>
+    /// How many parent-child pairings the axis permits — the size of its containment map. Here
+    /// for the same reason as <see cref="LevelCount"/>: the structures list says how constrained
+    /// each axis is without loading every document to count.
+    /// </summary>
+    public int ContainmentRuleCount { get; set; }
 }

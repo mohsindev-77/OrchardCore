@@ -236,6 +236,10 @@ public sealed class DesignerActionsBrowserTests
         await Assertions.Expect(neverPlaced).ToContainTextAsync("Never placed");
         await Assertions.Expect(neverPlaced.Locator("[data-designer-orphaned]")).ToHaveCountAsync(0);
 
+        // And not the third state either: nobody took this one off the tree, it has simply never
+        // been on it. All three are distinguishable since stage D2 and the panel must pick one.
+        await Assertions.Expect(neverPlaced.Locator("[data-designer-removed]")).ToHaveCountAsync(0);
+
         problems.Should().BeEmpty();
     }
 

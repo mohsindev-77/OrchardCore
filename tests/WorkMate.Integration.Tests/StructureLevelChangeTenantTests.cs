@@ -94,7 +94,7 @@ public sealed class StructureLevelChangeTenantTests
         confirmResponse.EnsureSuccessStatusCode();
         var confirmHtml = HtmlDecode(await confirmResponse.Content.ReadAsStringAsync());
 
-        confirmHtml.Should().Contain("Confirm level change");
+        confirmHtml.Should().Contain("Confirm structure change");
         confirmHtml.Should().Contain("Level Change Department");
         confirmHtml.Should().Contain(">1<", "exactly one department record is placed on this axis");
 
@@ -121,8 +121,18 @@ public sealed class StructureLevelChangeTenantTests
         });
     }
 
+    /// <summary>
+    /// Unticking a rule that live units are placed by is refused, naming them.
+    /// </summary>
+    /// <remarks>
+    /// This test used to reorder the levels and expect that to be refused, because containment was
+    /// arithmetic on level ordinals and swapping two of them inverted a parent and its child.
+    /// Since ADR-0010 the order is reading order and carries no rule, so reordering invalidates
+    /// nothing and refusing it would be wrong. The equivalent gesture — and the one a customer now
+    /// actually makes — is unticking a cell of the containment grid, which is what this does.
+    /// </remarks>
     [Fact]
-    public async Task ReorderingLevelsThatWouldInvalidateAPlacementIsRefused()
+    public async Task RemovingARuleThatLivePlacementsRelyOnIsRefused()
     {
         string divisionTypeId = string.Empty, departmentTypeId = string.Empty, sectionTypeId = string.Empty, structureId = string.Empty;
 
@@ -173,12 +183,13 @@ public sealed class StructureLevelChangeTenantTests
 
         var editPage = await BaseTenantFixture.GetPageAsync(_fixture.Administrator, $"/Admin/Dimensions/Structures/Edit/{structureId}");
 
-        // Swap Division and Department — Division (currently the parent) would move below
-        // Department (currently its child), which the engine must refuse.
+        // Untick Division → Department, the rule the live placement rests on. Everything else on
+        // the form posts exactly as rendered, so this is the one change being made.
         var fields = RenderedForm.FieldsOf(editPage)
-            .With("LevelDimensionTypeIds[0]", departmentTypeId)
-            .With("LevelDimensionTypeIds[1]", divisionTypeId)
-            .With("LevelDimensionTypeIds[2]", sectionTypeId);
+            .Without("ContainmentPairs", $"{divisionTypeId}>{departmentTypeId}");
+
+        fields.Should().NotContain(
+            field => field.Key == "ContainmentPairs" && field.Value == $"{divisionTypeId}>{departmentTypeId}");
 
         var response = await _fixture.Administrator.PostAsync(
             $"/Admin/Dimensions/Structures/Edit/{structureId}", new FormUrlEncodedContent(fields));
@@ -186,7 +197,7 @@ public sealed class StructureLevelChangeTenantTests
         response.EnsureSuccessStatusCode();
         var html = HtmlDecode(await response.Content.ReadAsStringAsync());
 
-        html.Should().NotContain("Confirm level change", "a violation must be refused outright, not offered for confirmation");
+        html.Should().NotContain("Confirm structure change", "a violation must be refused outright, not offered for confirmation");
         html.Should().Contain("reorder-dept-1", "the error must name the specific record whose placement is at risk");
         html.Should().Contain("reorder-div-1");
 
@@ -199,6 +210,9 @@ public sealed class StructureLevelChangeTenantTests
                 .Should().Equal(
                     [divisionTypeId, departmentTypeId, sectionTypeId],
                     "a refused change must leave the structure exactly as it was");
+
+            unchanged.Permits(divisionTypeId, departmentTypeId).Should().BeTrue(
+                "the rule the change tried to remove is still there, because nothing was saved");
         });
     }
 }

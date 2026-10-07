@@ -93,4 +93,20 @@ internal static class RenderedForm
         result.Add(new(name, value));
         return result;
     }
+
+    /// <summary>
+    /// Drops one entry by name <em>and</em> value, leaving any other entry of that name alone.
+    /// </summary>
+    /// <remarks>
+    /// What unticking one checkbox in a grid does. <see cref="With"/> cannot express it: a grid
+    /// posts many entries under one name and replacing all of them with a single value is a
+    /// different gesture entirely.
+    /// </remarks>
+    public static List<KeyValuePair<string, string>> Without(
+        this List<KeyValuePair<string, string>> fields, string name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+
+        return [.. fields.Where(field => field.Key != name || field.Value != value)];
+    }
 }

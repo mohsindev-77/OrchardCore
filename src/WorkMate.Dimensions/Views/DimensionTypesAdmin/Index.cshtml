@@ -34,7 +34,12 @@ else
                     <td><code>@type.Code</code></td>
                     <td>
                         <div dir="ltr" lang="en">@type.NameEn</div>
-                        <div dir="rtl" lang="ar" class="text-muted small">@type.NameAr</div>
+                        @* Only when there is Arabic to show. Optional since the ADR-0003 addendum,
+                           so an untranslated row would otherwise carry an empty second line. *@
+                        @if (!string.IsNullOrWhiteSpace(type.NameAr))
+                        {
+                            <div dir="rtl" lang="ar" class="text-muted small">@type.NameAr</div>
+                        }
                     </td>
                     <td>@(type.AllowsSelfNesting ? T["Yes"] : T["No"])</td>
                     <td>@type.AttributeCount</td>

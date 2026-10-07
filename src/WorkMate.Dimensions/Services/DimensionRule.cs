@@ -53,8 +53,22 @@ public enum DimensionRule
     /// <summary>The parent's type is not a permitted level for the child's type on this structure.</summary>
     ParentTypeNotPermitted,
 
-    /// <summary>The move would skip a level and the structure does not allow skipping.</summary>
+    /// <summary>
+    /// The move would skip a level and the structure does not allow skipping.
+    /// </summary>
+    /// <remarks>
+    /// No longer emitted. ADR-0010 replaced level arithmetic with an explicit containment map, so
+    /// a skipped level is simply a pairing the structure does not declare and is reported as
+    /// <see cref="ParentTypeNotPermitted"/>. Kept because audit entries written before that change
+    /// name it, and a persisted enum member is a contract.
+    /// </remarks>
     LevelSkipping,
+
+    /// <summary>
+    /// The structure has no rule for this pairing, and is not strict, so it is allowed. Advisory:
+    /// the one thing a non-strict axis trades for being able to grow a shape before it is named.
+    /// </summary>
+    ParentTypeNotDeclared,
 
     /// <summary>The move would make a node its own ancestor.</summary>
     Cycle,

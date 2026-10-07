@@ -3,6 +3,7 @@ using OrchardCore.ContentManagement.Handlers;
 
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
+using WorkMate.Platform.Services;
 
 
 namespace WorkMate.Dimensions.Handlers;
@@ -48,13 +49,22 @@ namespace WorkMate.Dimensions.Handlers;
 public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRecordPart>
 {
     private readonly IDimensionTypeService _dimensionTypeService;
+
+    /// <summary>
+    /// Whether this tenant insists on the Arabic half of a name. The same seam
+    /// <c>IDimensionValidator</c> uses, so the two paths into a record cannot answer differently.
+    /// </summary>
+    private readonly IBilingualNamePolicy _namePolicy;
+
     private readonly IStringLocalizer S;
 
     public DimensionRecordPartHandler(
         IDimensionTypeService dimensionTypeService,
+        IBilingualNamePolicy namePolicy,
         IStringLocalizer<DimensionRecordPartHandler> stringLocalizer)
     {
         _dimensionTypeService = dimensionTypeService;
+        _namePolicy = namePolicy;
         S = stringLocalizer;
     }
 
@@ -99,9 +109,20 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
                 nameof(part.Code));
         }
 
-        if (string.IsNullOrWhiteSpace(part.NameEn) || string.IsNullOrWhiteSpace(part.NameAr))
+        if (string.IsNullOrWhiteSpace(part.NameEn))
         {
-            context.Fail(S["A name is required in both English and Arabic."], nameof(part.NameEn));
+            context.Fail(S["A name is required in English."], nameof(part.NameEn));
+        }
+
+        // ADR-0003's addendum: optional unless the tenant insists. Reported against NameAr, which
+        // is the box the reader has to go and fill in — the old message named NameEn whichever
+        // half was missing, so a user who left only the Arabic blank was pointed at the wrong one.
+        if (string.IsNullOrWhiteSpace(part.NameAr) &&
+            await _namePolicy.RequiresArabicAsync())
+        {
+            context.Fail(
+                S["A name is required in Arabic. This tenant requires Arabic names; that can be changed in WorkMate settings."],
+                nameof(part.NameAr));
         }
 
         // No defaulting on a write, per specification section 2 rule 3. A record saved with no

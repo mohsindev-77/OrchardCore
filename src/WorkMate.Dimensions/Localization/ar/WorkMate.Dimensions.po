@@ -72,10 +72,6 @@ msgid "The attribute '{0}' is declared more than once."
 msgstr "تم تعريف السمة '{0}' أكثر من مرة."
 
 #: WorkMate.Dimensions.Services.DimensionTypeService
-msgid "The attribute '{0}' needs a label in both English and Arabic."
-msgstr "تحتاج السمة '{0}' إلى تسمية بالإنجليزية والعربية معًا."
-
-#: WorkMate.Dimensions.Services.DimensionTypeService
 msgid "'{0}' is a standard field that every dimension record already carries. Choose another attribute name."
 msgstr "'{0}' حقل قياسي يحمله كل سجل بعد بالفعل. اختر اسم سمة آخر."
 
@@ -94,11 +90,6 @@ msgstr "نوع البعد '{0}' معرَّف من قِبل WorkMate ولا يم�
 #: WorkMate.Dimensions.Services.DimensionTypeService
 msgid "There is no dimension type with the id '{0}' in this tenant."
 msgstr "لا يوجد نوع بعد بالمعرّف '{0}' في هذا المستأجر."
-
-#: WorkMate.Dimensions.Services.DimensionTypeService
-#: WorkMate.Dimensions.Services.StructureService
-msgid "A name is required in both English and Arabic."
-msgstr "الاسم مطلوب بالإنجليزية والعربية معًا."
 
 #: WorkMate.Dimensions.Services.StructureService
 msgid "A structure code must start with a letter and may contain letters, digits, hyphens and underscores, up to fifty characters."
@@ -288,17 +279,8 @@ msgid "The code '{0}' is already used by another dimension record in this tenant
 msgstr "الرمز '{0}' مستخدم بالفعل في سجل بعد آخر في هذا المستأجر."
 
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
-msgid "'{0}' is not one of the levels of the structure '{1}', which is strict."
-msgstr "'{0}' ليس من مستويات الهيكل '{1}'، وهو هيكل صارم."
-
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
-msgid "'{0}' sits at or below '{1}' in the structure '{2}', so it cannot be its parent."
-msgstr "'{0}' يقع عند مستوى '{1}' أو تحته في الهيكل '{2}'، لذا لا يمكن أن يكون أبًا له."
-
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
-msgid "Placing '{0}' under '{1}' skips a level, and the structure '{2}' does not allow that."
-msgstr "وضع '{0}' تحت '{1}' يتخطى مستوى، والهيكل '{2}' لا يسمح بذلك."
-
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 msgid "'{0}' and '{1}' are the same kind of unit, and that kind does not allow nesting inside itself."
 msgstr "'{0}' و'{1}' من النوع نفسه، وهذا النوع لا يسمح بالتداخل داخل نفسه."
@@ -579,17 +561,8 @@ msgid "The code cannot be changed once the structure exists."
 msgstr "لا يمكن تغيير الرمز بعد وجود الهيكل."
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Allow skipping levels (for example, a Section directly under a Division)"
-msgstr "السماح بتخطي المستويات (على سبيل المثال، قسم فرعي مباشرة تحت شُعبة)"
-
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Every unit in this structure must sit at one of the levels below"
-msgstr "يجب أن يقع كل سجل على هذا الهيكل عند أحد المستويات أدناه"
-
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Turn this off for a structure still being shaped, such as a new Project structure, where a unit may not yet fit a declared level."
-msgstr "أوقف هذا الخيار لهيكل لا يزال قيد التشكيل، مثل هيكل مشروع جديد، حيث قد لا يتناسب السجل بعد مع مستوى مُعلَن."
-
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "This is the primary organisation structure"
 msgstr "هذا هو الهيكل التنظيمي الأساسي"
@@ -599,13 +572,7 @@ msgid "The default scope for approvals and for data visibility. Only one structu
 msgstr "النطاق الافتراضي للموافقات ولرؤية البيانات. لا يجوز أن يحمل هذه الصفة سوى هيكل واحد في المستأجر."
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "The dimension types permitted in this structure, top level first. A Section under a Department, for example, needs Department listed before Section."
-msgstr "أنواع الأبعاد المسموح بها على هذا الهيكل، بدءًا بالجذر. على سبيل المثال، يحتاج القسم الفرعي الواقع تحت قسم إلى إدراج القسم قبل القسم الفرعي."
-
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Ordinal"
-msgstr "الترتيب"
-
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "Dimension type"
 msgstr "نوع البعد"
@@ -631,39 +598,18 @@ msgid "Down"
 msgstr "أسفل"
 
 #: Views/StructuresAdmin/Edit.cshtml
-msgid "Add level"
-msgstr "إضافة مستوى"
-
 # ---- Admin: the structure level-change confirmation screen ----
 
 #: Internal/Graph/DimensionGraphService.cs
-msgid "'{0}' is currently placed under '{1}'. The new level order for '{2}' would put '{1}' at or below '{0}', which is not permitted."
-msgstr "'{0}' موضوع حاليًا تحت '{1}'. سيضع ترتيب المستويات الجديد لـ '{2}' العنصر '{1}' عند '{0}' أو تحته، وهذا غير مسموح به."
-
 #: Internal/Graph/DimensionGraphService.cs
-msgid "'{0}' is currently placed under '{1}'. The new level order for '{2}' would skip a level between them, which this structure would not allow."
-msgstr "'{0}' موضوع حاليًا تحت '{1}'. سيتخطى ترتيب المستويات الجديد لـ '{2}' مستوى بينهما، وهذا الهيكل لا يسمح بذلك."
-
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Confirm level change"
-msgstr "تأكيد تغيير المستوى"
-
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
 msgid "'{0}' already has records placed on it. Review what this change does before it is applied."
 msgstr "'{0}' يحتوي بالفعل على سجلات موضوعة عليه. راجع ما سيفعله هذا التغيير قبل تطبيقه."
 
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Adding these levels is safe: units of these types already exist and will be visible in this structure from today."
-msgstr "إضافة هذه المستويات آمنة: السجلات من هذه الأنواع موجودة بالفعل وستصبح مرئية على هذا الهيكل اعتبارًا من اليوم."
-
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Dropping a level does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."
-msgstr "إسقاط مستوى لا يحذف شيئًا — تتوقف السجلات المتأثرة عن العرض على هذا الهيكل اعتبارًا من اليوم، وتستمر كل التقارير التاريخية في التحليل كما كانت — لكن راجع الأعداد أولًا."
-
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
-msgid "Level being dropped"
-msgstr "المستوى الذي سيُسقَط"
-
 #: Views/StructuresAdmin/ConfirmLevelChange.cshtml
 msgid "Records affected"
 msgstr "السجلات المتأثرة"
@@ -1178,3 +1124,147 @@ msgstr "اختر النقل المراد إلغاؤه."
 
 msgid "Say why this move is being cancelled."
 msgstr "اذكر سبب إلغاء هذا النقل."
+
+# ---- ADR-0010: containment as an explicit per-structure map ----
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' and '{1}' are the same kind of unit, and the structure '{2}' does not allow that kind inside itself."
+msgstr "'{0}' و'{1}' من النوع نفسه، والهيكل '{2}' لا يسمح بتداخل هذا النوع داخل نفسه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "The structure '{0}' does not allow a unit like '{1}' under one like '{2}'."
+msgstr "الهيكل '{0}' لا يسمح بوحدة مثل '{1}' تحت وحدة مثل '{2}'."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' is named in this structure's rules but is not one of its types."
+msgstr "'{0}' مذكور في قواعد هذا الهيكل لكنه ليس من أنواعه."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "A structure needs at least one kind of unit that may sit at its top."
+msgstr "يحتاج الهيكل إلى نوع واحد على الأقل من الوحدات يمكن أن يكون في قمته."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionGraphService
+msgid "'{0}' is currently placed under '{1}'. The new rules for '{2}' would not allow that."
+msgstr "'{0}' موضوع حاليًا تحت '{1}'. القواعد الجديدة لـ'{2}' لن تسمح بذلك."
+
+#: WorkMate.Dimensions.Recipes.StructuresRecipeStep
+msgid "Structure '{0}' names type '{1}' in its rules, which does not exist."
+msgstr "الهيكل '{0}' يذكر النوع '{1}' في قواعده، وهو غير موجود."
+
+#: WorkMate.Dimensions.Recipes.StructuresRecipeStep
+msgid "Structure '{0}' states both 'allowSkipLevel' and an explicit 'containment' or 'rootTypeCodes'. They are two ways of saying the same thing; use one."
+msgstr "الهيكل '{0}' يذكر 'allowSkipLevel' و'containment' أو 'rootTypeCodes' معًا. هاتان طريقتان لقول الشيء نفسه؛ استخدم واحدة."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Types used in this structure"
+msgstr "الأنواع المستخدمة في هذا الهيكل"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "The kinds of unit this structure is built from, in the order a reader meets them. This order is how the structure reads; what may sit under what is the grid below."
+msgstr "أنواع الوحدات التي يتكوّن منها هذا الهيكل، بالترتيب الذي يقابلها به القارئ. هذا الترتيب هو طريقة قراءة الهيكل؛ أما ما يمكن أن يوضع تحت ماذا فهو الجدول أدناه."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Order"
+msgstr "الترتيب"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Add type"
+msgstr "إضافة نوع"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "What may sit at the top"
+msgstr "ما يمكن أن يكون في القمة"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "The kinds of unit that may sit at the top of this structure, with nothing above them. Anything else with no parent appears in the unplaced panel instead."
+msgstr "أنواع الوحدات التي يمكن أن تكون في قمة هذا الهيكل، دون شيء فوقها. أما غيرها ممّا لا أصل له فيظهر في لوحة غير الموضوعة."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "What may sit under what"
+msgstr "ما يمكن أن يوضع تحت ماذا"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Read a row as the container and a column as what it may contain. Tick Division → Department to allow a Department directly under a Division."
+msgstr "اقرأ الصف بوصفه الحاوية والعمود بوصفه ما يمكن أن تحتويه. ضع علامة على قسم ← إدارة للسماح بإدارة مباشرة تحت قسم."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "May contain →"
+msgstr "يمكن أن يحتوي ←"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "{0} may contain {1}"
+msgstr "يمكن أن يحتوي {0} على {1}"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Build from a simple chain"
+msgstr "البناء من سلسلة بسيطة"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Fills both of these from the order above: each type may contain the next one, and the first may sit at the top. Start here, then adjust."
+msgstr "يملأ كليهما من الترتيب أعلاه: كل نوع يمكن أن يحتوي على الذي يليه، والأول يمكن أن يكون في القمة. ابدأ من هنا ثم عدّل."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Add a type above, then say what may sit under what."
+msgstr "أضف نوعًا أعلاه، ثم حدّد ما يمكن أن يوضع تحت ماذا."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "This kind of unit does not allow nesting inside itself. Change that on the dimension type."
+msgstr "هذا النوع من الوحدات لا يسمح بالتداخل داخل نفسه. غيّر ذلك في نوع البعد."
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Only the placements ticked below are allowed"
+msgstr "لا يُسمح إلا بالتعيينات المعلَّمة أدناه"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Turn this off for a structure still being shaped, where a unit may not yet fit a rule you have written. Anything not ticked is then allowed with a warning rather than refused."
+msgstr "أوقف هذا لهيكل ما زال قيد التشكيل، حيث قد لا تنطبق على وحدة ما قاعدة كتبتها بعد. عندئذ يُسمح بغير المعلَّم مع تحذير بدلًا من رفضه."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Confirm structure change"
+msgstr "تأكيد تغيير الهيكل"
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Adding these types is safe: units of them already exist and will be visible in this structure from today."
+msgstr "إضافة هذه الأنواع آمنة: توجد وحدات منها بالفعل وستظهر في هذا الهيكل اعتبارًا من اليوم."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Dropping a type does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."
+msgstr "إسقاط نوع لا يحذف شيئًا — تتوقف الوحدات المتأثرة عن الظهور في هذا الهيكل اعتبارًا من اليوم، وتظل كل التقارير التاريخية تُحَل كما كانت — لكن راجع الأعداد أولًا."
+
+#: Views/StructuresAdmin/ConfirmLevelChange.cshtml
+msgid "Type being dropped"
+msgstr "النوع الذي يجري إسقاطه"
+
+# ---- ADR-0003 addendum: English required, Arabic optional ----
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "A name is required in English."
+msgstr "الاسم مطلوب بالإنجليزية."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+#: WorkMate.Dimensions.Handlers.DimensionRecordPartHandler
+msgid "A name is required in Arabic. This tenant requires Arabic names; that can be changed in WorkMate settings."
+msgstr "الاسم مطلوب بالعربية. هذا المستأجر يشترط الأسماء العربية؛ ويمكن تغيير ذلك من إعدادات ورك ميت."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "The attribute '{0}' needs a label in English."
+msgstr "تحتاج السمة '{0}' إلى تسمية بالإنجليزية."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "The attribute '{0}' needs a label in Arabic. This tenant requires Arabic names."
+msgstr "تحتاج السمة '{0}' إلى تسمية بالعربية. هذا المستأجر يشترط الأسماء العربية."
+
+# ---- Stage D2: leaving the tree is a dated entry ----
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Removed from the tree on {0}."
+msgstr "أُزيلت من الشجرة في {0}."
+
+#: Views/OrganisationDesignerAdmin/CancelMove.cshtml
+msgid "{0} — removed from the tree"
+msgstr "{0} — أُزيلت من الشجرة"
+
+#: Views/OrganisationDesignerAdmin/CancelMove.cshtml
+msgid "Taking the unit off the tree on {0} is removed from the record."
+msgstr "تُزال من السجل عملية إخراج الوحدة من الشجرة في {0}."

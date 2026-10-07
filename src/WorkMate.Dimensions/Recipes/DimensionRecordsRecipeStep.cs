@@ -216,14 +216,14 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
             differences.Add("its dimension type in the tenant does not match the recipe's typeCode");
         }
 
-        if (!string.Equals(existing.NameEn, record.NameEn, StringComparison.Ordinal))
+        if (!RecipeNameComparison.Same(existing.NameEn, record.NameEn))
         {
-            differences.Add($"the English name is '{existing.NameEn}' in the tenant but '{record.NameEn}' in the recipe");
+            differences.Add(RecipeNameComparison.Describe("English", existing.NameEn, record.NameEn));
         }
 
-        if (!string.Equals(existing.NameAr, record.NameAr, StringComparison.Ordinal))
+        if (!RecipeNameComparison.Same(existing.NameAr, record.NameAr))
         {
-            differences.Add($"the Arabic name is '{existing.NameAr}' in the tenant but '{record.NameAr}' in the recipe");
+            differences.Add(RecipeNameComparison.Describe("Arabic", existing.NameAr, record.NameAr));
         }
 
         if (existing.EffectiveRange != range)

@@ -62,6 +62,22 @@ public sealed class WorkMateSettings
     public string CustomerCode { get; set; } = string.Empty;
 
     /// <summary>
+    /// Whether a name must be given in Arabic as well as English.
+    /// </summary>
+    /// <remarks>
+    /// Off by default, per the ADR-0003 addendum. Every name is still bilingual — the Arabic half
+    /// exists on every record and every screen will show it — but a customer who has not translated
+    /// their organisation yet should be able to build it, not be stopped at the first unit. A
+    /// customer who does want the discipline turns this on and gets the original behaviour back.
+    ///
+    /// A tenant setting rather than a per-field one because it is a statement about how this
+    /// customer works, not about one field; the per-field
+    /// <c>BilingualTextFieldSettings.RequireArabic</c> stays as the way to insist on it for one
+    /// particular field whatever the tenant's own answer.
+    /// </remarks>
+    public bool RequireArabicNames { get; set; }
+
+    /// <summary>
     /// Copies every value onto <paramref name="target"/>. The settings editor needs this:
     /// Orchard's section driver writes the section instance it handed us back into the site
     /// document after the driver returns, so the instance the service validated and the
@@ -80,6 +96,7 @@ public sealed class WorkMateSettings
         target.WorkingDays = [.. WorkingDays];
         target.WeekStartsOn = WeekStartsOn;
         target.CustomerCode = CustomerCode;
+        target.RequireArabicNames = RequireArabicNames;
     }
 
     public const string DefaultCultureName = "en";

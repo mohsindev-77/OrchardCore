@@ -1,6 +1,6 @@
 @model StructureLevelChangeConfirmationViewModel
 
-<h1>@T["Confirm level change"]</h1>
+<h1>@T["Confirm structure change"]</h1>
 
 <p>
     @T["'{0}' already has records placed on it. Review what this change does before it is applied.", Model.Code]
@@ -9,7 +9,7 @@
 @if (Model.AddedLevelLabels.Count > 0)
 {
     <div class="alert alert-info">
-        <p class="mb-1">@T["Adding these levels is safe: units of these types already exist and will be visible in this structure from today."]</p>
+        <p class="mb-1">@T["Adding these types is safe: units of them already exist and will be visible in this structure from today."]</p>
         <ul class="mb-0">
             @foreach (var label in Model.AddedLevelLabels)
             {
@@ -22,11 +22,11 @@
 @if (Model.RemovalImpacts.Count > 0)
 {
     <div class="alert alert-warning">
-        <p class="mb-1">@T["Dropping a level does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."]</p>
+        <p class="mb-1">@T["Dropping a type does not delete anything — the affected units stop being offered in this structure from today, and every historical report still resolves as before — but review the counts first."]</p>
         <table class="table table-sm mb-0">
             <thead>
                 <tr>
-                    <th>@T["Level being dropped"]</th>
+                    <th>@T["Type being dropped"]</th>
                     <th>@T["Records affected"]</th>
                     <th>@T["Employees affected today"]</th>
                 </tr>
@@ -53,9 +53,20 @@
     <input type="hidden" asp-for="AllowSkipLevel" />
     <input type="hidden" asp-for="IsStrict" />
     <input type="hidden" asp-for="IsPrimaryOrganisation" />
-    @for (var i = 0; i < Model.LevelDimensionTypeIds.Count; i++)
+    @foreach (var index in Enumerable.Range(0, Model.LevelDimensionTypeIds.Count))
     {
-        <input type="hidden" name="LevelDimensionTypeIds[@i]" value="@Model.LevelDimensionTypeIds[i]" />
+        <input type="hidden" name="LevelDimensionTypeIds[@index]" value="@Model.LevelDimensionTypeIds[index]" />
+    }
+    @* The grid, carried through exactly as posted. It is not derivable from the level order — that
+       is the whole point of it — so rebuilding it here would apply a different change from the one
+       measured above. *@
+    @foreach (var rootTypeId in Model.RootDimensionTypeIds)
+    {
+        <input type="hidden" name="RootDimensionTypeIds" value="@rootTypeId" />
+    }
+    @foreach (var pair in Model.ContainmentPairs)
+    {
+        <input type="hidden" name="ContainmentPairs" value="@pair" />
     }
 
     <button type="submit" class="btn btn-primary">@T["Yes, apply this change"]</button>

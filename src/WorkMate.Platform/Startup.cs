@@ -31,6 +31,7 @@ public sealed class Startup : StartupBase
         services.AddNavigationProvider<AdminMenu>();
 
         services.AddScoped<IWorkMateSettingsService, WorkMateSettingsService>();
+        services.AddScoped<IBilingualNamePolicy, BilingualNamePolicy>();
 
         // System authority: the explicit opt-in a recipe step or background task enters when it
         // genuinely runs as the platform. Scoped, so it cannot outlive the shell scope that

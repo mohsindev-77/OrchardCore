@@ -26,5 +26,17 @@ namespace WorkMate.Dimensions.Models;
 /// </remarks>
 public sealed record DimensionAttributeValue(string Name, string? Value, string? ValueAr = null)
 {
-    public bool IsEmpty => string.IsNullOrWhiteSpace(Value) && string.IsNullOrWhiteSpace(ValueAr);
+    /// <summary>
+    /// Whether this value counts as not supplied, for a required attribute.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on the English half alone. <see cref="Value"/> is that half for a bilingual attribute
+    /// and the only half for every other kind, and ADR-0003's addendum makes English the required
+    /// language — so a required bilingual attribute filled in Arabic only is not filled.
+    ///
+    /// It used to be <c>Value is empty AND ValueAr is empty</c>, which let the Arabic half satisfy
+    /// a requirement the English half is the subject of: the exact inverse of the rule everywhere
+    /// else on the platform, and more visible now that Arabic may legitimately be the empty one.
+    /// </remarks>
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Value);
 }

@@ -29,10 +29,13 @@ public static class BilingualDisplay
     /// The name to use in a sentence: Arabic when the page is Arabic, English otherwise, falling
     /// back to whichever half is populated.
     /// </summary>
-    public static string Name(string? nameEn, string? nameAr) =>
-        IsArabic(CultureInfo.CurrentUICulture)
-            ? Prefer(nameAr, nameEn)
-            : Prefer(nameEn, nameAr);
+    /// <remarks>
+    /// The rule itself lives on <see cref="BilingualText.Display(string?, string?, CultureInfo?)"/>
+    /// so that Platform's own templates answer it the same way. Arabic is optional since the
+    /// ADR-0003 addendum, so this falls back rather than returning an empty string: a reader shown
+    /// nothing is worse off than a reader shown the other language.
+    /// </remarks>
+    public static string Name(string? nameEn, string? nameAr) => BilingualText.Display(nameEn, nameAr);
 
     /// <inheritdoc cref="Name(string?, string?)"/>
     public static string Name(BilingualText? name) => Name(name?.En, name?.Ar);
@@ -49,10 +52,13 @@ public static class BilingualDisplay
     /// </remarks>
     public static string NameWithAlternate(string? nameEn, string? nameAr)
     {
-        var arabic = IsArabic(CultureInfo.CurrentUICulture);
-        var primary = arabic ? Prefer(nameAr, nameEn) : Prefer(nameEn, nameAr);
-        var secondary = arabic ? Prefer(nameEn, null) : Prefer(nameAr, null);
+        var arabic = BilingualText.IsArabic(CultureInfo.CurrentUICulture);
+        var primary = Name(nameEn, nameAr);
+        var secondary = (arabic ? nameEn : nameAr)?.Trim() ?? string.Empty;
 
+        // No brackets when there is nothing to put in them. Arabic is optional, so this is the
+        // ordinary case rather than the edge one, and "Support ()" is the empty-brackets defect
+        // this method exists to avoid.
         return secondary.Length == 0 || secondary == primary
             ? primary
             : $"{primary} ({secondary})";
@@ -82,14 +88,4 @@ public static class BilingualDisplay
     public static string DateFromIso(string? iso) =>
         Internal.IsoDate.TryParse(iso, out var parsed) ? Date(parsed) : iso ?? string.Empty;
 
-    /// <summary>
-    /// Whether a culture reads right to left in the sense that matters here: Arabic, in any of its
-    /// regional forms. Checked on the two-letter name rather than the full one so that ar-SA, ar-BH
-    /// and plain ar all answer the same.
-    /// </summary>
-    private static bool IsArabic(CultureInfo culture) =>
-        culture.TwoLetterISOLanguageName.Equals("ar", StringComparison.OrdinalIgnoreCase);
-
-    private static string Prefer(string? first, string? second) =>
-        string.IsNullOrWhiteSpace(first) ? second?.Trim() ?? string.Empty : first.Trim();
 }

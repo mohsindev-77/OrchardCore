@@ -124,7 +124,7 @@
                        name="@($"Attributes[{index}].Value")" value="true"
                        checked="@(string.Equals(input.Value, "true", StringComparison.OrdinalIgnoreCase))" />
                 <label class="form-check-label" for="@($"Attributes_{index}__Value")">@input.LabelEn</label>
-                <span class="text-muted small" dir="rtl" lang="ar">@input.LabelAr</span>
+                <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(input.LabelAr) ? "hidden" : null)">@input.LabelAr</span>
             </div>
         }
         else
@@ -140,7 +140,7 @@
                        step="@(input.Kind == DimensionAttributeKind.Number ? "any" : null)"
                        asp-for="Attributes[index].Value"
                        required="@input.IsRequired" />
-                <span class="text-muted small" dir="rtl" lang="ar">@input.LabelAr</span>
+                <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(input.LabelAr) ? "hidden" : null)">@input.LabelAr</span>
             </div>
         }
     }

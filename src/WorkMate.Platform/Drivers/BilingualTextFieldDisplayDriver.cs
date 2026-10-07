@@ -4,6 +4,7 @@ using OrchardCore.ContentManagement.Display.Models;
 using OrchardCore.ContentManagement.Metadata.Models;
 using OrchardCore.DisplayManagement.Views;
 using WorkMate.Platform.Fields;
+using WorkMate.Platform.Services;
 using WorkMate.Platform.ViewModels;
 
 namespace WorkMate.Platform.Drivers;
@@ -17,8 +18,15 @@ public sealed class BilingualTextFieldDisplayDriver : ContentFieldDisplayDriver<
 {
     private readonly IStringLocalizer S;
 
-    public BilingualTextFieldDisplayDriver(IStringLocalizer<BilingualTextFieldDisplayDriver> stringLocalizer) =>
+    private readonly IBilingualNamePolicy _namePolicy;
+
+    public BilingualTextFieldDisplayDriver(
+        IBilingualNamePolicy namePolicy,
+        IStringLocalizer<BilingualTextFieldDisplayDriver> stringLocalizer)
+    {
+        _namePolicy = namePolicy;
         S = stringLocalizer;
+    }
 
     public override IDisplayResult Display(BilingualTextField field, BuildFieldDisplayContext fieldDisplayContext) =>
         Initialize<DisplayBilingualTextFieldViewModel>(GetDisplayShapeType(fieldDisplayContext), model =>
@@ -62,7 +70,12 @@ public sealed class BilingualTextFieldDisplayDriver : ContentFieldDisplayDriver<
                 S["{0} is required in English.", label]);
         }
 
-        if (settings.RequireArabic && string.IsNullOrWhiteSpace(field.Ar))
+        // Either the field says so or the tenant does. ADR-0003's addendum made Arabic optional by
+        // default; the per-field setting stays as the way to insist on it for one particular field
+        // whatever the tenant's own answer, so the two are an OR rather than one overriding the
+        // other.
+        if ((settings.RequireArabic || await _namePolicy.RequiresArabicAsync()) &&
+            string.IsNullOrWhiteSpace(field.Ar))
         {
             context.Updater.ModelState.AddModelError(
                 $"{Prefix}.{nameof(EditBilingualTextFieldViewModel.Ar)}",

@@ -125,6 +125,20 @@ public sealed class DesignerNodeViewModel
     public bool IsOrphanedByParentRetirement => OrphanedOn is not null;
 
     /// <summary>
+    /// The date somebody deliberately took this unit off the tree, when that is why it has no
+    /// parent.
+    /// </summary>
+    /// <remarks>
+    /// The third of the three reasons, readable only since stage D2 gave leaving the tree a dated
+    /// entry. Before that the panel told a unit moved off the chart last week that it had never
+    /// been placed here, which was not true of it.
+    /// </remarks>
+    public DateOnly? RemovedFromTreeOn { get; set; }
+
+    /// <inheritdoc cref="RemovedFromTreeOn"/>
+    public bool WasRemovedFromTree => RemovedFromTreeOn is not null && !IsOrphanedByParentRetirement;
+
+    /// <summary>
     /// Whether this card is being drawn in the unplaced panel rather than in the tree. Changes
     /// what its action menu offers — a unit with no parent is placed, not moved — and nothing else.
     /// </summary>

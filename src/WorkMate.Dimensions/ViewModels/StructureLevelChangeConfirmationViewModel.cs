@@ -26,6 +26,20 @@ public sealed class StructureLevelChangeConfirmationViewModel
 
     public List<string> LevelDimensionTypeIds { get; set; } = [];
 
+    /// <summary>
+    /// The containment grid exactly as it was posted, carried through unchanged.
+    /// </summary>
+    /// <remarks>
+    /// Re-posted rather than recomputed from the levels, because since ADR-0010 the grid is not
+    /// derivable from the level order: the whole point of it is that it says something the order
+    /// cannot. Rebuilding it here would quietly confirm a different change from the one the impact
+    /// above was measured for.
+    /// </remarks>
+    public List<string> RootDimensionTypeIds { get; set; } = [];
+
+    /// <inheritdoc cref="RootDimensionTypeIds"/>
+    public List<string> ContainmentPairs { get; set; } = [];
+
     /// <summary>The dimension types being added, by name, for display only.</summary>
     [BindNever]
     public List<string> AddedLevelLabels { get; set; } = [];

@@ -34,8 +34,13 @@
             <option value="">@T["Choose a move"]</option>
             @foreach (var move in Model.RecordedMoves)
             {
+                @* Taking a unit off the tree is a decision on the record like any other since
+                   stage D2, so it is offered for cancellation like any other — with a sentence
+                   that says what it was, rather than "under" and a blank where a parent would be. *@
                 <option value="@move.EffectiveFrom">
-                    @T["{0} — under {1}", BilingualDisplay.DateFromIso(move.EffectiveFrom), BilingualDisplay.Name(move.ParentNameEn, move.ParentNameAr)]
+                    @(move.LeftTheTree
+                        ? T["{0} — removed from the tree", BilingualDisplay.DateFromIso(move.EffectiveFrom)].Value
+                        : T["{0} — under {1}", BilingualDisplay.DateFromIso(move.EffectiveFrom), BilingualDisplay.Name(move.ParentNameEn, move.ParentNameAr)].Value)
                 </option>
             }
         </select>
@@ -47,7 +52,14 @@
         <div class="alert alert-warning">
             <p class="mb-1 fw-semibold">@T["What this will do"]</p>
             <ul class="mb-0">
-                <li>@T["The move to {0} on {1} is removed from the record.", BilingualDisplay.Name(Model.CancelledParentName, Model.CancelledParentNameAr), BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</li>
+                @if (plan.CancelledParentId is null)
+                {
+                    <li>@T["Taking the unit off the tree on {0} is removed from the record.", BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</li>
+                }
+                else
+                {
+                    <li>@T["The move to {0} on {1} is removed from the record.", BilingualDisplay.Name(Model.CancelledParentName, Model.CancelledParentNameAr), BilingualDisplay.DateFromIso(Model.EffectiveFrom)]</li>
+                }
                 @if (plan.RestoredParentId is null)
                 {
                     <li>@T["Nothing was displaced by it, so the unit will have no parent from that date."]</li>

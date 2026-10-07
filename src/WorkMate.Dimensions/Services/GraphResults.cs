@@ -297,14 +297,26 @@ public sealed record OrphanedByParentRetirement(
     string FormerParentNameAr,
     DateOnly RetiredOn);
 
-/// <summary>One placement on record: a parent, and the date somebody made it effective from.</summary>
+/// <summary>
+/// One decision on record: where this unit sat from a date, and the date somebody made it
+/// effective from. A null <see cref="ParentRecordId"/> is the decision to take it off the tree.
+/// </summary>
+/// <remarks>
+/// Leaving the tree is listed here with everything else since stage D2. It used to be invisible —
+/// the entry covering that date was removed rather than replaced — so the one operation that could
+/// take a whole branch off the chart was also the one operation nothing could offer to undo.
+/// </remarks>
 public sealed record RecordedMove(
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
-    string ParentRecordId,
+    string? ParentRecordId,
     string ParentNameEn,
     string ParentNameAr,
-    string ParentCode);
+    string ParentCode)
+{
+    /// <summary>Whether this entry took the unit off the tree rather than putting it somewhere.</summary>
+    public bool LeftTheTree => ParentRecordId is null;
+}
 
 /// <summary>
 /// What moving a unit would do, before any of it is done: where it sits now, where it would sit,

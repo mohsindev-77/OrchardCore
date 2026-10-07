@@ -90,7 +90,7 @@ public sealed class DimensionTypesAdminController : Controller
         }
 
         var result = await _dimensionTypeService.CreateAsync(
-            model.Code.Trim(),
+            (model.Code ?? string.Empty).Trim(),
             model.Name,
             model.ToAttributeSchema(),
             model.AllowsSelfNesting,
@@ -271,11 +271,20 @@ public sealed class DimensionTypesAdminController : Controller
     private Task<bool> IsAuthorisedAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ManageDimensionTypes);
 
+    /// <summary>
+    /// Puts each violation where the reader has to act on it: under its own field when the rule
+    /// names one, in the summary when it does not.
+    /// </summary>
+    /// <remarks>
+    /// A missing English name belongs under the English box, not in a list at the top of the page
+    /// that the reader then has to match up against the form. It must also never arrive as an
+    /// unhandled exception: a validation problem is an answer, not a failure.
+    /// </remarks>
     private void AddErrors(IReadOnlyList<DimensionError> errors)
     {
         foreach (var error in errors)
         {
-            ModelState.AddModelError(string.Empty, error.Message.Value);
+            ModelState.AddModelError(error.Field ?? string.Empty, error.Message.Value);
         }
     }
 }

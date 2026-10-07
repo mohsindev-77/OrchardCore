@@ -199,3 +199,11 @@ msgstr "الموافقات"
 
 msgid "Approvals waiting for you"
 msgstr "الموافقات المنتظرة منك"
+
+#: WorkMate.Platform.Views.WorkMateSettings.Edit
+msgid "Require Arabic names"
+msgstr "اشتراط الأسماء العربية"
+
+#: WorkMate.Platform.Views.WorkMateSettings.Edit
+msgid "Off by default. Names are always bilingual, but the Arabic half may be left empty while a customer is still translating; where it is, the English name is shown to Arabic readers instead. Turn this on to insist on both."
+msgstr "معطَّل افتراضيًا. الأسماء ثنائية اللغة دائمًا، لكن يمكن ترك النصف العربي فارغًا أثناء الترجمة؛ وعندها يُعرض الاسم الإنجليزي لقرّاء العربية. فعّل هذا للإصرار على كليهما."

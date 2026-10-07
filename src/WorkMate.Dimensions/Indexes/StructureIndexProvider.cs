@@ -19,6 +19,7 @@ public sealed class StructureIndexProvider : IndexProvider<StructureDocument>
                 AllowSkipLevel = document.AllowSkipLevel,
                 IsStrict = document.IsStrict,
                 LevelCount = document.Levels.Count,
+                ContainmentRuleCount = document.Containment.Count,
             });
     }
 }

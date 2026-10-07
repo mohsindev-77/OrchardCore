@@ -26,9 +26,18 @@ public sealed class DimensionTypeEditViewModel
 
     public string Code { get; set; } = string.Empty;
 
-    public string NameEn { get; set; } = string.Empty;
+    /// <summary>The two halves of the name, as posted.</summary>
+    /// <remarks>
+    /// Nullable because that is what the binder produces — an empty box binds to null, since
+    /// <c>ConvertEmptyStringToNull</c> defaults to true — and because a non-nullable reference type
+    /// property gets an implicit <c>required</c> in model state, which would refuse an empty Arabic
+    /// name before the controller called anything. Whether Arabic is required is
+    /// <c>IDimensionValidator</c>'s question, and only it knows this tenant's answer.
+    /// </remarks>
+    public string? NameEn { get; set; }
 
-    public string NameAr { get; set; } = string.Empty;
+    /// <inheritdoc cref="NameEn"/>
+    public string? NameAr { get; set; }
 
     public bool AllowsSelfNesting { get; set; }
 
@@ -42,7 +51,16 @@ public sealed class DimensionTypeEditViewModel
 
     public bool IsNew => string.IsNullOrEmpty(DimensionTypeId);
 
-    public BilingualText Name => new(NameEn.Trim(), NameAr.Trim());
+    /// <summary>
+    /// The two halves as the value object services take.
+    /// </summary>
+    /// <remarks>
+    /// Null-guarded for the reason spelled out on
+    /// <see cref="StructureEditViewModel.Name"/>: the model binder reads this getter while it is
+    /// binding, and an empty text box binds to <see langword="null"/> rather than to an empty
+    /// string, so an unguarded <c>Trim</c> turns a blank name into a 500 before validation runs.
+    /// </remarks>
+    public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
     public static DimensionTypeEditViewModel Of(DimensionTypeDocument document) => new()
     {

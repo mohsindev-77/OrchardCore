@@ -14,10 +14,16 @@ namespace WorkMate.Dimensions.Services;
 public interface IStructureService
 {
     /// <summary>
-    /// Defines an axis. <paramref name="levelDimensionTypeIds"/> is root first; ordinals are
-    /// assigned from that order, so a caller reorders levels by passing them in the order it
-    /// wants rather than by computing ordinals.
+    /// Defines an axis. <paramref name="levelDimensionTypeIds"/> is the axis's vocabulary in
+    /// reading order, root first; ordinals are assigned from that order.
     /// </summary>
+    /// <remarks>
+    /// Containment is separate from the level order since ADR-0010. A caller that already knows
+    /// which pairings it wants passes <paramref name="shape"/>; one that only has the old
+    /// chain-and-skip-flag description passes <see cref="StructureShape.FromChain"/>'s result, or
+    /// leaves it null to have it derived here. Both go through one derivation, so the same
+    /// description always produces the same map.
+    /// </remarks>
     Task<DimensionResult<StructureDocument>> CreateAsync(
         string code,
         BilingualText name,
@@ -25,15 +31,16 @@ public interface IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        StructureShape? shape = null,
         DimensionValidationBatch? batch = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes an axis's name, levels and rules. The code is not changeable: links, closure rows
-    /// and assignments are scoped by the structure's id, and recipes reference it by code.
+    /// Changes an axis's name, vocabulary and rules. The code is not changeable: links, closure
+    /// rows and assignments are scoped by the structure's id, and recipes reference it by code.
     /// </summary>
     /// <remarks>
-    /// Refused, with nothing saved, if the new levels would leave an existing placement invalid —
+    /// Refused, with nothing saved, if the new rules would leave an existing placement invalid —
     /// see <see cref="PlanLevelChangeAsync"/>, which this calls before writing anything. Adding or
     /// removing a level never refuses: the graph service closes rather than deletes, so that half
     /// of a level change is always safe.
@@ -45,18 +52,20 @@ public interface IStructureService
         bool allowSkipLevel,
         bool isStrict,
         bool isPrimaryOrganisation,
+        StructureShape? shape = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// What changing this structure's levels to <paramref name="levelDimensionTypeIds"/> would do
-    /// to the records already placed on it, without changing anything. The dry run a screen shows
-    /// before a human confirms a level change, the same way <c>IDimensionService</c> shows one
-    /// before a move or a merge.
+    /// What changing this structure's vocabulary and containment would do to the records already
+    /// placed on it, without changing anything. The dry run a screen shows before a human confirms
+    /// the change, the same way <c>IDimensionService</c> shows one before a move or a merge.
     /// </summary>
     Task<DimensionResult<StructureLevelChangePlan>> PlanLevelChangeAsync(
         string structureId,
         IReadOnlyList<string> levelDimensionTypeIds,
         bool allowSkipLevel,
+        bool isStrict,
+        StructureShape? shape = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>The axis with this id, or null.</summary>

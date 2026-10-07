@@ -156,14 +156,22 @@ public interface IDimensionGraphService
     /// <see cref="PreviewCancelMoveAsync"/> and <c>IDimensionService</c>'s merge already use, so
     /// the preview a designer shows and what actually happens cannot drift apart.
     /// </remarks>
-    /// <param name="newAllowSkipLevel">
-    /// The proposed value, not the structure's current one — a change that also starts allowing
-    /// skipped levels can make a reorder valid that would otherwise be refused.
+    /// <param name="newRootDimensionTypeIds">The proposed root types, not the current ones.</param>
+    /// <param name="newContainment">
+    /// The proposed containment map, not the current one. Every parameter here is the proposal
+    /// rather than the saved state for the same reason: the question is what the change would do,
+    /// and a change that widens the map can make a placement valid that the current one refuses.
+    /// </param>
+    /// <param name="newIsStrict">
+    /// The proposed strictness. It decides whether an undeclared pairing is a violation at all,
+    /// so a change that also turns strictness off has fewer violations, not the same ones.
     /// </param>
     Task<StructureLevelChangePlan> PlanLevelChangeAsync(
         string structureId,
         IReadOnlyList<string> newLevelDimensionTypeIds,
-        bool newAllowSkipLevel,
+        IReadOnlyList<string> newRootDimensionTypeIds,
+        IReadOnlyList<Models.StructureContainment> newContainment,
+        bool newIsStrict,
         DateOnly asAt,
         CancellationToken cancellationToken = default);
 
@@ -213,6 +221,25 @@ public interface IDimensionGraphService
     Task<IReadOnlyDictionary<string, OrphanedByParentRetirement>> GetOrphanedByParentRetirementAsync(
         string structureId,
         IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Which of these records were deliberately taken off the tree, and the date it happened.
+    /// </summary>
+    /// <remarks>
+    /// The third reason a record has no parent, alongside never having been placed and having had
+    /// its parent retired underneath it. Readable only since stage D2 gave leaving the tree a dated
+    /// entry of its own: before that it looked identical to never having been placed, and the
+    /// unplaced panel told a unit somebody had moved off the chart last week that it had never been
+    /// placed in this structure, which was simply untrue of it.
+    ///
+    /// Keyed by record id, and absent for a record whose lack of a parent has either of the other
+    /// two explanations.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, DateOnly>> GetRemovedFromTreeAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

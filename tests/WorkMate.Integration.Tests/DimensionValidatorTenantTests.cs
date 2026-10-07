@@ -168,8 +168,18 @@ public sealed class DimensionValidatorTenantTests
             refused.Errors.Should().Contain(error => error.Rule == DimensionRule.ParentTypeNotPermitted);
         });
 
+    /// <summary>
+    /// An axis built from a plain chain still refuses what skipping a level used to mean.
+    /// </summary>
+    /// <remarks>
+    /// The rule reported is <see cref="DimensionRule.ParentTypeNotPermitted"/> rather than
+    /// <c>LevelSkipping</c> since ADR-0010: a skipped level is no longer a category of its own,
+    /// it is simply a pairing the structure does not declare. The behaviour a customer sees —
+    /// Section under Division is refused on an axis that was not asked to allow it — is unchanged,
+    /// which is the whole point of deriving the map rather than inventing one.
+    /// </remarks>
     [Fact]
-    public async Task SkippingALevelIsRefusedWhenTheStructureForbidsIt() =>
+    public async Task APairingTheStructureDoesNotDeclareIsRefused() =>
         await _tenant.InTenantAsSystemAsync(async services =>
         {
             var (structure, types) = await StrictAxisAsync(services, "val-noskip", allowSkipLevel: false);
@@ -178,11 +188,11 @@ public sealed class DimensionValidatorTenantTests
             var division = await DimensionGraphScenario.RecordAsync(services, types.Division, "vn-div", Opened);
             var section = await DimensionGraphScenario.RecordAsync(services, types.Section, "vn-sec", Opened);
 
-            // Section sits two levels below division, so this skips the department level.
+            // Section sits two levels below division, so the derived map has no Division > Section.
             var refused = await graph.MoveAsync(structure, section, division, Opened);
 
             refused.Succeeded.Should().BeFalse();
-            refused.Errors.Should().Contain(error => error.Rule == DimensionRule.LevelSkipping);
+            refused.Errors.Should().Contain(error => error.Rule == DimensionRule.ParentTypeNotPermitted);
         });
 
     [Fact]

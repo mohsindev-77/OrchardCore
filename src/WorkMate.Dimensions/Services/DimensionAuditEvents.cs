@@ -212,6 +212,19 @@ public sealed class StructureState
     /// <summary>The levels in order, by dimension type code, which is what a reader recognises.</summary>
     public IReadOnlyList<string> Levels { get; set; } = [];
 
+    /// <summary>The types that may sit at the top of the axis, by code.</summary>
+    public IReadOnlyList<string> RootTypes { get; set; } = [];
+
+    /// <summary>
+    /// The containment map, each pairing written "parent &gt; child" by code.
+    /// </summary>
+    /// <remarks>
+    /// As text rather than as a structured pair, because this is a diff a person reads: a line
+    /// appearing or disappearing is exactly the change that was made, and ADR-0010 made this the
+    /// part of a structure most worth being able to see change.
+    /// </remarks>
+    public IReadOnlyList<string> Containment { get; set; } = [];
+
     public static StructureState Of(StructureDocument document, IReadOnlyDictionary<string, string> typeCodesById)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -229,10 +242,25 @@ public sealed class StructureState
             [
                 .. document.Levels
                     .OrderBy(level => level.Ordinal)
-                    .Select(level => typeCodesById.TryGetValue(level.DimensionTypeId, out var code)
-                        ? code
-                        : level.DimensionTypeId),
+                    .Select(level => Label(level.DimensionTypeId, typeCodesById)),
+            ],
+            RootTypes =
+            [
+                .. document.RootDimensionTypeIds
+                    .Select(id => Label(id, typeCodesById))
+                    .OrderBy(code => code, StringComparer.Ordinal),
+            ],
+            Containment =
+            [
+                .. document.Containment
+                    .Select(pair =>
+                        $"{Label(pair.ParentDimensionTypeId, typeCodesById)} > {Label(pair.ChildDimensionTypeId, typeCodesById)}")
+                    .OrderBy(line => line, StringComparer.Ordinal),
             ],
         };
     }
+
+    /// <summary>The type's code, which a reader recognises, falling back to the id if it is gone.</summary>
+    private static string Label(string dimensionTypeId, IReadOnlyDictionary<string, string> typeCodesById) =>
+        typeCodesById.TryGetValue(dimensionTypeId, out var code) ? code : dimensionTypeId;
 }

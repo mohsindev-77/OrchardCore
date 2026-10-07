@@ -144,7 +144,8 @@
         "CurrencyCode": "BHD",
         "WorkingDays": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"],
         "WeekStartsOn": "Sunday",
-        "CustomerCode": ""
+        "CustomerCode": "",
+        "RequireArabicNames": false
       }
     },
 
