@@ -7,6 +7,8 @@ using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
 
+using WorkMate.Platform.Recipes;
+
 namespace WorkMate.Dimensions.Recipes;
 
 /// <summary>

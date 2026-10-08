@@ -376,6 +376,30 @@ use — no screen holds a privileged path:
   records, not a reason for an eighth permission — see "Who may do what" below.
   Move, merge and cancel-move are a later slice.
 
+### A card is drawn twice, from one description of it
+
+Cards reach the screen two ways: Razor renders the ones in the first response,
+and the browser clones a template for every card it fetches when a branch opens.
+Anything described once per path drifts, and the drift is silent — the two cards
+sit side by side looking alike.
+
+So each path reads one list. `DesignerCardActions.All` gives the menu, driving
+the markup, the URL map on the surface and the script's wiring together; the
+script's `cardText` gives the lines of text, each naming the payload property it
+comes from. Adding either is one entry in one place.
+
+Both lists were written for a defect of exactly this kind. "Appoint a head…" was
+added to the markup alone, and because the script removes any action it has no
+URL for, every fetched card quietly lost it. The head line was then filled by the
+server and never by the script, so fetched cards kept the template's own words —
+which read "Head: Vacant", and so reported every post in the organisation empty
+however many were filled. The words now come from the model
+(`DesignerNodeViewModel.HeadLabel`, `EmployeeCountLabel`), computed where the
+localiser is, and the template renders blank: a line nobody filled in shows as
+nothing rather than as a plausible claim. `DesignerCardMenuParityBrowserTests`
+compares a fetched card against a server-rendered one at depth 2 and 3, for each
+permission set.
+
 ### The designer's actions: add a unit, rename, retire
 
 Every card carries an action menu, in both views, rendered by the server as a
@@ -914,11 +938,21 @@ only one of the four that carries a free-text reason, because cancelling a
 move is the one record-level operation this module requires one for.
 
 ## Recipe steps
-`dimension-types`, `structures` and `dimension-records` are built, in
-`Recipes/`. `employee-assignments` and `unit-heads` have not landed yet — they
-arrive with the employee record in prompt 4 session A3, where
-`employee-assignments`' full shape is specified in the prompt library so the two
-are built as one thing.
+`dimension-types`, `structures`, `dimension-records`, `employee-assignments` and
+`unit-heads`, all in `Recipes/`. A recipe lists them in that order: a structure
+resolves its level types by code, a record resolves its type and structure, and
+the last two resolve units — and people, through `IEmployeeLookup`, which means
+`WorkMate.Records`' own `employees` step has to come before either of them.
+
+**A change, not a placement, is `employee-assignments`' unit.** Each entry is one
+employee on one axis carrying dated changes, and each change is the whole set of
+concurrent placements from that date — one row ordinarily, several for a split
+allocation. That is the shape `ReallocateAsync` takes, and it takes it because
+the rules that matter are about the set: the allocations effective at once total
+100 and exactly one is primary. A file listing placements one at a time would
+describe something invalid at every line but the last. An entry may also carry
+`endedOn`, which is the day somebody came off the axis altogether — not the same
+statement as a change naming a different unit, which is a transfer.
 
 **Two steps rather than one.** A head appointment is not an assignment (ADR-0012):
 it carries no allocation and no primary flag, and the employee need not be placed
@@ -958,8 +992,29 @@ which is the right default for a hand-written recipe and the wrong one for an
 export, where the order a tenant is in is a fact to reproduce rather than an
 intent to express.
 
-**Not exported yet:** employee assignments, which arrive with the employee
-record in prompt 4.
+**Placements and heads, behind two switches of their own.** `IncludeAssignments`
+emits `employee-assignments` and `IncludeHeads` emits `unit-heads`, both **off by
+default** — the three above are configuration and travel between environments as
+a matter of course, while these are operational data about real people, and
+carrying them by accident into a tenant that has its own is worse than having to
+tick a box. Two switches rather than one because a head is not a placement
+(ADR-0012): a tenant can hold appointments and no placements or the reverse, and
+one switch covering both would make the export claim otherwise.
+
+Both name people by code, resolved through `IEmployeeLookup`, so the file they
+produce needs `WorkMate.Records`' `employees` step applied first — which is the
+plan's ordering to get right, and the reason that step's own deployment step says
+so on the screen. Both also need `IncludeRecords`, for the reason records need
+types and structures: a placement names its unit by code and cannot apply to a
+tenant that has no units.
+
+`PeopleExportRoundTripTenantTests` is the proof for this half, and a second round
+trip rather than more cases in the first because the join between the two modules
+— a code resolved at import — is what neither module's own tests can see. It
+seeds a mid-month transfer, a split allocation, a matrix, a head who is not a
+member, one person heading three units, a post left vacant and somebody who came
+off an axis entirely; exports both modules into one recipe; imports it into a
+fresh tenant; and compares the answers on dates either side of every change.
 
 ### The demo recipes
 
@@ -972,6 +1027,25 @@ run against. Two worked company examples sit beside it:
 - **`organisation-designer-crescent`** — a ragged tree. One Division holds
   Departments two levels deep while its sibling holds Regions, and Departments
   appear again four levels down under a Branch. Three branches are leaves.
+
+The people on each sit in a **separate recipe** —
+`organisation-designer-zenith-employees` and
+`organisation-designer-crescent-employees` — at the headcounts in the prompt
+library's 7 October backlog note. Separate because a test about the shape of an
+organisation should not have to load 227 people to run, and the browser suite
+builds a tenant per fixture and would pay for them every time; nothing loads a
+recipe it did not name. Each one needs its structure recipe applied first.
+
+Zenith's is where the matrix is: an engineer deployed to a site team carries a
+primary at their home department and a secondary at the team, so cost rolls up by
+project and HR rolls up by department over the same rows, while foremen, labour
+and technicians are project-hired and carry one primary at their team only.
+Between them the two recipes also seed the three head shapes ADR-0012 was decided
+for — one person over two units, an acting head who is not a member, and a post
+left vacant by a term that ended. `DemoEmployeeRecipesTenantTests` applies both to
+a tenant of its own and asserts every figure in the table, the matrix on one
+person, each head shape, and a clean re-run. The files are generated by
+`tools/generate-demo-employees.sh`, which is where the figures are edited.
 
 Every code in each is prefixed, types included, so the three coexist on one
 tenant in any order and none can become another's by sharing a code. Both state

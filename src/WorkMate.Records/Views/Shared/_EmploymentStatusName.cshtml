@@ -1,0 +1,15 @@
+@model EmploymentStatus
+@*
+    The status as plain text, for a dropdown option or a sentence. _EmploymentStatus is the same
+    thing wearing a badge; both exist so the five names are literals the localiser and
+    LocalisationResourceTests can see — see that partial for why @T[status.ToString()] cannot be.
+*@
+@(Model switch
+{
+    EmploymentStatus.Prospective => T["Prospective"],
+    EmploymentStatus.Active => T["Active"],
+    EmploymentStatus.OnLeave => T["On leave"],
+    EmploymentStatus.Suspended => T["Suspended"],
+    EmploymentStatus.Exited => T["Exited"],
+    _ => T["Unknown"],
+})

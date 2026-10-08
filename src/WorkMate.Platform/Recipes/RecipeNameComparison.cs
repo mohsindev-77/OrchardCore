@@ -1,4 +1,4 @@
-namespace WorkMate.Dimensions.Recipes;
+namespace WorkMate.Platform.Recipes;
 
 /// <summary>
 /// Comparing a name the tenant holds against the one a recipe states, for ADR-0008's
@@ -23,7 +23,7 @@ namespace WorkMate.Dimensions.Recipes;
 /// <see cref="WorkMate.Core.BilingualText.Display"/> already treats whitespace as absent; this
 /// makes the comparison agree with the display.
 /// </remarks>
-internal static class RecipeNameComparison
+public static class RecipeNameComparison
 {
     /// <summary>Whether the two spellings mean the same name.</summary>
     public static bool Same(string? tenant, string? recipe) =>

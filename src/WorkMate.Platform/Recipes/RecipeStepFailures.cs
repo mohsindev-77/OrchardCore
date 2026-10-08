@@ -1,7 +1,7 @@
 using System.Linq;
 using OrchardCore.Recipes.Models;
 
-namespace WorkMate.Dimensions.Recipes;
+namespace WorkMate.Platform.Recipes;
 
 /// <summary>
 /// How every recipe step in this module reports a failure: by throwing, which stops this step and
@@ -23,7 +23,7 @@ namespace WorkMate.Dimensions.Recipes;
 /// exception's message, so the file log <c>UseNLogHost</c> enables (see WorkMate.Web's Program.cs)
 /// is where "which record, and why" actually shows up.
 /// </remarks>
-internal static class RecipeStepFailures
+public static class RecipeStepFailures
 {
     public static void Throw(RecipeExecutionContext context, IEnumerable<string> errors)
     {

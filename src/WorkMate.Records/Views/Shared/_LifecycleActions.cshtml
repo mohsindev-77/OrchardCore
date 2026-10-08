@@ -1,0 +1,69 @@
+@model LifecycleActionsViewModel
+
+@*
+    The lifecycle moves valid for one employee, rendered the same way wherever they appear.
+
+    One partial, two hosts: a "Status" menu on each row of the list, and a row of buttons on the
+    editor. They were separate in session A2 and that is exactly how four of the five actions came
+    to have no control at all — each screen decided for itself what to offer, and between them they
+    covered one transition out of five. The set comes from EmployeeLifecycle.ActionsFrom, so what is
+    offered cannot drift from what the service will accept.
+
+    Nothing is rendered at all without ChangeEmploymentStatus. A disabled button for an action
+    somebody may not take tells them only that the product has a feature they cannot use.
+*@
+
+@functions {
+    /// <summary>
+    /// The label for one transition, as a literal the localiser and the resource check can both see.
+    /// </summary>
+    /// <remarks>
+    /// Not <c>T[transition.Action]</c>. That compiles, renders the method name — "PutOnLeave" — and
+    /// is invisible to <c>LocalisationResourceTests</c>, which looks for string literals: the five
+    /// labels would have no resource entry, no translation, and nothing to report it. A switch over
+    /// the known set costs five lines and is checkable.
+    /// </remarks>
+    private Microsoft.AspNetCore.Mvc.Localization.LocalizedHtmlString Label(string action) => action switch
+    {
+        "Activate" => T["Activate"],
+        "Reinstate" => T["Reinstate"],
+        "PutOnLeave" => T["Put on leave"],
+        "Suspend" => T["Suspend"],
+        _ => T["End employment"],
+    };
+}
+
+@if (Model.CanChangeStatus && Model.Transitions.Count > 0)
+{
+    @if (Model.AsMenu)
+    {
+        @* A <details> for the same reason the designer's card menu is one: it opens, closes and
+           takes focus with no JavaScript at all. *@
+        <details class="d-inline-block employee-status-menu" data-employee-id="@Model.EmployeeId">
+            <summary class="btn btn-outline-secondary btn-sm employee-status-toggle">@T["Status"]</summary>
+            <div class="employee-status-menu-items list-group position-absolute shadow-sm">
+                @foreach (var transition in Model.Transitions)
+                {
+                    <a class="list-group-item list-group-item-action @(transition.IsExit ? "text-danger" : null)"
+                       data-lifecycle-action="@transition.Action"
+                       asp-controller="EmployeeLifecycleAdmin"
+                       asp-action="@transition.Action"
+                       asp-route-id="@Model.EmployeeId">@Label(transition.Action)</a>
+                }
+            </div>
+        </details>
+    }
+    else
+    {
+        <div class="btn-group btn-group-sm employee-status-actions" role="group">
+            @foreach (var transition in Model.Transitions)
+            {
+                <a class="btn @(transition.IsExit ? "btn-outline-danger" : "btn-outline-secondary")"
+                   data-lifecycle-action="@transition.Action"
+                   asp-controller="EmployeeLifecycleAdmin"
+                   asp-action="@transition.Action"
+                   asp-route-id="@Model.EmployeeId">@Label(transition.Action)</a>
+            }
+        </div>
+    }
+}

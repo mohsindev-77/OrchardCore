@@ -100,6 +100,23 @@ public sealed class LocalisationResourceTests
         """"(?<![\w.])(?:S|H|T)\[\s*@?"(?<key>(?:[^"\\]|\\.)*)"""",
         RegexOptions.Compiled);
 
+    /// <summary>
+    /// Matches the singular half of a plural call: <c>S.Plural(count, "{0} thing", "{0} things")</c>.
+    /// </summary>
+    /// <remarks>
+    /// A plural string is keyed in the PO file by its <em>singular</em> — <c>msgid</c>, with the
+    /// plural as <c>msgid_plural</c> and one <c>msgstr[n]</c> per form the language needs. The
+    /// indexer pattern above cannot see it, because a plural call is a method rather than an
+    /// indexer, so without this the first plural string in the codebase is reported as a
+    /// translation with no string <em>and</em> as a string with no translation, in the same run.
+    ///
+    /// Only the singular is captured, which is the whole of the contract: it is the key, and
+    /// <c>msgid_plural</c> travels with it in the same entry.
+    /// </remarks>
+    private static readonly Regex PluralCall = new(
+        """"(?<![\w.])(?:S|H|T)\.Plural\s*\(\s*[^,]+,\s*@?"(?<key>(?:[^"\\]|\\.)*)"""",
+        RegexOptions.Compiled);
+
     private static readonly Regex MessageId = new(
         """^\s*msgid\s+"(?<key>(?:[^"\\]|\\.)*)"\s*$""",
         RegexOptions.Compiled | RegexOptions.Multiline);
@@ -119,7 +136,14 @@ public sealed class LocalisationResourceTests
 
         foreach (var source in sources)
         {
-            foreach (Match match in LocaliserCall.Matches(File.ReadAllText(source)))
+            var text = File.ReadAllText(source);
+
+            foreach (Match match in LocaliserCall.Matches(text))
+            {
+                keys.Add(Unescape(match.Groups["key"].Value));
+            }
+
+            foreach (Match match in PluralCall.Matches(text))
             {
                 keys.Add(Unescape(match.Groups["key"].Value));
             }

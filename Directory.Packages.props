@@ -38,6 +38,7 @@
     -->
     <PackageVersion Include="OrchardCore.ContentFields" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Title" Version="$(OrchardCoreVersion)" />
+    <PackageVersion Include="OrchardCore.Media" Version="$(OrchardCoreVersion)" />
     <!--
       Referenced by WorkMate.Records for BagPart and BagPartSettings, which carry the six standard
       employee sections. Verified against the pinned version with tools/api-probe: BagPart is

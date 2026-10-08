@@ -293,6 +293,8 @@ public sealed class EmployeeLifecycleAdminController : Controller
             CurrentStatus = employee.Status,
             CurrentStatusFrom = employee.StatusEffectiveFrom,
             To = to,
+            CurrentStatusName = EmployeeStatusNames.Of(S, employee.Status),
+            ToStatusName = EmployeeStatusNames.Of(S, to),
             EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
         });
     }
@@ -324,6 +326,8 @@ public sealed class EmployeeLifecycleAdminController : Controller
         model.CurrentStatus = employee.Status;
         model.CurrentStatusFrom = employee.StatusEffectiveFrom;
         model.To = to;
+        model.CurrentStatusName = EmployeeStatusNames.Of(S, employee.Status);
+        model.ToStatusName = EmployeeStatusNames.Of(S, to);
 
         if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
         {
@@ -353,7 +357,7 @@ public sealed class EmployeeLifecycleAdminController : Controller
 
         await _notifier.SuccessAsync(H["{0} is {1} from {2}.",
             result.Value!.NameEn,
-            result.Value.Status.ToString(),
+            EmployeeStatusNames.Of(S, result.Value.Status),
             EmployeeDisplay.Date(effectiveFrom)]);
 
         return RedirectToAction(nameof(EmployeesAdminController.Index), "EmployeesAdmin");

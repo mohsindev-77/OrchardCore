@@ -199,10 +199,6 @@ msgid "Placement"
 msgstr "التعيين التنظيمي"
 
 #: Views/EmployeesAdmin/Index.cshtml
-msgid "Exit"
-msgstr "إنهاء الخدمة"
-
-#: Views/EmployeesAdmin/Index.cshtml
 msgid "Showing {0} of {1}."
 msgstr "يُعرض {0} من {1}."
 
@@ -263,10 +259,6 @@ msgstr "إلغاء"
 #: Views/EmployeesAdmin/Edit.cshtml
 msgid "Employee: {0}"
 msgstr "الموظف: {0}"
-
-#: Views/EmployeesAdmin/Edit.cshtml
-msgid "Change status"
-msgstr "تغيير الحالة"
 
 #: Views/EmployeesAdmin/Edit.cshtml
 msgid "Where this person sits"
@@ -569,3 +561,130 @@ msgstr "آخر يوم مطلوب."
 #: WorkMate.Records.Controllers.EmployeePlacementAdminController
 msgid "{0} placement(s) ended on {1}."
 msgstr "تم إنهاء {0} تعيين في {1}."
+
+# ================================================================================
+# The lifecycle controls, and the three enums that are now named rather than
+# ToString()'d into a sentence. Prompt 4, the A2 fixes.
+# ================================================================================
+
+# ---- the five employment statuses ----
+
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "Prospective"
+msgstr "مرتقب"
+
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "Active"
+msgstr "على رأس العمل"
+
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "On leave"
+msgstr "في إجازة ممتدة"
+
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "Suspended"
+msgstr "موقوف"
+
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "Exited"
+msgstr "منتهية خدمته"
+
+#. The fall-through arm of an exhaustive switch: unreachable today, and translated anyway so that
+#. adding a status and forgetting this file shows an Arabic word rather than an English one.
+#: WorkMate.Records.Services.EmployeeStatusNames, Views/Shared/_EmploymentStatus.cshtml
+msgid "Unknown"
+msgstr "غير معروف"
+
+# ---- the lifecycle actions ----
+
+#: Views/Shared/_LifecycleActions.cshtml
+msgid "Activate"
+msgstr "تفعيل"
+
+#: Views/Shared/_LifecycleActions.cshtml
+msgid "Reinstate"
+msgstr "إعادة إلى العمل"
+
+#: Views/Shared/_LifecycleActions.cshtml
+msgid "Put on leave"
+msgstr "منح إجازة ممتدة"
+
+#: Views/Shared/_LifecycleActions.cshtml
+msgid "Suspend"
+msgstr "إيقاف"
+
+#: Views/Shared/_LifecycleActions.cshtml
+msgid "End employment"
+msgstr "إنهاء الخدمة"
+
+# ---- gender ----
+
+#: Views/Shared/_GenderName.cshtml
+msgid "Female"
+msgstr "أنثى"
+
+#: Views/Shared/_GenderName.cshtml
+msgid "Male"
+msgstr "ذكر"
+
+#: Views/Shared/_GenderName.cshtml
+msgid "Unspecified"
+msgstr "غير محدد"
+
+# ---- the editor's hint after adding somebody ----
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Added as prospective. Activate them when they start — it is a dated decision, so it can be recorded for the day they actually began."
+msgstr "أُضيف بحالة «مرتقب». فعّله عند مباشرته العمل — وهو قرار مؤرَّخ، فيمكن تسجيله لليوم الذي باشر فيه فعلاً."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "Employee '{0}' is listed more than once."
+msgstr "الموظف '{0}' مُدرَج أكثر من مرة."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "'{0}' is not a valid employee code."
+msgstr "'{0}' ليس رمز موظف صالحاً."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "Employee '{0}' asks for status '{1}', which a new employee cannot be put into."
+msgstr "الموظف '{0}' يطلب الحالة '{1}' ولا يمكن وضع موظف جديد فيها."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "Employee '{0}' already exists with different content: {1}."
+msgstr "الموظف '{0}' موجود مسبقاً بمحتوى مختلف: {1}."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "Employee '{0}' names line manager '{1}', who does not exist."
+msgstr "الموظف '{0}' يسمّي المدير المباشر '{1}' وهو غير موجود."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "'{0}' could not be created."
+msgstr "تعذَّر إنشاء '{0}'."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "'{0}' could not be put into status '{1}'."
+msgstr "تعذَّر وضع '{0}' في الحالة '{1}'."
+
+#: WorkMate.Records.Recipes.EmployeesRecipeStep
+msgid "'{0}' could not be given a line manager."
+msgstr "تعذَّر إسناد مدير مباشر لـ '{0}'."
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Edit
+msgid "What to export"
+msgstr "ما الذي يتم تصديره"
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Edit
+msgid "Employees, with their current employment status"
+msgstr "الموظفون، مع حالتهم الوظيفية الحالية"
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Edit
+msgid "Everybody on record, including people who have left. An employee's earlier statuses are in the audit trail rather than on the record, so the status exported is the one they are in now."
+msgstr "كل من هو مسجَّل، بمن فيهم من تركوا العمل. حالات الموظف السابقة موجودة في سجل التدقيق لا في السجل نفسه، لذا فالحالة المصدَّرة هي حالته الآن."
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Summary
+msgid "Employee records"
+msgstr "سجلات الموظفين"
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Thumbnail
+msgid "Exports the tenant's employees as the recipe step the importer reads. Apply it before the organisation's placements and head appointments, which name people by code."
+msgstr "يصدّر موظفي المستأجر كخطوة الوصفة التي يقرأها المستورد. طبّقها قبل مواضع العمل وتعيينات الرؤساء، فهي تسمّي الأشخاص بالرمز."

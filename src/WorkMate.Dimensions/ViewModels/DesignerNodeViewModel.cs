@@ -36,6 +36,22 @@ public sealed class DesignerNodeViewModel
     public int? EmployeeCount { get; set; }
 
     /// <summary>
+    /// The headcount as a sentence — "1 employee", "3 employees" — or null when nobody is here.
+    /// </summary>
+    /// <remarks>
+    /// <b>Rendered on the server, including for cards the browser fetches.</b> The script used to
+    /// build this from a format string on the surface, which meant one form for every count and a
+    /// card reading "1 employees".
+    ///
+    /// Fixing that in the script was not an option worth taking. English needs two forms and Arabic
+    /// needs six, chosen by a rule involving n mod 100 — so a client-side fix is either English-only
+    /// or a reimplementation of ICU plural rules in the page. The server already has the localiser
+    /// and the culture; it just was not the one doing the formatting. Now it is, and the script sets
+    /// the text it is given.
+    /// </remarks>
+    public string? EmployeeCountLabel { get; set; }
+
+    /// <summary>
     /// The unit's head on the date being shown, or null when the post is vacant.
     /// </summary>
     /// <remarks>
@@ -49,6 +65,24 @@ public sealed class DesignerNodeViewModel
     /// disagree. A head appointment is its own dated record and not an assignment: ADR-0012.
     /// </remarks>
     public string? HeadDisplayName { get; set; }
+
+    /// <summary>
+    /// The head line as the card shows it — "Head: Vacant", or "Head: " and a name.
+    /// </summary>
+    /// <remarks>
+    /// Built on the server for the same reason <see cref="EmployeeCountLabel"/> is: the card is
+    /// drawn twice, once in Razor and once in the browser from a cloned template, and a card that
+    /// composed its own sentence would need the localiser in both places. One string, computed
+    /// where the culture is, read by both.
+    ///
+    /// <b>Null renders as nothing, and that is the point.</b> The template is rendered from a model
+    /// with no record in it, so every text field on it is blank. The head line used to be composed
+    /// in the view, which meant the empty template said "Head: Vacant" — a statement about an
+    /// organisation, sitting in a card that had not been filled in yet. The script then forgot to
+    /// overwrite it, and every fetched card reported every post vacant however many were filled.
+    /// A blank placeholder would have been visibly unfinished; a plausible one was not.
+    /// </remarks>
+    public string? HeadLabel { get; set; }
 
     /// <summary>
     /// How many units sit directly under this one on the date being shown.

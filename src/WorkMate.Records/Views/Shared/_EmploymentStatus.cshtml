@@ -1,0 +1,24 @@
+@model EmploymentStatus
+
+@*
+    One employment status, named in the reader's language.
+
+    A partial rather than @T[status.ToString()] at each of the four places that shows one. That form
+    compiles and renders the enum member — "OnLeave" — and is invisible to
+    LocalisationResourceTests, which looks for string literals: every status would have no resource
+    entry, no translation, and nothing to report it. It came in with session A2 and is the same
+    defect as the lifecycle labels, found the same way.
+
+    The switch is exhaustive over the enum with no default, so adding a status is a compiler error
+    here rather than an English word on an Arabic screen.
+*@
+
+<span class="badge bg-secondary employee-status">@(Model switch
+{
+    EmploymentStatus.Prospective => T["Prospective"],
+    EmploymentStatus.Active => T["Active"],
+    EmploymentStatus.OnLeave => T["On leave"],
+    EmploymentStatus.Suspended => T["Suspended"],
+    EmploymentStatus.Exited => T["Exited"],
+    _ => T["Unknown"],
+})</span>

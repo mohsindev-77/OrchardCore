@@ -214,6 +214,16 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
 
         var repositoryRoot = RepositoryRoot;
 
+        // The host's own configuration. ASP.NET reads appsettings.json from the content root, and
+        // this fixture gives the tenant a temporary one — so without this copy the suite runs
+        // against Orchard's defaults for everything the host configures, and a test asserting on
+        // host configuration passes or fails for reasons that have nothing to do with it. The
+        // media upload policy (ADR-0013) is the first thing that depends on it.
+        File.Copy(
+            Path.Combine(repositoryRoot, "src", "WorkMate.Web", "appsettings.json"),
+            Path.Combine(_contentRoot, "appsettings.json"),
+            overwrite: true);
+
         var recipes = Path.Combine(_contentRoot, "Recipes");
         Directory.CreateDirectory(recipes);
 

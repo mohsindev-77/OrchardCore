@@ -131,8 +131,18 @@ public sealed class UserVisibleStringTests
     // ---- Razor -------------------------------------------------------------------------
 
 
+    /// <summary>
+    /// The single-line Razor directives, which are removed whole.
+    /// </summary>
+    /// <remarks>
+    /// <c>functions</c> and <c>code</c> were in this list and should never have been: they are
+    /// <em>block</em> directives, and a pattern ending in <c>.*$</c> removes the line that opens
+    /// the block and leaves its body behind as if it were markup. The body of an
+    /// <c>@functions</c> block is C#, so every XML doc comment in it was read as text a user
+    /// sees. <see cref="BlankCodeBlocks"/> handles both now, braces and all.
+    /// </remarks>
     private static readonly Regex RazorDirective = new(
-        @"^\s*@(model|using|inherits|addTagHelper|removeTagHelper|inject|namespace|attribute|implements|typeparam|page|section|functions|code)\b.*$",
+        @"^\s*@(model|using|inherits|addTagHelper|removeTagHelper|inject|namespace|attribute|implements|typeparam|page|section)\b.*$",
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex UserVisibleAttribute = new(
@@ -144,6 +154,16 @@ public sealed class UserVisibleStringTests
 
     /// <summary>C# fragments that legitimately appear as bare text between Razor blocks.</summary>
     private static readonly string[] BareCodeLines = ["else", "do", "try", "catch", "finally"];
+
+    /// <summary>
+    /// Razor directives whose body is a brace-delimited block of C#, not markup.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not "any <c>@word {</c>": <c>@if (…) {</c> and <c>@foreach (…) {</c> also match
+    /// that shape and their bodies <em>are</em> markup — blanking them would hide exactly the text
+    /// this test exists to find.
+    /// </remarks>
+    private static readonly string[] BlockDirectives = ["@functions", "@code"];
 
     /// <summary>
     /// A bare <c>else</c>, <c>else if (…)</c>, <c>catch (…)</c>, <c>catch</c> or <c>finally</c>
@@ -239,24 +259,93 @@ public sealed class UserVisibleStringTests
         BareBlockContinuation.Replace(text, match =>
             new string([.. match.Value.Select(character => character == '\n' ? '\n' : ' ')]));
 
-    /// <summary>Blanks <c>@{ … }</c> blocks, which are C# rather than markup.</summary>
+    /// <summary>
+    /// Blanks <c>@{ … }</c> blocks and <c>@functions { … }</c> blocks, which are C# rather than
+    /// markup.
+    /// </summary>
+    /// <remarks>
+    /// <c>@functions</c> was missing, and the symptom was the opposite of the one this test exists
+    /// for: a local function declared in a view had its XML doc comment read as rendered text, so
+    /// every sentence explaining why the code was written that way was reported as an unlocalised
+    /// string. A check that fails on correct code gets worked around, and the workaround is to stop
+    /// writing the comment.
+    /// </remarks>
     private static string BlankCodeBlocks(string text)
     {
         var builder = new StringBuilder(text);
 
         for (var i = 0; i < builder.Length - 1; i++)
         {
-            if (builder[i] != '@' || builder[i + 1] != '{')
+            var opening = OpeningBraceOfCodeBlockAt(builder, i);
+
+            if (opening is null)
             {
                 continue;
             }
 
-            var end = SkipBalanced(builder.ToString(), i + 1, '{', '}');
+            var end = SkipBalanced(builder.ToString(), opening.Value, '{', '}');
             Blank(builder, i, end);
             i = end;
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The index of the <c>{</c> opening a C# block that starts at <paramref name="i"/>, or null
+    /// when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// Two forms: <c>@{</c>, and <c>@functions</c> followed by whitespace and a brace. The second
+    /// is matched by name rather than by looking for any <c>@word {</c>, because <c>@if (…) {</c>
+    /// and friends are already handled elsewhere and matching them here would blank their markup
+    /// bodies — which are exactly the text this test is looking at.
+    /// </remarks>
+    private static int? OpeningBraceOfCodeBlockAt(StringBuilder builder, int i)
+    {
+        if (builder[i] != '@')
+        {
+            return null;
+        }
+
+        if (builder[i + 1] == '{')
+        {
+            return i + 1;
+        }
+
+        foreach (var directive in BlockDirectives)
+        {
+            if (i + directive.Length >= builder.Length)
+            {
+                continue;
+            }
+
+            var matched = true;
+
+            for (var offset = 1; offset < directive.Length && matched; offset++)
+            {
+                matched = builder[i + offset] == directive[offset];
+            }
+
+            if (!matched)
+            {
+                continue;
+            }
+
+            var brace = i + directive.Length;
+
+            while (brace < builder.Length && char.IsWhiteSpace(builder[brace]))
+            {
+                brace++;
+            }
+
+            if (brace < builder.Length && builder[brace] == '{')
+            {
+                return brace;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

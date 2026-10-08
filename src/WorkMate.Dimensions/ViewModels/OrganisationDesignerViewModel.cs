@@ -63,6 +63,33 @@ public sealed class OrganisationDesignerViewModel
     /// <summary>Whether the viewer may fold one unit into another — <c>MergeDimensionRecords</c>.</summary>
     public bool CanMerge { get; set; }
 
+    /// <summary>Whether this viewer may appoint or clear a unit's head. <c>AssignEmployees</c>.</summary>
+    public bool CanAssignEmployees { get; set; }
+
+    /// <summary>
+    /// Every action a card's menu can carry, with this viewer's permission for each.
+    /// </summary>
+    /// <remarks>
+    /// <b>The single list, and the reason there is one.</b> A card's menu used to be described in
+    /// three places that had to agree: the markup in <c>_DesignerNode</c>, a <c>data-…-url</c>
+    /// attribute per action on the surface, and an <c>actionUrls</c> object literal in
+    /// <c>organisation-designer.js</c>. A server-rendered card got its menu from the first; a card
+    /// fetched when a branch is opened got its links from the second and third, and the script
+    /// <em>deletes</em> any action it has no URL for.
+    ///
+    /// So adding an action and forgetting either of the other two places produced a menu that was
+    /// complete on the roots and silently missing an item on every card below them — no error, no
+    /// console warning, and only visible to somebody who expanded a branch and looked. That is
+    /// exactly what happened to <c>sethead</c> in session A2.
+    ///
+    /// Now the three read one list: <see cref="DesignerCardActions.All"/> names them,
+    /// <see cref="PermittedActions"/> applies this viewer's permissions, and the view emits the
+    /// whole map as one attribute. Adding an action is one entry here and one link in the partial,
+    /// and a missing URL is impossible rather than unlikely.
+    /// </remarks>
+    public IReadOnlyList<DesignerCardAction> PermittedActions =>
+        [.. DesignerCardActions.All.Where(action => action.IsPermitted(this))];
+
     /// <summary>
     /// A unit whose branch should already be open when the page loads, so that the result of an
     /// action is on screen instead of hidden inside a collapsed parent.
@@ -123,5 +150,11 @@ public sealed class OrganisationDesignerViewModel
         CanEdit = CanEdit,
         CanMove = CanMove,
         CanMerge = CanMerge,
+
+        // Every permission the partial branches on has to be here, or the template is rendered
+        // without that part of the menu and every fetched card is missing it. This one was the
+        // defect: CanAssignEmployees defaulted to false, so the template carried no "sethead" link
+        // for the script to point anywhere — and the roots, rendered with the real value, had one.
+        CanAssignEmployees = CanAssignEmployees,
     };
 }

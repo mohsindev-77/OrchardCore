@@ -28,6 +28,11 @@
     <PackageReference Include="OrchardCore.ContentManagement.Display" />
     <!-- ContentPickerField and IContentPickerResultProvider, for the employee picker field. -->
     <PackageReference Include="OrchardCore.ContentFields" />
+
+
+    <!-- The export deployment step: IDeploymentSource, DeploymentStep and the step driver. ADR-0011. -->
+
+    <PackageReference Include="OrchardCore.Deployment.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WorkMate.Core/WorkMate.Core.csproj" />

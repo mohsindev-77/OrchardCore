@@ -34,4 +34,26 @@ public sealed class DimensionsDeploymentStep : DeploymentStep
     /// The records, with their full dated placement history and any dated name history.
     /// </summary>
     public bool IncludeRecords { get; set; } = true;
+
+    /// <summary>
+    /// Where people work: every placement of every employee on every axis, over all time.
+    /// </summary>
+    /// <remarks>
+    /// Off by default, unlike the three above. The organisation is configuration and travels from
+    /// one environment to the next as a matter of course; who works in it is operational data, and
+    /// carrying it by accident into a tenant that has its own people is a worse outcome than
+    /// having to tick a box.
+    /// </remarks>
+    public bool IncludeAssignments { get; set; }
+
+    /// <summary>
+    /// Who leads each unit, with every term on record.
+    /// </summary>
+    /// <remarks>
+    /// Its own switch rather than part of <see cref="IncludeAssignments"/>, because a head is not a
+    /// placement — ADR-0012. A tenant can have appointments and no placements or the reverse, and
+    /// one switch covering both would make the export claim otherwise. They share a requirement
+    /// rather than a meaning: both name people by code, so both need the employees to exist.
+    /// </remarks>
+    public bool IncludeHeads { get; set; }
 }

@@ -21,18 +21,25 @@
     var childrenUrl = surface.getAttribute("data-children-url");
     var searchUrl = surface.getAttribute("data-search-url");
     var viewCookie = surface.getAttribute("data-view-cookie");
-    var employeesLabel = surface.getAttribute("data-employees-label") || "";
 
-    var actionUrls = {
-        add: surface.getAttribute("data-add-url"),
-        rename: surface.getAttribute("data-rename-url"),
-        retire: surface.getAttribute("data-retire-url"),
-        move: surface.getAttribute("data-move-url"),
-        merge: surface.getAttribute("data-merge-url"),
-        cancelmove: surface.getAttribute("data-cancelmove-url")
-    };
+    // Every action this viewer may use, and for each one its URL and whether the unit's id travels
+    // as parentId or recordId. Built on the server from DesignerCardActions.All — the same list the
+    // card partial renders its menu from — so this file has no per-action knowledge at all.
+    //
+    // It used to: an object literal naming each action and reading a data-<action>-url attribute
+    // for it. An action added to the partial and not to both of those was deleted from every
+    // fetched card by the loop below, which removes any link it has no URL for. The roots, rendered
+    // by the server, kept theirs. Nothing errored, and the only way to see it was to expand a
+    // branch and notice an item missing.
+    var actionUrls = {};
 
-    var moveUrl = actionUrls.move;
+    try {
+        actionUrls = JSON.parse(surface.getAttribute("data-action-urls") || "{}");
+    } catch (error) {
+        actionUrls = {};
+    }
+
+    var moveUrl = actionUrls.move ? actionUrls.move.url : null;
 
     // Whether this viewer may reparent a unit at all. Without it a card is not draggable, for the
     // same reason it carries no "Move to…" in its menu: the server would refuse either way, and a
@@ -61,25 +68,46 @@
         return tree.querySelector('.designer-node[data-record-id="' + recordId + '"]');
     }
 
+    // What each line on a card is filled from. One name, the English one, matching what the server
+    // renders: the Arabic half is still in the payload — the search results list uses it to show
+    // why a hit matched — it just has no line of its own on a card.
+    var cardText = [
+        { selector: ".designer-card-name", property: "nameEn", titled: true },
+        { selector: ".designer-card-type", property: "dimensionTypeNameEn" },
+        { selector: ".designer-card-code", property: "code" },
+        { selector: ".designer-card-head", property: "headLabel" },
+        { selector: ".designer-card-employees", property: "employeeCountLabel" }
+    ];
+
     function buildNode(node) {
         var fragment = nodeTemplate.content.cloneNode(true);
         var li = fragment.querySelector(".designer-node");
 
         li.setAttribute("data-record-id", node.recordId);
-        // One name, the English one, matching what the server renders on a card. The Arabic half
-        // is still in the payload — the search results list uses it to show why a hit matched —
-        // it just has no line of its own on a card.
-        var name = li.querySelector(".designer-card-name");
 
-        name.textContent = node.nameEn;
-        name.title = node.nameEn;
-        li.querySelector(".designer-card-type").textContent = node.dimensionTypeNameEn;
-        li.querySelector(".designer-card-code").textContent = node.code;
+        // Every line of text on a card, in one list, filled by one loop — the same reason the
+        // action menu below is driven from one list. Each of these used to be its own assignment,
+        // and the head line was simply never written, so a fetched card showed whatever the
+        // template said. Adding a line to a card is an entry here; leaving one out now shows as
+        // blank, because the template is rendered from a model with nothing in it.
+        //
+        // Each value arrives finished, in the reader's language: nothing here composes a sentence
+        // or chooses a plural form. The script used to build the employee line from a format
+        // string, which gave every count one form and produced "1 employees" — and could not have
+        // been fixed here, because Arabic needs six forms chosen by a rule on n mod 100.
+        cardText.forEach(function (line) {
+            var element = li.querySelector(line.selector);
 
-        var employees = li.querySelector(".designer-card-employees");
-        employees.textContent = node.employeeCount
-            ? employeesLabel.replace("{0}", node.employeeCount)
-            : "";
+            if (!element) {
+                return;
+            }
+
+            element.textContent = node[line.property] || "";
+
+            if (line.titled) {
+                element.title = element.textContent;
+            }
+        });
 
         // The same two attributes the server sets when it renders a card: a unit with children
         // gets the expand control showing the count, a unit without gets the spacer instead, so a
@@ -94,27 +122,28 @@
         // The template's action links were rendered with no record on them, because there was no
         // record to render. Pointed at this one, so a fetched card's menu goes where a
         // server-rendered card's menu goes.
+        //
+        // One pass, not two: a link with no entry in the map is one this viewer may not use, and
+        // the template should not have carried it in the first place — so removing it is a repair
+        // for a mismatch rather than the normal path. Doing both in one loop is what makes
+        // "pointed somewhere" and "removed" exhaustive over the menu.
         li.querySelectorAll("[data-designer-action]").forEach(function (link) {
-            var action = link.getAttribute("data-designer-action");
-            var base = actionUrls[action];
+            var action = actionUrls[link.getAttribute("data-designer-action")];
 
-            if (!base) {
+            if (!action || !action.url) {
+                link.remove();
+
                 return;
             }
 
-            link.href = base + "?" + query(
-                action === "add"
+            link.href = action.url + "?" + query(
+                action.targetsParent
                     ? { structureId: structureId, parentId: node.recordId, asAt: asAt }
                     : { structureId: structureId, recordId: node.recordId, asAt: asAt });
         });
 
         // A fetched card is draggable exactly as a server-rendered one is: the drag handler reads
         // the DOM rather than a list captured at load, so there is nothing per-card to wire up.
-        li.querySelectorAll("[data-designer-action]").forEach(function (link) {
-            if (!actionUrls[link.getAttribute("data-designer-action")]) {
-                link.remove();
-            }
-        });
 
         return li;
     }
@@ -184,11 +213,29 @@
         });
     }
 
+    // The request in flight for each node, while it is in flight. Keyed by the element itself so
+    // that a node removed from the tree takes its entry with it.
+    var loading = new WeakMap();
+
     // Resolves once the node's children are in the DOM, fetching them on the first call only:
     // expanding a second time just shows what is already there.
+    //
+    // "The first call" has to mean the first call, not the first response. The loaded flag is set
+    // when the children arrive, so between asking and being answered every further call used to
+    // look like the first one — and a second expand in that window issued a second request whose
+    // children were appended beside the first lot. The tree then held each child twice, with the
+    // same record id on both, and the next thing to look for a card by name found several. It
+    // takes two expands close together to do it, which is why it showed up under load and not in
+    // front of anybody. So the promise is remembered, not just its result.
     function ensureLoaded(li) {
         if (li.getAttribute("data-loaded") === "true") {
             return Promise.resolve();
+        }
+
+        var inFlight = loading.get(li);
+
+        if (inFlight) {
+            return inFlight;
         }
 
         var url = childrenUrl + "?" + query({
@@ -197,7 +244,7 @@
             asAt: asAt
         });
 
-        return fetch(url, { headers: { Accept: "application/json" } })
+        var request = fetch(url, { headers: { Accept: "application/json" } })
             .then(function (response) { return response.json(); })
             .then(function (children) {
                 var list = li.querySelector(".designer-children");
@@ -207,7 +254,16 @@
                 });
 
                 li.setAttribute("data-loaded", "true");
+            })
+            // Cleared either way: after a failure the next expand should try again rather than
+            // hand back the promise that already rejected.
+            .finally(function () {
+                loading.delete(li);
             });
+
+        loading.set(li, request);
+
+        return request;
     }
 
     // Set by the pan handler when a drag turned into a click, so that dragging the chart by a card

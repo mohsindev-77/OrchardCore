@@ -99,6 +99,21 @@ nothing.
 
 Every transition is dated, audited and raises `EmployeeStatusChanged`.
 
+**Offered where the record is, by `EmployeeLifecycle.ActionsFrom`.** The moves
+valid from the current status — and only those — appear as buttons beside the
+status on the editor and behind a "Status" menu on each list row, both rendered
+by `Shared/_LifecycleActions`, and neither appears at all without
+`ChangeEmploymentStatus`. A newly added employee lands on their own record with
+"Activate" offered, because that is the next thing anybody does.
+
+A2 shipped all five transitions with a control for one of them: the list offered
+"End employment" and nothing else, so activating somebody — the move every new
+record needs — could be reached only by typing its URL. The browser tests of the
+day did not notice because they *started* by typing URLs, which proves a screen
+works and says nothing about whether anybody can get to it.
+`EmployeeLifecycleClickBrowserTests` therefore types one path and clicks for
+everything after it.
+
 **Everybody starts prospective, whatever their join date.** Activating somebody is
 a decision a person makes and dates, never inferred from a date having passed:
 "we hired them and they never turned up" is a real outcome, and a status that
@@ -290,8 +305,42 @@ mechanism exists to prevent.
 
 ## Recipe steps
 
-_None yet._ `employees` and its export land in session A3, alongside
-`employee-assignments` and `unit-heads` in `WorkMate.Dimensions`.
+`employees`, in `Recipes/`. People by code, which is what
+`WorkMate.Dimensions`' `employee-assignments` and `unit-heads` resolve their
+references against — so a recipe lists this step before either of them.
+
+**The status is reached, not written.** `CreateAsync` always produces a
+prospective employee whatever the join date, and the step then walks each one to
+the status the row states through the same dated transitions a person uses. An
+imported active employee is two operations because becoming active is an event;
+a step that assigned the status directly would create records no sequence of real
+decisions could have produced, and the lifecycle handlers leave and attendance
+subscribe to would never fire. On leave and suspended are three, because both
+describe an employment that is already running.
+
+Re-running is safe per ADR-0008: a row naming a code that exists is compared
+against the tenant on the fields the row actually states, and skipped if they all
+match. Everything is validated across the whole step before anything is written,
+so a file with a typo in its last row leaves the tenant as it found it. The one
+exception is a line manager, who may be named before they are listed — managers
+are attached in a second pass once every employee exists, which also means a file
+may list people in any order.
+
+### Export (ADR-0011)
+
+`Deployment/` holds the other half: `RecordsDeploymentStep`, under
+**Tools → Deployments**, with one switch (`IncludeEmployees`) writing the same
+`employees` step the importer reads. Leavers are exported — somebody who left in
+March is part of what this tenant is, and payroll and gratuity still answer
+questions about them.
+
+What it cannot carry is a status *history*. An employee's past statuses are in
+the audit trail rather than in a dated table, so what the record holds, and
+therefore all this can carry, is where somebody is now and the date they reached
+it. That is a difference between the two models rather than between the two
+exports: `WorkMate.Dimensions` carries full dated histories because its data is
+dated. `PeopleExportRoundTripTenantTests` covers both modules' halves together,
+because the join between them is a code resolved at import.
 
 ## Decisions recorded
 

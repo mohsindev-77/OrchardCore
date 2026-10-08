@@ -119,7 +119,100 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
             StorageState = _signedInState,
         });
 
-    private async Task<string> SignInWithTheBrowserAsync()
+    /// <summary>
+    /// A browser context signed in as a user holding exactly one role.
+    /// </summary>
+    /// <remarks>
+    /// What a permission test needs and the administrator cannot give: the administrator holds
+    /// everything, so a screen that forgot to check a permission looks identical to one that
+    /// checks it correctly. A reader with one role is the only way to see the difference, and a
+    /// <em>browser</em> one is the only way to see what a menu actually offers them.
+    ///
+    /// The user is created once per role and the signed-in state cached, because driving the login
+    /// form costs more than the assertions it enables. Created through <c>IUserService</c> inside
+    /// the tenant's shell scope rather than by scraping the admin form, for the reason the
+    /// integration fixture gives: this fixture has a reliable way into that scope, and the admin
+    /// form's field names are not part of the contract this suite pins.
+    /// </remarks>
+    public async Task<IBrowserContext> SignedInContextAsync(string roleName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(roleName);
+
+        if (!_roleStates.TryGetValue(roleName, out var state))
+        {
+            var userName = $"browser-{roleName.Replace(" ", string.Empty, StringComparison.Ordinal)}".ToLowerInvariant();
+
+            await InTenantAsync(async services =>
+            {
+                var users = services.GetRequiredService<OrchardCore.Users.Services.IUserService>();
+
+                if (await users.GetUserAsync(userName) is not null)
+                {
+                    return;
+                }
+
+                await users.CreateUserAsync(
+                    new OrchardCore.Users.Models.User
+                    {
+                        UserName = userName,
+                        Email = $"{userName}@example.invalid",
+                        EmailConfirmed = true,
+                        IsEnabled = true,
+                        RoleNames = [roleName],
+                    },
+                    RolePassword,
+                    (key, message) => throw new InvalidOperationException(
+                        $"Creating browser test user '{userName}' failed: {key}: {message}"));
+            });
+
+            state = await SignInWithTheBrowserAsync(userName, RolePassword);
+            _roleStates[roleName] = state;
+        }
+
+        return await Browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            BaseURL = ServerAddress,
+            StorageState = state,
+        });
+    }
+
+    /// <summary>Runs work inside the tenant's shell scope, the way the integration fixture does.</summary>
+    /// <remarks>
+    /// <b>Against the Kestrel host, not <see cref="WebApplicationFactory{TEntryPoint}.Services"/>.</b>
+    /// This fixture builds two hosts: the in-memory one the base class insists on, which is started
+    /// and never asked for anything, and the Kestrel one the browser actually talks to. Setup, the
+    /// recipes and every tenant this suite has ever created belong to the second. Asking the first
+    /// for the tenant finds nothing — and says "setup did not complete", which is true of that host
+    /// and extremely misleading about this one.
+    /// </remarks>
+    public async Task InTenantAsync(Func<IServiceProvider, Task> work)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+
+        var host = _kestrel
+            ?? throw new InvalidOperationException("The Kestrel host has not been built yet.");
+
+        var shellHost = host.Services.GetRequiredService<OrchardCore.Environment.Shell.IShellHost>();
+
+        if (!shellHost.TryGetSettings(TenantName, out var settings))
+        {
+            throw new InvalidOperationException($"The '{TenantName}' tenant does not exist. Setup did not complete.");
+        }
+
+        var scope = await shellHost.GetScopeAsync(settings);
+
+        await scope.UsingAsync(async shellScope => await work(shellScope.ServiceProvider));
+    }
+
+    private const string TenantName = "Default";
+    private const string RolePassword = "Workmate!BrowserRole1";
+
+    private readonly Dictionary<string, string> _roleStates = new(StringComparer.Ordinal);
+
+    private Task<string> SignInWithTheBrowserAsync() =>
+        SignInWithTheBrowserAsync(AdminUserName, AdminPassword);
+
+    private async Task<string> SignInWithTheBrowserAsync(string userName, string password)
     {
         await using var context = await Browser.NewContextAsync(new BrowserNewContextOptions
         {
@@ -133,8 +226,8 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
         // By form field name rather than by id: the fields bind to a nested LoginForm model, so
         // the ids Razor generates are a detail of that nesting while the names are what the server
         // actually reads.
-        await page.FillAsync("input[name='LoginForm.UserName']", AdminUserName);
-        await page.FillAsync("input[name='LoginForm.Password']", AdminPassword);
+        await page.FillAsync("input[name='LoginForm.UserName']", userName);
+        await page.FillAsync("input[name='LoginForm.Password']", password);
         await page.ClickAsync("form:has(input[name='LoginForm.Password']) button[type=submit]");
         await page.WaitForURLAsync(url => !url.Contains("/Login", StringComparison.OrdinalIgnoreCase));
 
@@ -187,6 +280,13 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
         Directory.CreateDirectory(Path.Combine(_contentRoot, "wwwroot"));
 
         var repositoryRoot = RepositoryRoot();
+
+        // The host's own configuration, for the reason the integration fixture copies it: ASP.NET
+        // reads appsettings.json from the content root, and this is a temporary one.
+        File.Copy(
+            Path.Combine(repositoryRoot, "src", "WorkMate.Web", "appsettings.json"),
+            Path.Combine(_contentRoot, "appsettings.json"),
+            overwrite: true);
 
         var recipes = Path.Combine(_contentRoot, "Recipes");
         Directory.CreateDirectory(recipes);

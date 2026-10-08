@@ -41,14 +41,22 @@ of service against every tenant sharing that process.
 **Four of the five are TIFF.** The fifth (ICC CLUT) applies to any image carrying an ICC profile,
 which includes ordinary JPEGs and PNGs.
 
-### Our exposure
+### Our exposure, after the mitigation below
 
-Real, and deliberately so. `OrchardCore.Media` processes **user-uploaded images** — on this product
-that is employee photographs and the files attached to an employee's documents section, which is
-precisely the untrusted input these advisories concern. The upload path is authenticated and
-permissioned (`ManageEmployees`), so the attacker has to be someone the tenant has already let in;
-that lowers the likelihood and does not remove it, because an HR administrator forwarding a
-malformed scan is not an attacker and the process dies just the same.
+`OrchardCore.Media` processes **user-uploaded images** — on this product that is employee
+photographs and the files attached to an employee's documents section, which is precisely the
+untrusted input these advisories concern. The upload path is authenticated and permissioned, so the
+attacker has to be someone the tenant has already let in; that lowers the likelihood and does not
+remove it, because an HR administrator forwarding a malformed scan is not an attacker and the
+process dies just the same.
+
+**Four of the five are now out of reach.** They are TIFF-only, and a WorkMate tenant does not accept
+TIFF uploads — see the mitigation below. A file that is refused never reaches the decoder.
+
+**One remains, and it is why this is still blocking.** GHSA-gwg2-r3hj-4w44, the ICC CLUT parser,
+applies to any image carrying an ICC profile, which includes ordinary JPEGs and PNGs — exactly the
+formats an employee photograph is. Moderate (5.3), an unbounded allocation rather than a crash, and
+in reach on every upload.
 
 ### Why we cannot simply fix it
 
@@ -85,9 +93,13 @@ id and suppressing by package, by severity, or by turning the audit off.
 12.0.1) was added temporarily and the restore failed on it — NU1903, naming Newtonsoft — while no
 ImageSharp advisory appeared. The probe was then reverted.
 
-### Review trigger — blocking
+### Review trigger — still blocking
 
-**This must be resolved before any production deployment.** Either of:
+**This must be resolved before any production deployment**, and the media allow-list does not
+discharge it: it takes four of the five out of reach and leaves GHSA-gwg2-r3hj-4w44, the ICC
+parser, live on every JPEG and PNG an employee photograph could be.
+
+Either of:
 
 - **Orchard ships a patch release that moves off ImageSharp 3.1.11.** Check on every Orchard
   version bump; ADR-0001 pins the version, so that bump is already a reviewed decision and this is
@@ -99,17 +111,38 @@ ImageSharp advisory appeared. The probe was then reverted.
 Whichever lands, delete the matching lines. The build going green on its own is the signal that a
 suppression has outlived its advisory.
 
-### Mitigation available now, not taken here
+### Mitigation taken: an explicit media allow-list
 
-Four of the five are TIFF-only. `MediaOptions.AllowedFileExtensions` is configurable and this
-solution does not configure it, so Orchard's defaults apply — **whether those defaults include
-`.tif`/`.tiff` has not been verified**. If they do, restricting the allowed extensions to the
-formats an employee photograph or a scanned document actually needs (JPEG, PNG, WebP, PDF) would
-remove four of the five from reach entirely, leaving only the ICC parser.
+`src/WorkMate.Web/appsettings.json` now states
+`OrchardCore:OrchardCore_Media:AllowedFileExtensions` rather than leaving Orchard's default in
+place:
 
-That is a tenant-configuration decision with its own consequences for what customers may upload, so
-it belongs to whoever owns the media policy rather than to this ADR. It is recorded here because it
-is the cheapest real risk reduction available before the version problem is solved.
+```
+.jpg  .jpeg  .png  .gif  .webp        images, for employee photographs
+.pdf  .docx  .xlsx                    documents, for the documents section
+```
+
+**Orchard 3.0.1's default already excluded TIFF.** Measured on a real tenant rather than inferred —
+the ADR could not previously say, and the answer is that the default list is
+`.3gp .avi .doc .docx .gif .ico .jpeg .jpg .m4a .m4v .mov .mp3 .mp4 .mpg .odt .ogg .ogv .pdf .png
+.pps .ppsx .ppt .pptx .psd .svg .wav .webm .webp .wmv .xls .xlsx`, with no `.tif` and no `.tiff`.
+
+So the four TIFF advisories were already out of reach. **What stating the list adds is that they
+stay out of reach**: a default nobody in this repository controls is not a control, and an Orchard
+release that widened it would silently undo the mitigation with nothing to notice.
+
+**It is also narrower than the default, on purpose.** The default permits `.svg` — a document that
+can carry script, served from the tenant's own origin — along with `.ico`, `.psd` and eleven audio
+and video types an HCM product has no use for. An allow-list is only worth having if it lists what
+is actually wanted.
+
+`MediaUploadPolicyTenantTests` holds both halves: the configuration, and the behaviour. The second
+matters more — it uploads a real TIFF header to the real endpoint and asserts it is refused, and
+uploads a real PNG and asserts it is not, because a list that were configured and never consulted
+would satisfy every assertion about configuration alone.
+
+This is host configuration, not code. A customer who needs more widens it, and the ADR's assessment
+of what is in reach changes with it.
 
 ## Alternatives considered
 

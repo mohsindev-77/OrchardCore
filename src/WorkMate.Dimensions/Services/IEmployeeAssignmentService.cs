@@ -236,4 +236,33 @@ public interface IEmployeeAssignmentService
         string structureId,
         string recordId,
         CancellationToken cancellationToken = default);
+
+    // ---- the whole tenant, for an export ----------------------------------------------
+    //
+    // Deliberately unpaged, and the only two reads here that are. Everything else on this
+    // interface answers a question about one employee, one node or one page, because everything
+    // else is on a screen's path. These two have one caller — the deployment source — whose job is
+    // to reproduce a tenant: a page of the placements is not a tenant, and an export that silently
+    // stopped at fifty would be wrong in the way nobody notices until a restore.
+
+    /// <summary>
+    /// Every placement of every employee on every axis, over all time.
+    /// </summary>
+    /// <remarks>
+    /// Rows, not effective rows: a split allocation is several, and a person who transferred in
+    /// March has the closed row as well as the open one. The export reproduces the decisions, not
+    /// the position on one date.
+    /// </remarks>
+    Task<IReadOnlyList<EmployeeAssignment>> GetAllAssignmentsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every head term on every unit on every axis, over all time.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the placements because a head is not a placement — ADR-0012 — so a tenant can
+    /// have appointments and no assignments, or the reverse, and neither implies the other.
+    /// </remarks>
+    Task<IReadOnlyList<HeadAppointment>> GetAllHeadAppointmentsAsync(
+        CancellationToken cancellationToken = default);
 }

@@ -5,6 +5,22 @@
     // Gregorian this is a different year, and it is the value the date input and every fetch the
     // page makes are built from. See WorkMate.Dimensions.Internal.IsoDate.
     var asAtValue = Model.AsAt.ToIso();
+
+    // The action map the script points a fetched card's links at: one entry per action this viewer
+    // may use, from the one list DesignerCardActions declares. Serialised here rather than in the
+    // view model because only a view has a URL helper, and the routes must be generated rather
+    // than written out — a hand-built path is a path that survives a route change and stops
+    // working.
+    var designerActionUrls = System.Text.Json.JsonSerializer.Serialize(
+        Model.PermittedActions.ToDictionary(
+            action => action.Name,
+            action => new
+            {
+                url = action.Controller is null
+                    ? Url.Action(action.Action)
+                    : Url.Action(action.Action, action.Controller),
+                targetsParent = action.TargetsParent,
+            }));
 }
 
 @* Named, not pathed. Orchard puts a content hash on the URL, so changing the file changes the URL
@@ -86,14 +102,19 @@
      data-children-url="@Url.Action("Children")"
      data-search-url="@Url.Action("Search")"
      data-view-cookie="@OrganisationDesignerViewModel.ViewModeCookieName"
-     data-employees-label="@T["{0} employees"].Value"
      data-expand-path="@string.Join(",", Model.ExpandPath)"
-     data-add-url="@Url.Action("AddUnit")"
-     data-rename-url="@Url.Action("Rename")"
-     data-retire-url="@Url.Action("Retire")"
-     data-move-url="@(Model.CanMove ? Url.Action("Move") : null)"
-     data-merge-url="@(Model.CanMerge ? Url.Action("Merge") : null)"
-     data-cancelmove-url="@(Model.CanMove ? Url.Action("CancelMove") : null)"
+     @*
+        One attribute for every action this viewer may use, built from DesignerCardActions.All —
+        the same list the card partial's menu and the script both read. It replaced one
+        data-<action>-url attribute per action, which had to be kept in step by hand with the
+        markup and with an object literal in the script; forgetting any one of the three produced
+        a menu that was complete on the roots and silently short an item on every fetched card.
+        See OrganisationDesignerViewModel.PermittedActions.
+
+        Each entry also says whether the unit's id travels as parentId or recordId, so the script
+        does not need to know that "add" is the odd one out.
+     *@
+     data-action-urls="@designerActionUrls"
      data-can-move="@(Model.CanMove ? "true" : "false")">
 
     <div class="col-lg-8 col-xl-9">

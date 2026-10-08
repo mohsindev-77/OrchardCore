@@ -27,17 +27,23 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
     private readonly IStructureService _structures;
     private readonly IDimensionService _records;
     private readonly IDimensionGraphService _graph;
+    private readonly IEmployeeAssignmentService _assignments;
+    private readonly IEnumerable<IEmployeeLookup> _employees;
 
     public DimensionsDeploymentSource(
         IDimensionTypeService types,
         IStructureService structures,
         IDimensionService records,
-        IDimensionGraphService graph)
+        IDimensionGraphService graph,
+        IEmployeeAssignmentService assignments,
+        IEnumerable<IEmployeeLookup> employees)
     {
         _types = types;
         _structures = structures;
         _records = records;
         _graph = graph;
+        _assignments = assignments;
+        _employees = employees;
     }
 
     protected override async Task ProcessAsync(DimensionsDeploymentStep step, DeploymentPlanResult result)
@@ -67,6 +73,222 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
         {
             result.Steps.Add(await RecordsStepAsync(types, structures, typeCodeById));
         }
+
+        if (!step.IncludeAssignments && !step.IncludeHeads)
+        {
+            return;
+        }
+
+        // Both of the remaining steps name people by code, so both need the ids resolved the same
+        // way. An employee the lookup cannot name is left out rather than exported by id: an id is
+        // not portable, and a row carrying one would fail on import in a way that reads like a
+        // missing employee rather than like an export that should not have written it.
+        var codeByEmployeeId = await EmployeeCodesAsync(step);
+        var codeByStructureId = structures.ToDictionary(
+            structure => structure.StructureId, structure => structure.Code, StringComparer.Ordinal);
+
+        // Every record on every type, retired ones included: somebody was placed at a unit that has
+        // since closed, and the placement is still part of what happened.
+        var allRecords = new List<DimensionNodeRef>();
+
+        foreach (var type in types)
+        {
+            allRecords.AddRange(await _records.ListByTypeAsync(type.DimensionTypeId));
+        }
+
+        var codeByRecordId = allRecords
+            .GroupBy(record => record.RecordId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().Code, StringComparer.Ordinal);
+
+        if (step.IncludeAssignments)
+        {
+            result.Steps.Add(AssignmentsStep(
+                await _assignments.GetAllAssignmentsAsync(), codeByEmployeeId, codeByStructureId, codeByRecordId));
+        }
+
+        if (step.IncludeHeads)
+        {
+            result.Steps.Add(HeadsStep(
+                await _assignments.GetAllHeadAppointmentsAsync(), codeByEmployeeId, codeByStructureId, codeByRecordId));
+        }
+    }
+
+    /// <summary>
+    /// Every employee this export will have to name, by code.
+    /// </summary>
+    /// <remarks>
+    /// Resolved from the ids the assignments and appointments actually mention rather than by
+    /// listing the tenant's employees: the export is of the dimension engine's data, and which
+    /// people exist is the other module's export to write.
+    /// </remarks>
+    private async Task<Dictionary<string, string>> EmployeeCodesAsync(DimensionsDeploymentStep step)
+    {
+        var lookup = _employees.FirstOrDefault();
+
+        if (lookup is null)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+
+        if (step.IncludeAssignments)
+        {
+            foreach (var assignment in await _assignments.GetAllAssignmentsAsync())
+            {
+                ids.Add(assignment.EmployeeId);
+            }
+        }
+
+        if (step.IncludeHeads)
+        {
+            foreach (var appointment in await _assignments.GetAllHeadAppointmentsAsync())
+            {
+                ids.Add(appointment.EmployeeId);
+            }
+        }
+
+        var people = await lookup.GetManyAsync([.. ids]);
+
+        return people.ToDictionary(entry => entry.Key, entry => entry.Value.Code, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The placements, grouped the way the importer applies them: one entry per employee per axis,
+    /// carrying the dated changes, each change the whole set of rows that begin on that date.
+    /// </summary>
+    /// <remarks>
+    /// Grouping by start date is what turns rows back into decisions. A split allocation is several
+    /// rows sharing a date and is one decision; a transfer is a later date whose rows replace the
+    /// earlier ones, and the engine closed those on import exactly as it closed them here, so the
+    /// ranges do not need carrying and cannot disagree.
+    ///
+    /// An axis somebody has come off entirely — every row closed, nothing starting afterwards —
+    /// carries the day they came off it. Without that the import would leave the last placement
+    /// running, and the difference between "transferred" and "left the axis" would be lost.
+    /// </remarks>
+    private static JsonObject AssignmentsStep(
+        IReadOnlyList<EmployeeAssignment> assignments,
+        Dictionary<string, string> codeByEmployeeId,
+        Dictionary<string, string> codeByStructureId,
+        Dictionary<string, string> codeByRecordId)
+    {
+        var entries = new JsonArray();
+
+        var byEmployeeAndStructure = assignments
+            .Where(assignment =>
+                codeByEmployeeId.ContainsKey(assignment.EmployeeId) &&
+                codeByStructureId.ContainsKey(assignment.StructureId) &&
+                codeByRecordId.ContainsKey(assignment.RecordId))
+            .GroupBy(assignment => (assignment.EmployeeId, assignment.StructureId))
+            .OrderBy(group => codeByEmployeeId[group.Key.EmployeeId], StringComparer.Ordinal)
+            .ThenBy(group => codeByStructureId[group.Key.StructureId], StringComparer.Ordinal);
+
+        foreach (var group in byEmployeeAndStructure)
+        {
+            var changes = new JsonArray();
+            var dates = group.GroupBy(row => row.Range.From).OrderBy(change => change.Key).ToList();
+
+            foreach (var change in dates)
+            {
+                changes.Add(new JsonObject
+                {
+                    ["effectiveFrom"] = Iso(change.Key),
+                    ["split"] = new JsonArray(
+                    [
+                        .. change
+                            .OrderByDescending(row => row.IsPrimary)
+                            .ThenBy(row => codeByRecordId[row.RecordId], StringComparer.Ordinal)
+                            .Select(row => (JsonNode)new JsonObject
+                            {
+                                ["recordCode"] = codeByRecordId[row.RecordId],
+                                ["allocationPercent"] = row.AllocationPercent,
+                                ["isPrimary"] = row.IsPrimary,
+                            }),
+                    ]),
+                });
+            }
+
+            var entry = new JsonObject
+            {
+                ["employeeCode"] = codeByEmployeeId[group.Key.EmployeeId],
+                ["structureCode"] = codeByStructureId[group.Key.StructureId],
+                ["changes"] = changes,
+            };
+
+            // The last change's rows all closed, and nothing after them: they are off this axis.
+            var last = dates[^1];
+
+            if (last.All(row => row.Range.To is not null))
+            {
+                entry["endedOn"] = Iso(last.Max(row => row.Range.To!.Value));
+            }
+
+            entries.Add(entry);
+        }
+
+        return new JsonObject
+        {
+            ["name"] = "employee-assignments",
+            ["assignments"] = entries,
+        };
+    }
+
+    /// <summary>
+    /// The head appointments, one entry per unit per axis, carrying every term it has had.
+    /// </summary>
+    private static JsonObject HeadsStep(
+        IReadOnlyList<HeadAppointment> appointments,
+        Dictionary<string, string> codeByEmployeeId,
+        Dictionary<string, string> codeByStructureId,
+        Dictionary<string, string> codeByRecordId)
+    {
+        var entries = new JsonArray();
+
+        var byUnit = appointments
+            .Where(appointment =>
+                codeByEmployeeId.ContainsKey(appointment.EmployeeId) &&
+                codeByStructureId.ContainsKey(appointment.StructureId) &&
+                codeByRecordId.ContainsKey(appointment.RecordId))
+            .GroupBy(appointment => (appointment.StructureId, appointment.RecordId))
+            .OrderBy(group => codeByStructureId[group.Key.StructureId], StringComparer.Ordinal)
+            .ThenBy(group => codeByRecordId[group.Key.RecordId], StringComparer.Ordinal);
+
+        foreach (var group in byUnit)
+        {
+            var terms = new JsonArray();
+
+            foreach (var term in group.OrderBy(appointment => appointment.Range.From))
+            {
+                var node = new JsonObject
+                {
+                    ["employeeCode"] = codeByEmployeeId[term.EmployeeId],
+                    ["effectiveFrom"] = Iso(term.Range.From),
+                };
+
+                // Only when the term has ended. An open term is the person who holds the post now,
+                // and writing an end for it would import somebody as a former head.
+                if (term.Range.To is { } lastDay)
+                {
+                    node["effectiveTo"] = Iso(lastDay);
+                }
+
+                terms.Add(node);
+            }
+
+            entries.Add(new JsonObject
+            {
+                ["structureCode"] = codeByStructureId[group.Key.StructureId],
+                ["recordCode"] = codeByRecordId[group.Key.RecordId],
+                ["terms"] = terms,
+            });
+        }
+
+        return new JsonObject
+        {
+            ["name"] = "unit-heads",
+            ["heads"] = entries,
+        };
     }
 
     private static JsonObject TypesStep(IReadOnlyList<DimensionTypeDocument> types) =>

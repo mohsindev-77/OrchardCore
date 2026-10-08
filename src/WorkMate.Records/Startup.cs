@@ -9,7 +9,11 @@ using OrchardCore.Modules;
 using OrchardCore.Navigation;
 using OrchardCore.Security.Permissions;
 using WorkMate.Dimensions.Services;
+using OrchardCore.Deployment;
+using OrchardCore.Recipes;
+using WorkMate.Records.Deployment;
 using WorkMate.Records.Handlers;
+using WorkMate.Records.Recipes;
 using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
 using WorkMate.Records.Navigation;
@@ -54,5 +58,14 @@ public sealed class Startup : StartupBase
         // This module's audit trail category and its three events, so an administrator can find and
         // filter them alongside Orchard's own.
         services.AddTransient<IConfigureOptions<AuditTrailOptions>, RecordsAuditTrailOptionsConfiguration>();
+
+        // People, by code — the step the dimension engine's employee-assignments and unit-heads
+        // steps resolve their references against, so a recipe lists this one before either of
+        // them.
+        services.AddRecipeExecutionStep<EmployeesRecipeStep>();
+
+        // And the export side of it. ADR-0011, the same shape the dimension engine's export takes:
+        // a deployment step producing the recipe step the importer already reads.
+        services.AddDeployment<RecordsDeploymentSource, RecordsDeploymentStep, RecordsDeploymentStepDriver>();
     }
 }

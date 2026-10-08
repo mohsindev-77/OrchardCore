@@ -122,6 +122,7 @@ public sealed class OrganisationDesignerAdminController : Controller
             CanEdit = await CanEditAsync(),
             CanMove = await CanMoveAsync(),
             CanMerge = await CanMergeAsync(),
+            CanAssignEmployees = await CanAssignEmployeesAsync(),
             ViewMode = ResolveViewMode(view),
             ExpandRecordId = expand,
         };
@@ -1237,15 +1238,30 @@ public sealed class OrganisationDesignerAdminController : Controller
         var canEdit = await CanEditAsync();
         var canMove = await CanMoveAsync();
         var canMerge = await CanMergeAsync();
-        var canAssign = await _authorizationService.AuthorizeAsync(User, Permissions.AssignEmployees);
+        var canAssign = await CanAssignEmployeesAsync();
 
-        return
-        [
-            .. nodes.Select(node => DesignerNodeViewModel.Of(
+        var models = nodes.Select(node => DesignerNodeViewModel.Of(
                 node, typesById, employeeCounts, childCounts,
                 structureId, asAt.ToIso(), canEdit, canMove, canMerge,
-                heads.GetValueOrDefault(node.RecordId), canAssign)),
-        ];
+                heads.GetValueOrDefault(node.RecordId), canAssign))
+            .ToList();
+
+        foreach (var model in models)
+        {
+            // Pluralised here, where the localiser and the culture are, rather than in the page.
+            // English needs two forms and Arabic six; see DesignerNodeViewModel.EmployeeCountLabel.
+            model.EmployeeCountLabel = model.EmployeeCount is { } count
+                ? S.Plural(count, "{0} employee", "{0} employees", count).Value
+                : null;
+
+            // Composed here rather than in the card, so the browser-built card and the Razor-built
+            // card read one string instead of each assembling their own. See HeadLabel.
+            model.HeadLabel = model.HeadDisplayName is { } head
+                ? S["Head: {0}", head].Value
+                : S["Head: Vacant"].Value;
+        }
+
+        return models;
     }
 
     /// <summary>
@@ -1331,6 +1347,13 @@ public sealed class OrganisationDesignerAdminController : Controller
     /// </summary>
     private Task<bool> CanEditAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.ManageDimensionRecords);
+
+    /// <summary>
+    /// Who may appoint or clear a unit's head. The same permission that places somebody, because
+    /// it is the same kind of act.
+    /// </summary>
+    private Task<bool> CanAssignEmployeesAsync() =>
+        _authorizationService.AuthorizeAsync(User, Permissions.AssignEmployees);
 
     /// <summary>
     /// Who may send a unit to a different parent. Moving the children of a unit being retired is

@@ -1,0 +1,15 @@
+@model RecordsDeploymentStepViewModel
+@*
+    What an export of this tenant's people carries. The employees themselves; where they sit and
+    what they lead belong to the dimension engine's step, which names them by the code exported
+    here — so a plan carrying those without this one produces a file that cannot apply.
+*@
+<fieldset class="mb-3">
+    <legend class="fs-6">@T["What to export"]</legend>
+
+    <div class="form-check">
+        <input asp-for="IncludeEmployees" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeEmployees" class="form-check-label">@T["Employees, with their current employment status"]</label>
+        <div class="form-text">@T["Everybody on record, including people who have left. An employee's earlier statuses are in the audit trail rather than on the record, so the status exported is the one they are in now."]</div>
+    </div>
+</fieldset>

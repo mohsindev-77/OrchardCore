@@ -47,7 +47,7 @@
             <select class="form-select" asp-for="Gender">
                 @foreach (var gender in Enum.GetValues<Gender>())
                 {
-                    <option value="@gender">@T[gender.ToString()]</option>
+                    <option value="@gender"><partial name="_GenderName" model="gender" /></option>
                 }
             </select>
             <div class="form-text">@T["Left unspecified rather than guessed when nobody has said."]</div>

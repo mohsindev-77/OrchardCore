@@ -1,0 +1,11 @@
+@model Gender
+@*
+    One gender, named in the reader's language. The third of the three enum labels this module
+    shows; see _EmploymentStatus for why @T[value.ToString()] is not an option.
+*@
+@(Model switch
+{
+    Gender.Female => T["Female"],
+    Gender.Male => T["Male"],
+    _ => T["Unspecified"],
+})

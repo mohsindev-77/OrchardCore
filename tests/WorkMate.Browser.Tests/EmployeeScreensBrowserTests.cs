@@ -174,9 +174,14 @@ public sealed class EmployeeScreensBrowserTests
 
         await page.ClickAsync("#unit-head-set button[type='submit']");
 
-        // Now exit them, and look before leaping.
+        // Now exit them, and look before leaping. The row's lifecycle actions are behind its
+        // "Status" menu, so it is opened first — the same two presses a person makes.
         await page.GotoAsync("/Admin/Employees/Index");
-        await page.ClickAsync(".employee-row[data-employee-code='browser-exit-1'] a[href*='Lifecycle/Exit']");
+
+        var row = page.Locator(".employee-row[data-employee-code='browser-exit-1']");
+
+        await row.Locator(".employee-status-toggle").ClickAsync();
+        await row.Locator("[data-lifecycle-action='Exit']").ClickAsync();
 
         // After the appointment, which the Set form dated from today. A last day before the term
         // began would correctly find nothing to close, and would make this test pass for the one

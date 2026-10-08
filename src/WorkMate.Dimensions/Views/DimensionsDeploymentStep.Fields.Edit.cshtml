@@ -24,4 +24,23 @@
     </div>
 
     <span asp-validation-for="IncludeRecords" class="text-danger"></span>
+
+    @* Off unless asked for. The three above are configuration and travel between environments as
+       a matter of course; these two are operational data about real people, and carrying them
+       into a tenant that has its own is worse than having to tick a box. *@
+    <div class="form-check mt-3">
+        <input asp-for="IncludeAssignments" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeAssignments" class="form-check-label">@T["Where people work, with every dated change"]</label>
+        <div class="form-text">@T["Needs the employees themselves to be exported too, by the employee records step."]</div>
+    </div>
+
+    <span asp-validation-for="IncludeAssignments" class="text-danger"></span>
+
+    <div class="form-check">
+        <input asp-for="IncludeHeads" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeHeads" class="form-check-label">@T["Who leads each unit, with every term on record"]</label>
+        <div class="form-text">@T["Separate from placements: a head need not work in the unit they lead."]</div>
+    </div>
+
+    <span asp-validation-for="IncludeHeads" class="text-danger"></span>
 </fieldset>

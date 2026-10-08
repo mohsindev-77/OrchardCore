@@ -106,6 +106,13 @@ public sealed class Startup : StartupBase
         services.AddRecipeExecutionStep<StructuresRecipeStep>();
         services.AddRecipeExecutionStep<DimensionRecordsRecipeStep>();
 
+        // And after the records, the two steps that put people on them. Both resolve employees by
+        // code through IEmployeeLookup, so both are no-ops on a tenant with no employee module —
+        // and both say so rather than failing silently, because a recipe that quietly imported no
+        // assignments would leave an organisation chart that merely looked empty.
+        services.AddRecipeExecutionStep<EmployeeAssignmentsRecipeStep>();
+        services.AddRecipeExecutionStep<UnitHeadsRecipeStep>();
+
         // The export side of those three steps. ADR-0011: a deployment step rather than a screen
         // of its own, so an export of the organisation travels in the same plan as everything else
         // a tenant promotes, and the file it produces is a recipe the importers above already read.

@@ -21,7 +21,7 @@
             <option value="">@T["Every status, including leavers"]</option>
             @foreach (var status in Enum.GetValues<EmploymentStatus>())
             {
-                <option value="@status" selected="@(Model.Status == status)">@T[status.ToString()]</option>
+                <option value="@status" selected="@(Model.Status == status)"><partial name="_EmploymentStatusName" model="status" /></option>
             }
         </select>
     </div>
@@ -71,7 +71,7 @@ else
                         }
                     </td>
                     <td>
-                        <span class="badge bg-secondary employee-status">@T[employee.Status.ToString()]</span>
+                        <partial name="_EmploymentStatus" model="employee.Status" />
                         <div class="text-muted small">@T["since {0}", EmployeeDisplay.Date(employee.StatusEffectiveFrom)]</div>
                     </td>
                     <td>@EmployeeDisplay.Date(employee.JoinDate)</td>
@@ -89,21 +89,26 @@ else
                         }
                     </td>
                     <td class="text-end">
-                        <div class="btn-group btn-group-sm">
-                            <a class="btn btn-outline-secondary"
-                               asp-action="Edit" asp-route-id="@employee.EmployeeId">@T["Edit"]</a>
-                            @if (Model.CanAssign)
-                            {
+                        <div class="d-flex gap-1 justify-content-end align-items-start">
+                            <div class="btn-group btn-group-sm">
                                 <a class="btn btn-outline-secondary"
-                                   asp-controller="EmployeePlacementAdmin" asp-action="Index"
-                                   asp-route-id="@employee.EmployeeId">@T["Placement"]</a>
-                            }
-                            @if (Model.CanChangeStatus && employee.Status != EmploymentStatus.Exited)
-                            {
-                                <a class="btn btn-outline-secondary"
-                                   asp-controller="EmployeeLifecycleAdmin" asp-action="Exit"
-                                   asp-route-id="@employee.EmployeeId">@T["Exit"]</a>
-                            }
+                                   asp-action="Edit" asp-route-id="@employee.EmployeeId">@T["Edit"]</a>
+                                @if (Model.CanAssign)
+                                {
+                                    <a class="btn btn-outline-secondary"
+                                       asp-controller="EmployeePlacementAdmin" asp-action="Index"
+                                       asp-route-id="@employee.EmployeeId">@T["Placement"]</a>
+                                }
+                            </div>
+                            @* Every transition valid for this person's current status, and only
+                               those. Session A2 offered Exit alone, which left Activate — the move
+                               every newly added employee needs — reachable only by typing a URL. *@
+                            <partial name="_LifecycleActions"
+                                     model="@(new LifecycleActionsViewModel(
+                                         employee.EmployeeId,
+                                         employee.Transitions,
+                                         Model.CanChangeStatus,
+                                         AsMenu: true))" />
                         </div>
                     </td>
                 </tr>

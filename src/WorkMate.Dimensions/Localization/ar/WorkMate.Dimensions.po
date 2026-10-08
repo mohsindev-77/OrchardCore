@@ -695,9 +695,17 @@ msgstr "تصغير"
 msgid "Fit to screen"
 msgstr "ملاءمة الشاشة"
 
-#: Views/OrganisationDesignerAdmin/Index.cshtml
-msgid "{0} employees"
-msgstr "{0} موظفين"
+#. Pluralised through T.Plural, so Arabic gets all six forms its rule selects between rather
+#. than one that reads wrong for most counts. The card used to say "1 employees".
+#: WorkMate.Dimensions.Controllers.OrganisationDesignerAdminController
+msgid "{0} employee"
+msgid_plural "{0} employees"
+msgstr[0] "لا يوجد موظفون"
+msgstr[1] "موظف واحد"
+msgstr[2] "موظفان"
+msgstr[3] "{0} موظفين"
+msgstr[4] "{0} موظفاً"
+msgstr[5] "{0} موظف"
 
 #: Recipes/DimensionTypesRecipeStep.cs, Recipes/StructuresRecipeStep.cs, Recipes/DimensionRecordsRecipeStep.cs
 msgid "'{0}' could not be created."
@@ -1436,3 +1444,87 @@ msgstr "'{0}' بلا رئيس اعتباراً من {1}."
 #: WorkMate.Dimensions.Controllers.UnitHeadAdminController
 msgid "'{0}' already had no head."
 msgstr "'{0}' كانت بلا رئيس أصلاً."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Assignment names employee '{0}', who does not exist."
+msgstr "التعيين يشير إلى الموظف '{0}' وهو غير موجود."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee '{0}' is assigned on structure '{1}', which does not exist."
+msgstr "الموظف '{0}' معيَّن على الهيكل '{1}' وهو غير موجود."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee '{0}' is placed at unit '{1}', which does not exist."
+msgstr "الموظف '{0}' موضوع في الوحدة '{1}' وهي غير موجودة."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee '{0}' on structure '{1}' is already placed differently from {2}: {3}."
+msgstr "الموظف '{0}' على الهيكل '{1}' موضوع بشكل مختلف اعتباراً من {2}: {3}."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee '{0}' could not be placed on structure '{1}'."
+msgstr "تعذَّر وضع الموظف '{0}' على الهيكل '{1}'."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee '{0}' could not be taken off structure '{1}'."
+msgstr "تعذَّر رفع الموظف '{0}' من الهيكل '{1}'."
+
+#: WorkMate.Dimensions.Recipes.EmployeeAssignmentsRecipeStep
+msgid "Employee assignments cannot be imported because no module providing employee records is enabled."
+msgstr "لا يمكن استيراد تعيينات الموظفين لعدم تفعيل أي وحدة توفّر سجلات الموظفين."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "A head is named for structure '{0}', which does not exist."
+msgstr "تمت تسمية رئيس للهيكل '{0}' وهو غير موجود."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "A head is named for unit '{0}', which does not exist."
+msgstr "تمت تسمية رئيس للوحدة '{0}' وهي غير موجودة."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "Unit '{0}' names head '{1}', who does not exist."
+msgstr "الوحدة '{0}' تسمّي الرئيس '{1}' وهو غير موجود."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "Unit '{0}' has a term for '{1}' that ends before it begins."
+msgstr "الوحدة '{0}' بها فترة رئاسة لـ '{1}' تنتهي قبل أن تبدأ."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "Unit '{0}' on structure '{1}' already has a different history of heads: {2}."
+msgstr "الوحدة '{0}' على الهيكل '{1}' لديها سجل رؤساء مختلف: {2}."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "'{0}' could not be made head of '{1}'."
+msgstr "تعذَّر تعيين '{0}' رئيساً لـ '{1}'."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "'{0}' could not be left without a head."
+msgstr "تعذَّر ترك '{0}' بلا رئيس."
+
+#: WorkMate.Dimensions.Recipes.UnitHeadsRecipeStep
+msgid "Unit heads cannot be imported because no module providing employee records is enabled."
+msgstr "لا يمكن استيراد رؤساء الوحدات لعدم تفعيل أي وحدة توفّر سجلات الموظفين."
+
+#: WorkMate.Dimensions.Deployment.DimensionsDeploymentStepDriver
+msgid "Placements reference the unit they are at by code, so exporting them needs the units to be included too."
+msgstr "تشير مواضع الموظفين إلى الوحدة بالرمز، لذا يتطلّب تصديرها تضمين الوحدات أيضاً."
+
+#: WorkMate.Dimensions.Deployment.DimensionsDeploymentStepDriver
+msgid "Head appointments reference the unit they lead by code, so exporting them needs the units to be included too."
+msgstr "تشير تعيينات الرؤساء إلى الوحدة بالرمز، لذا يتطلّب تصديرها تضمين الوحدات أيضاً."
+
+#: WorkMate.Dimensions.Views.DimensionsDeploymentStep.Fields.Edit
+msgid "Where people work, with every dated change"
+msgstr "أماكن عمل الموظفين، مع كل تغيير مؤرَّخ"
+
+#: WorkMate.Dimensions.Views.DimensionsDeploymentStep.Fields.Edit
+msgid "Needs the employees themselves to be exported too, by the employee records step."
+msgstr "يتطلّب تصدير الموظفين أنفسهم كذلك عبر خطوة سجلات الموظفين."
+
+#: WorkMate.Dimensions.Views.DimensionsDeploymentStep.Fields.Edit
+msgid "Who leads each unit, with every term on record"
+msgstr "من يرأس كل وحدة، مع كل فترة مسجَّلة"
+
+#: WorkMate.Dimensions.Views.DimensionsDeploymentStep.Fields.Edit
+msgid "Separate from placements: a head need not work in the unit they lead."
+msgstr "منفصل عن مواضع العمل: ليس بالضرورة أن يعمل الرئيس في الوحدة التي يرأسها."

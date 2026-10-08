@@ -35,6 +35,17 @@ public sealed class EmployeeListItemViewModel
     /// <summary>The name in the reader's language, falling back rather than to a blank.</summary>
     public string Name => BilingualText.Display(NameEn, NameAr);
 
+    /// <summary>
+    /// The lifecycle moves valid for this employee right now, in the order to offer them.
+    /// </summary>
+    /// <remarks>
+    /// From <c>EmployeeLifecycle.ActionsFrom</c>, so a row's menu and the editor's buttons offer
+    /// the same set and neither can drift from what the service will accept. Whether the viewer may
+    /// use them is a separate question — <c>EmployeeListViewModel.CanChangeStatus</c> — because an
+    /// action that is valid and forbidden should not be rendered at all.
+    /// </remarks>
+    public IReadOnlyList<EmployeeTransition> Transitions => EmployeeLifecycle.ActionsFrom(Status);
+
     /// <summary>Where the primary placement puts them today, or null when they are not placed.</summary>
     /// <remarks>
     /// Read through <c>IEmployeeAssignmentService</c> like everything else about placement, and
@@ -59,6 +70,24 @@ public sealed class EmployeeListItemViewModel
         };
     }
 }
+
+/// <summary>
+/// What <c>_LifecycleActions</c> needs: whose transitions, which ones, and how to draw them.
+/// </summary>
+/// <remarks>
+/// One partial renders the editor's buttons and each list row's menu, so the two offer the same set
+/// and a transition cannot be reachable from one screen and invisible on the other — which is the
+/// defect this type was added to close.
+/// </remarks>
+/// <param name="AsMenu">
+/// True on a list row, where a column has no space for five buttons; false on the editor, where
+/// the actions are the point of the section they sit in.
+/// </param>
+public sealed record LifecycleActionsViewModel(
+    string EmployeeId,
+    IReadOnlyList<EmployeeTransition> Transitions,
+    bool CanChangeStatus,
+    bool AsMenu);
 
 /// <summary>The employee list screen: its rows, and the filter that produced them.</summary>
 public sealed class EmployeeListViewModel
@@ -137,6 +166,22 @@ public sealed class EmployeeEditViewModel
 
     public DateOnly JoinDate { get; set; }
 
+    /// <summary>Whether the viewer may move this employee through the lifecycle.</summary>
+    public bool CanChangeStatus { get; set; }
+
+    /// <summary>
+    /// Whether this employee has just been created, so the screen can offer the obvious next step.
+    /// </summary>
+    /// <remarks>
+    /// Everybody is created prospective and has to be activated by somebody. Landing on an editor
+    /// that merely reports "Prospective" leaves the one thing the person came to do unlabelled, so
+    /// the screen says it: "Activate now".
+    /// </remarks>
+    public bool IsNewlyCreated { get; set; }
+
+    /// <summary>The lifecycle moves valid for this employee right now. See the list item's copy.</summary>
+    public IReadOnlyList<EmployeeTransition> Transitions => EmployeeLifecycle.ActionsFrom(Status);
+
     /// <summary>The name in the reader's language, falling back rather than to a blank.</summary>
     public string Name => BilingualText.Display(NameEn, NameAr);
 }
@@ -159,6 +204,23 @@ public sealed class EmployeeTransitionViewModel
 
     /// <summary>What they would become.</summary>
     public EmploymentStatus To { get; set; }
+
+    /// <summary>
+    /// The two statuses as words a reader understands, resolved by the controller.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the model rather than switched over in the view, because both go <em>inside</em>
+    /// a translated sentence — "{0} has been {1} since {2}" — and a partial renders markup rather
+    /// than a word. The controller has the localiser and <c>EmployeeStatusNames</c>; the view
+    /// interpolates what it is given.
+    ///
+    /// Never <c>Status.ToString()</c>: that puts the enum member into the middle of an Arabic
+    /// sentence and is invisible to the resource check.
+    /// </remarks>
+    public string? CurrentStatusName { get; set; }
+
+    /// <inheritdoc cref="CurrentStatusName"/>
+    public string? ToStatusName { get; set; }
 
     /// <summary>
     /// The date the change takes effect, ISO-8601. Defaulted on the <em>form</em> to today, which

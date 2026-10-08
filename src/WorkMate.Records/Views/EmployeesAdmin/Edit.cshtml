@@ -16,9 +16,26 @@
 
         <dt class="col-sm-3">@T["Status"]</dt>
         <dd class="col-sm-9">
-            <span class="badge bg-secondary" id="employee-status">@T[Model.Status.ToString()]</span>
-            <a class="ms-2 small" asp-controller="EmployeeLifecycleAdmin" asp-action="Exit"
-               asp-route-id="@Model.EmployeeId">@T["Change status"]</a>
+            <partial name="_EmploymentStatus" model="Model.Status" />
+
+            @* Every move valid from here, beside the status it would change. A2 had a single link
+               labelled "Change status" that went to Exit, so the only transition anybody could
+               reach by clicking was the one that ends employment. *@
+            <span class="ms-2">
+                <partial name="_LifecycleActions"
+                         model="@(new LifecycleActionsViewModel(
+                             Model.EmployeeId,
+                             Model.Transitions,
+                             Model.CanChangeStatus,
+                             AsMenu: false))" />
+            </span>
+
+            @if (Model.IsNewlyCreated && Model.CanChangeStatus && Model.Status == EmploymentStatus.Prospective)
+            {
+                <div class="form-text" id="employee-activate-hint">
+                    @T["Added as prospective. Activate them when they start — it is a dated decision, so it can be recorded for the day they actually began."]
+                </div>
+            }
         </dd>
 
         <dt class="col-sm-3">@T["Joined"]</dt>
@@ -53,7 +70,7 @@
         <select class="form-select" asp-for="Gender">
             @foreach (var gender in Enum.GetValues<Gender>())
             {
-                <option value="@gender">@T[gender.ToString()]</option>
+                <option value="@gender"><partial name="_GenderName" model="gender" /></option>
             }
         </select>
     </div>

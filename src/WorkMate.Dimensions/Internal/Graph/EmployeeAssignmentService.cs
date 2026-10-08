@@ -496,6 +496,66 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
                 .Select(term => ToAppointment(structureId, recordId, term))];
     }
 
+    public async Task<IReadOnlyList<EmployeeAssignment>> GetAllAssignmentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var documents = await AllDocumentsAsync<EmployeeAssignmentDocument, EmployeeAssignmentIndex>(
+            document => document.Id, cancellationToken);
+
+        return
+        [
+            .. documents
+                .SelectMany(document => document.Rows
+                    .Select(row => ToAssignment(document.EmployeeId, document.StructureId, row)))
+                .OrderBy(assignment => assignment.EmployeeId, StringComparer.Ordinal)
+                .ThenBy(assignment => assignment.StructureId, StringComparer.Ordinal)
+                .ThenBy(assignment => assignment.Range.From),
+        ];
+    }
+
+    public async Task<IReadOnlyList<HeadAppointment>> GetAllHeadAppointmentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var documents = await AllDocumentsAsync<HeadAppointmentDocument, UnitHeadIndex>(
+            document => document.Id, cancellationToken);
+
+        return
+        [
+            .. documents
+                .SelectMany(document => document.Terms
+                    .Select(term => ToAppointment(document.StructureId, document.RecordId, term)))
+                .OrderBy(appointment => appointment.StructureId, StringComparer.Ordinal)
+                .ThenBy(appointment => appointment.RecordId, StringComparer.Ordinal)
+                .ThenBy(appointment => appointment.Range.From),
+        ];
+    }
+
+    /// <summary>
+    /// Every document of a type, deduplicated.
+    /// </summary>
+    /// <remarks>
+    /// YesSql reaches documents through an index, and these two indexes carry a row per dated term
+    /// rather than per document, so the join returns a document once per term it has. Dedupated by
+    /// the document's own id rather than by trusting the query, because "distinct" on a joined
+    /// query is a property of the dialect and this has to be true on both of them.
+    /// </remarks>
+    private async Task<IReadOnlyList<TDocument>> AllDocumentsAsync<TDocument, TIndex>(
+        Func<TDocument, long> idOf,
+        CancellationToken cancellationToken)
+        where TDocument : class
+        where TIndex : class, YesSql.Indexes.IIndex
+    {
+        var rows = await _session.Query<TDocument, TIndex>().ListAsync(cancellationToken);
+        var byId = new Dictionary<long, TDocument>();
+
+        foreach (var document in rows)
+        {
+            byId[idOf(document)] = document;
+        }
+
+        return [.. byId.Values];
+    }
+
     /// <summary>
     /// Closes every term still running after <paramref name="lastDay"/>, optionally only one
     /// employee's, and returns how many were closed.

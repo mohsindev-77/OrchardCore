@@ -211,10 +211,16 @@ public sealed class EmployeesAdminController : Controller
         await _notifier.SuccessAsync(H["{0} was added, and is prospective until somebody activates them.",
             created.Value!.NameEn]);
 
-        return RedirectToAction(nameof(Edit), new { id = created.Value.EmployeeId });
+        // The editor, told that this is a brand-new record, so it can offer the step the person
+        // almost certainly came to take next rather than leaving them to find it.
+        return RedirectToAction(nameof(Edit), new { id = created.Value.EmployeeId, created = true });
     }
 
-    public async Task<IActionResult> Edit(string id, CancellationToken cancellationToken)
+    /// <param name="created">
+    /// True when arriving straight from Add, so the editor offers "Activate now" rather than
+    /// reporting "Prospective" and leaving the next step unlabelled.
+    /// </param>
+    public async Task<IActionResult> Edit(string id, bool created, CancellationToken cancellationToken)
     {
         if (!await _authorisation.AuthoriseAsync(Permissions.ViewEmployees))
         {
@@ -228,7 +234,12 @@ public sealed class EmployeesAdminController : Controller
             return NotFound();
         }
 
-        return View(ToEditModel(employee));
+        var model = ToEditModel(employee);
+
+        model.IsNewlyCreated = created;
+        model.CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus);
+
+        return View(model);
     }
 
     [HttpPost]
@@ -277,6 +288,7 @@ public sealed class EmployeesAdminController : Controller
             model.Code = employee.Code;
             model.Status = employee.Status;
             model.JoinDate = employee.JoinDate;
+            model.CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus);
 
             return View(model);
         }

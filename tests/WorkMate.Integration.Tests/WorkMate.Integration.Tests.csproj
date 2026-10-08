@@ -16,6 +16,7 @@
     <PackageReference Include="OrchardCore.Deployment.Core" />
     <PackageReference Include="OrchardCore.ContentManagement" />
     <PackageReference Include="OrchardCore.Title" />
+    <PackageReference Include="OrchardCore.Media" />
     <!-- For the one test that reaches past the graph service to corrupt the closure on purpose. -->
     <PackageReference Include="YesSql.Abstractions" />
     <!-- For creating a second, deliberately under-permissioned sign-in in tests that assert a

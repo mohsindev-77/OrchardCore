@@ -133,11 +133,16 @@
                    the same source prompt 5's approval routing reads, so the chart and the routing
                    cannot disagree. ADR-0012.
 
-                   Rendered either way, so a card does not change height as posts are filled. *@
-                <div class="designer-card-head">@(Model.HeadDisplayName is null ? T["Head: Vacant"] : T["Head: {0}", Model.HeadDisplayName])</div>
+                   Rendered either way, so a card does not change height as posts are filled.
+
+                   The words come from the model, not from here: this partial is also rendered with
+                   an empty model to make the template the script clones, and a sentence composed
+                   in the view put "Head: Vacant" on that template — which the script then had to
+                   remember to overwrite, and did not. See DesignerNodeViewModel.HeadLabel. *@
+                <div class="designer-card-head">@Model.HeadLabel</div>
                 @* One expression rather than an @if block, so a unit with nobody at it renders an
                    element with no whitespace in it at all — which is what :empty needs to hide it. *@
-                <div class="designer-card-employees">@(Model.EmployeeCount is { } employees ? T["{0} employees", employees].Value : string.Empty)</div>
+                <div class="designer-card-employees">@(Model.EmployeeCountLabel ?? string.Empty)</div>
             }
             @if (Model.IsUnplaced)
             {

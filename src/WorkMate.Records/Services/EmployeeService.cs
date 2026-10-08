@@ -574,7 +574,7 @@ internal sealed class EmployeeService : IEmployeeService
             errors.Add(new RecordError(
                 RecordRule.TransitionNotPermitted,
                 part.EmployeeCode,
-                S["An employee who is {0} cannot become {1}.", part.Status.ToString(), to.ToString()]));
+                S["An employee who is {0} cannot become {1}.", EmployeeStatusNames.Of(S, part.Status), EmployeeStatusNames.Of(S, to)]));
 
             return errors;
         }
@@ -588,7 +588,7 @@ internal sealed class EmployeeService : IEmployeeService
                 RecordRule.TransitionOutOfOrder,
                 part.EmployeeCode,
                 S["This employee has been {0} since {1}, so a change cannot take effect on {2}.",
-                    part.Status.ToString(),
+                    EmployeeStatusNames.Of(S, part.Status),
                     part.StatusEffectiveFrom,
                     effectiveFrom],
                 Field: "EffectiveFrom"));
