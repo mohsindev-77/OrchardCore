@@ -1,0 +1,41 @@
+@model UnitHeadViewModel
+
+<h1>@T["Leave {0} without a head", Model.UnitName]</h1>
+
+@if (Model.IsVacant)
+{
+    <p id="unit-head-already-vacant">@T["This unit already has no head on that date."]</p>
+}
+else
+{
+    <p id="unit-head-current">
+        @T["{0} has headed it since {1}.", Model.CurrentHeadName!, BilingualDisplay.Date(Model.CurrentHeadFrom)]
+    </p>
+
+    <div class="alert alert-warning">
+        @* Said before it happens, for the same reason the exit dry run says it: the failure is
+           silent otherwise — the chart and the routing agree with each other and both are wrong. *@
+        @T["Prompt 5's approval routing reads the same source this screen does. From the day after the date below, an approval that routes to this unit's head will have nowhere to go until somebody is appointed."]
+    </div>
+}
+
+<form method="post" asp-action="Clear" id="unit-head-clear">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="RecordId" />
+    <input type="hidden" asp-for="AsAt" />
+    <input type="hidden" asp-for="UnitNameEn" />
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="LastDay">@T["Last day as head"]</label>
+        <input class="form-control" asp-for="LastDay" type="date" required />
+        <div class="form-text">@T["Inclusive: they still head the unit on this day, and not the day after."]</div>
+    </div>
+
+    <button type="submit" class="btn btn-danger">@T["End the appointment"]</button>
+    <a class="btn btn-link"
+       asp-action="Set"
+       asp-route-structureId="@Model.StructureId"
+       asp-route-recordId="@Model.RecordId"
+       asp-route-asAt="@Model.AsAt">@T["Appoint somebody instead"]</a>
+</form>

@@ -6,10 +6,13 @@ using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.Data;
 using OrchardCore.Data.Migration;
 using OrchardCore.Modules;
+using OrchardCore.Navigation;
 using OrchardCore.Security.Permissions;
 using WorkMate.Dimensions.Services;
 using WorkMate.Records.Handlers;
+using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
+using WorkMate.Records.Navigation;
 using WorkMate.Records.Models;
 using WorkMate.Records.Services;
 
@@ -21,6 +24,7 @@ public sealed class Startup : StartupBase
     {
         services.AddDataMigration<Migrations>();
         services.AddPermissionProvider<Permissions>();
+        services.AddNavigationProvider<AdminMenu>();
 
         services.AddScoped<IRecordsAuthorisation, RecordsAuthorisation>();
 
@@ -41,6 +45,11 @@ public sealed class Startup : StartupBase
         // there, implemented here, because that module needs the answer and must not depend on the
         // module that holds it — the same shape as IDimensionDeletionBlockerProvider.
         services.AddScoped<IEmployeeLookup, EmployeeLookup>();
+
+        // The other two seams another module declared and this one answers: the shared component
+        // set's employee picker, and the candidate set behind an employee picker field.
+        services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
+        services.AddScoped<IContentPickerResultProvider, EmployeePickerResultProvider>();
 
         // This module's audit trail category and its three events, so an administrator can find and
         // filter them alongside Orchard's own.

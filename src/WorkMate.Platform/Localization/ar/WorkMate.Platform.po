@@ -190,9 +190,6 @@ msgstr "اترك تاريخ النهاية فارغًا ما دام السجل �
 msgid "The organisation picker arrives with the dimension engine. Placement is set through the dimension records for now."
 msgstr "تصل أداة اختيار الوحدة التنظيمية مع محرك الأبعاد. يُحدَّد التعيين من خلال سجلات الأبعاد في الوقت الحالي."
 
-msgid "The employee picker arrives with the employee record."
-msgstr "تصل أداة اختيار الموظف مع سجل الموظف."
-
 #: WorkMate.Platform.Views.WorkMateApprovalBadge
 msgid "Approvals"
 msgstr "الموافقات"
@@ -207,3 +204,17 @@ msgstr "اشتراط الأسماء العربية"
 #: WorkMate.Platform.Views.WorkMateSettings.Edit
 msgid "Off by default. Names are always bilingual, but the Arabic half may be left empty while a customer is still translating; where it is, the English name is shown to Arabic readers instead. Turn this on to insist on both."
 msgstr "معطَّل افتراضيًا. الأسماء ثنائية اللغة دائمًا، لكن يمكن ترك النصف العربي فارغًا أثناء الترجمة؛ وعندها يُعرض الاسم الإنجليزي لقرّاء العربية. فعّل هذا للإصرار على كليهما."
+
+# ---- the employee picker, a real control since prompt 4 session A2 ----
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "The employee record is not enabled on this tenant, so there is nobody to choose from."
+msgstr "سجل الموظفين غير مُفعَّل في هذا المستأجر، فلا يوجد من يمكن اختياره."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "— nobody —"
+msgstr "— لا أحد —"
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Showing {0} of {1} people. Narrow the list to see the rest."
+msgstr "يُعرض {0} من {1} شخصاً. ضيّق نطاق البحث لرؤية البقية."

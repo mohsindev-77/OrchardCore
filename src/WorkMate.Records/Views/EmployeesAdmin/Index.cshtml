@@ -1,0 +1,125 @@
+@model EmployeeListViewModel
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@T["Employees"]</h1>
+    @if (Model.CanManage)
+    {
+        <a asp-action="Create" class="btn btn-primary">@T["Add employee"]</a>
+    }
+</div>
+
+@* A GET form, so a filtered list is a URL somebody can bookmark, share and come back to. *@
+<form method="get" class="row g-2 align-items-end mb-3" id="employee-filter">
+    <div class="col-sm-5">
+        <label class="form-label" for="employee-search">@T["Search"]</label>
+        <input class="form-control" id="employee-search" type="search" name="search" value="@Model.Search"
+               placeholder="@T["Code or name, in either language"]" />
+    </div>
+    <div class="col-sm-4">
+        <label class="form-label" for="employee-status">@T["Status"]</label>
+        <select class="form-select" id="employee-status" name="status">
+            <option value="">@T["Every status, including leavers"]</option>
+            @foreach (var status in Enum.GetValues<EmploymentStatus>())
+            {
+                <option value="@status" selected="@(Model.Status == status)">@T[status.ToString()]</option>
+            }
+        </select>
+    </div>
+    <div class="col-sm-3">
+        <button type="submit" class="btn btn-secondary">@T["Filter"]</button>
+    </div>
+</form>
+
+@if (Model.Employees.Count == 0)
+{
+    <p id="employee-list-empty">
+        @if (string.IsNullOrWhiteSpace(Model.Search) && Model.Status is null)
+        {
+            @T["No employees yet."]
+        }
+        else
+        {
+            @T["No employees match that filter."]
+        }
+    </p>
+}
+else
+{
+    <table class="table table-striped align-middle" id="employee-list">
+        <thead>
+            <tr>
+                <th>@T["Code"]</th>
+                <th>@T["Name"]</th>
+                <th>@T["Status"]</th>
+                <th>@T["Joined"]</th>
+                <th>@T["Where they sit"]</th>
+                <th class="text-end">@T["Actions"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var employee in Model.Employees)
+            {
+                <tr class="employee-row" data-employee-code="@employee.Code">
+                    <td><code>@employee.Code</code></td>
+                    <td>
+                        <div dir="ltr" lang="en">@employee.NameEn</div>
+                        @* Only when there is Arabic to show: it is optional since ADR-0003's
+                           addendum, so an untranslated row would otherwise carry a blank line. *@
+                        @if (!string.IsNullOrWhiteSpace(employee.NameAr))
+                        {
+                            <div dir="rtl" lang="ar" class="text-muted small">@employee.NameAr</div>
+                        }
+                    </td>
+                    <td>
+                        <span class="badge bg-secondary employee-status">@T[employee.Status.ToString()]</span>
+                        <div class="text-muted small">@T["since {0}", EmployeeDisplay.Date(employee.StatusEffectiveFrom)]</div>
+                    </td>
+                    <td>@EmployeeDisplay.Date(employee.JoinDate)</td>
+                    <td class="employee-unit">
+                        @* Placement is an assignment row in the dimension engine, never a field on
+                           the record — architecture section 2. Empty is a real answer: somebody can
+                           be employed and not yet placed anywhere. *@
+                        @if (string.IsNullOrEmpty(employee.PrimaryUnitName))
+                        {
+                            <span class="text-muted">@T["Not placed"]</span>
+                        }
+                        else
+                        {
+                            @employee.PrimaryUnitName
+                        }
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a class="btn btn-outline-secondary"
+                               asp-action="Edit" asp-route-id="@employee.EmployeeId">@T["Edit"]</a>
+                            @if (Model.CanAssign)
+                            {
+                                <a class="btn btn-outline-secondary"
+                                   asp-controller="EmployeePlacementAdmin" asp-action="Index"
+                                   asp-route-id="@employee.EmployeeId">@T["Placement"]</a>
+                            }
+                            @if (Model.CanChangeStatus && employee.Status != EmploymentStatus.Exited)
+                            {
+                                <a class="btn btn-outline-secondary"
+                                   asp-controller="EmployeeLifecycleAdmin" asp-action="Exit"
+                                   asp-route-id="@employee.EmployeeId">@T["Exit"]</a>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <p class="text-muted">@T["Showing {0} of {1}.", Model.Employees.Count, Model.Total]</p>
+
+    @if (Model.HasMore)
+    {
+        <a class="btn btn-outline-secondary"
+           asp-action="Index"
+           asp-route-search="@Model.Search"
+           asp-route-status="@Model.Status"
+           asp-route-skip="@(Model.Skip + Model.Take)"
+           asp-route-take="@Model.Take">@T["Next page"]</a>
+    }
+}

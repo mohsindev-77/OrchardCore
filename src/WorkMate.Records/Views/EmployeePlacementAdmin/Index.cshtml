@@ -1,0 +1,118 @@
+@model EmployeePlacementViewModel
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@T["Where {0} sits", Model.Name]</h1>
+    @if (Model.CanAssign)
+    {
+        <a class="btn btn-primary" asp-action="Place" asp-route-id="@Model.EmployeeId">@T["Place on an axis"]</a>
+    }
+</div>
+
+<p class="text-muted">
+    @T["The employee record holds no department and no cost centre. Every placement below is a dated row in the dimension engine, which is what makes a mid-month transfer two rows rather than an overwrite — and what lets this screen answer the question for any date."]
+</p>
+
+@* Placement is always a question about a date, so the date is a control rather than an assumption.
+   Reads default to today; writes never default at all. *@
+<form method="get" class="row g-2 align-items-end mb-4" id="placement-asat">
+    <input type="hidden" name="id" value="@Model.EmployeeId" />
+    <div class="col-sm-4">
+        <label class="form-label" for="placement-date">@T["As at"]</label>
+        <input class="form-control" id="placement-date" type="date" name="asAt" value="@Model.AsAt" />
+    </div>
+    <div class="col-sm-3">
+        <button type="submit" class="btn btn-secondary">@T["Show"]</button>
+    </div>
+</form>
+
+<h2>@T["Placements"]</h2>
+
+@foreach (var axis in Model.Axes)
+{
+    <div class="card mb-3 placement-axis" data-structure-code="@axis.StructureCode">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>@axis.StructureName <code class="small">@axis.StructureCode</code></span>
+            @if (Model.CanAssign && axis.IsPlaced)
+            {
+                <a class="btn btn-sm btn-outline-secondary"
+                   asp-action="End" asp-route-id="@Model.EmployeeId"
+                   asp-route-structureId="@axis.StructureId">@T["End here"]</a>
+            }
+        </div>
+        <div class="card-body">
+            @if (!axis.IsPlaced)
+            {
+                <p class="text-muted mb-0 placement-none">@T["Not placed on this axis on that date."]</p>
+            }
+            else
+            {
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>@T["Unit"]</th>
+                            <th>@T["Allocation"]</th>
+                            <th>@T["Primary"]</th>
+                            <th>@T["From"]</th>
+                            <th>@T["To"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in axis.Rows)
+                        {
+                            <tr class="placement-row" data-unit-code="@row.UnitCode">
+                                <td>@row.UnitName <code class="small">@row.UnitCode</code></td>
+                                <td>@row.AllocationPercent%</td>
+                                <td>
+                                    @* Exactly one of an employee's concurrent placements on an axis
+                                       is primary — that is what resolves the matrix case without
+                                       ambiguity. *@
+                                    @(row.IsPrimary ? T["Yes"] : T["No"])
+                                </td>
+                                <td>@EmployeeDisplay.Date(row.From)</td>
+                                <td>@(row.To is null ? T["open"] : (object)EmployeeDisplay.Date(row.To))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+<h2>@T["Units this person heads"]</h2>
+
+@if (Model.Headships.Count == 0)
+{
+    <p class="text-muted" id="headships-none">@T["None on that date."]</p>
+}
+else
+{
+    @* A head appointment is not a placement: it carries no allocation, is counted by no headcount
+       and is charged to no cost centre, and the person need not sit in the unit at all. ADR-0012. *@
+    <table class="table table-sm" id="headships">
+        <thead>
+            <tr>
+                <th>@T["Unit"]</th>
+                <th>@T["Axis"]</th>
+                <th>@T["From"]</th>
+                <th>@T["To"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var headship in Model.Headships)
+            {
+                <tr class="headship-row" data-unit-code="@headship.UnitCode">
+                    <td>@headship.UnitName <code class="small">@headship.UnitCode</code></td>
+                    <td><code class="small">@headship.StructureCode</code></td>
+                    <td>@EmployeeDisplay.Date(headship.From)</td>
+                    <td>@(headship.To is null ? T["open"] : (object)EmployeeDisplay.Date(headship.To))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="text-muted">
+        @T["Heads are appointed and cleared on the organisation designer, on the unit's own card."]
+    </p>
+}
+
+<a class="btn btn-link" asp-controller="EmployeesAdmin" asp-action="Index">@T["Back to the list"]</a>

@@ -278,6 +278,25 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every unit on this axis that may hold an employee, effective on the date.
+    /// </summary>
+    /// <remarks>
+    /// The forwards reading of the employee-attachment rule, for a picker. The backwards reading —
+    /// what <c>IDimensionValidator.ValidateAssignmentAsync</c> refuses — comes from the same place,
+    /// <c>StructureDocument.PermitsEmployeesAt</c>, and that is deliberate: ADR-0010 was written
+    /// because the two readings of the containment rule had been implemented separately and
+    /// disagreed on exactly the case the rule existed for. One rule, two directions, one
+    /// implementation.
+    ///
+    /// An axis that declares nothing is unconstrained, so this returns every unit on it. Capped and
+    /// ordered like <see cref="SearchAsync"/>, because it feeds the same kind of control.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> GetEmployeeAttachableUnitsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every unit <paramref name="recordId"/> could be merged into: the units that could stand
     /// where it does, which is to say ones of its own dimension type.
     /// </summary>

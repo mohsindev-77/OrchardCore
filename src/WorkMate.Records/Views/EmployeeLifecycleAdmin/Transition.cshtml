@@ -1,0 +1,26 @@
+@model EmployeeTransitionViewModel
+
+<h1>@T["{0}: {1}", Model.Name, T[Model.To.ToString()]]</h1>
+
+<p class="text-muted" id="transition-from">
+    @T["{0} has been {1} since {2}.", Model.Name, T[Model.CurrentStatus.ToString()], EmployeeDisplay.Date(Model.CurrentStatusFrom)]
+</p>
+
+<form method="post" id="employee-transition">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" asp-for="EffectiveFrom" type="date" required />
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+        <div class="form-text">
+            @* Today is a suggestion on the form, not a default on the write: the service refuses a
+               transition with no date, and this is a date somebody can see and change first. *@
+            @T["The first day the new status is true. Suggested as today; change it if the decision was made for another date."]
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">@T["Confirm"]</button>
+    <a class="btn btn-link" asp-controller="EmployeesAdmin" asp-action="Index">@T["Cancel"]</a>
+</form>

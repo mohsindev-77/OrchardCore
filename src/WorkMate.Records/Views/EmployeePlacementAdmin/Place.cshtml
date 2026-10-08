@@ -1,0 +1,77 @@
+@model PlaceEmployeeViewModel
+
+<h1>@T["Place {0}", Model.Name]</h1>
+
+<form method="post" asp-action="Place" id="employee-place">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="StructureId">@T["Axis"]</label>
+        @* A GET round trip when the axis changes, because the units offered depend on it and this
+           screen works with no script at all. *@
+        <select class="form-select" asp-for="StructureId" onchange="this.form.submit()">
+            <option value="">@T["Choose an axis…"]</option>
+            @foreach (var structure in Model.Structures)
+            {
+                <option value="@structure.StructureId">@structure.Name (@structure.Code)</option>
+            }
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" asp-for="EffectiveFrom" type="date" required />
+        <div class="form-text">
+            @T["Whatever this displaces is closed the day before, which is how a mid-month transfer becomes two rows rather than an overwrite."]
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.StructureId))
+    {
+        <div class="mb-3">
+            <label class="form-label" asp-for="RecordId">@T["Unit"]</label>
+            <select class="form-select" asp-for="RecordId" id="place-unit">
+                <option value="">@T["Choose a unit…"]</option>
+                @foreach (var unit in Model.Units)
+                {
+                    <option value="@unit.RecordId">@unit.Name (@unit.Code)</option>
+                }
+            </select>
+            <div class="form-text">
+                @* The picker offers what the validator would accept, from the same rule read
+                   forwards — which is the ADR-0010 lesson applied to employee attachment. *@
+                @T["Only units this axis says may hold employees. An axis that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."]
+            </div>
+            @if (Model.Units.Count == 0)
+            {
+                <p class="text-warning" id="place-no-units">
+                    @T["This axis has no units that may hold employees on that date."]
+                </p>
+            }
+        </div>
+
+        <div class="row">
+            <div class="col-sm-6 mb-3">
+                <label class="form-label" asp-for="AllocationPercent">@T["Allocation (%)"]</label>
+                <input class="form-control" asp-for="AllocationPercent" type="number" min="1" max="100" step="1" />
+                <div class="form-text">
+                    @T["100 unless the cost is split. Concurrent placements on one axis must total 100."]
+                </div>
+            </div>
+            <div class="col-sm-6 mb-3">
+                <div class="form-check mt-4">
+                    <input class="form-check-input" asp-for="IsPrimary" type="checkbox" />
+                    <label class="form-check-label" asp-for="IsPrimary">@T["This is where they work"]</label>
+                </div>
+                <div class="form-text">
+                    @T["Exactly one concurrent placement on an axis is primary. Untick it for the second half of a matrix — a home department and a site team."]
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">@T["Place"]</button>
+    }
+
+    <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+</form>

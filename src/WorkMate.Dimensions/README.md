@@ -543,6 +543,7 @@ suppressed from becoming a click, so letting go never also toggles the branch.
 | Add, rename, retire | `ManageDimensionRecords` |
 | Move, cancel move, drag a card | `MoveDimensionRecords` |
 | Merge | `MergeDimensionRecords` |
+| Appoint or clear a unit's head | `AssignEmployees` |
 | Resolve a past date | `ViewDimensionHistory` |
 
 Viewing was gated on `ManageDimensionRecords` while the screen was read-only for
@@ -586,6 +587,15 @@ list. Without the script the stylesheet's `min-block-size` keeps rows close to
 level and nothing is hidden either way. An earlier version gave every card one
 fixed height and an ellipsis to enforce it, which lined the rows up beautifully
 and turned "WorkMate Demo Organisation" into "WorkMate De…".
+
+**Every card carries its unit's head and its headcount**, both read as at the date
+being shown. The head line says `Head: Vacant` when the post is empty — the dash
+that used to mean "not built yet" is gone, because once a unit can have a head a
+dash would be a claim about the organisation that nothing had checked. The two
+numbers are different facts and come from different places: the count is
+placements at the unit, the head is an appointment that carries no allocation, so
+a head who is not a member of the unit is named on the card and counted by
+nothing. ADR-0012.
 
 **A card shows one name, and it is the English one, in every UI language.** The
 Arabic name is stored, edited on *Add unit* and *Rename*, searchable in either
@@ -794,6 +804,23 @@ has not left. Declared here, implemented in `WorkMate.Records`, resolved as a
 collection — the same shape as `IDimensionDeletionBlockerProvider`, and for the
 same reason. A tenant with `WorkMate.Records` disabled gets a named refusal rather
 than every employee reported as missing.
+
+**`UnitHeadAdminController`** is the screen, reached from the unit's own card:
+*Appoint a head…* when the post is vacant, *Change the head…* when it is not.
+Gated by `AssignEmployees` — appointing a head and placing somebody are the same
+kind of act, and a separate permission would split one capability in two. Both
+screens list every term on record, because "who led this unit last March" is the
+question dating an appointment exists to answer and the person about to change it
+is the one most likely to want it answered. Clearing a head warns, before it
+happens, that approvals routing to that unit will have nowhere to go.
+
+**The card reads it in two batched queries for a whole row**, never two per card:
+the appointments in one (`GetHeadsAsync`) and the names in one more
+(`IEmployeeLookup.GetManyAsync`) — the same reasoning that batched
+`CountEmployeesAtAsync`. A head whose name cannot be resolved reads as "Vacant" on
+a card, because a content item id tells a reader nothing; on the head screen it
+reads as the id, because there the id is the only honest answer and "Vacant" would
+hide a problem on the one screen whose job is to fix it.
 
 ### Where employees may attach
 

@@ -81,6 +81,18 @@
                                asp-route-recordId="@Model.RecordId"
                                asp-route-asAt="@Model.AsAtIso">@T["Merge into…"]</a>
                         }
+                        @if (Model.CanAssignEmployees)
+                        {
+                            @* Appointing a head is the same kind of act as placing somebody, so it
+                               takes the same permission — AssignEmployees — rather than an eighth
+                               of its own. The label says which of the two things it does, because
+                               "Head…" would not tell a reader whether the post is filled. *@
+                            <a class="designer-action" data-designer-action="sethead"
+                               asp-controller="UnitHeadAdmin" asp-action="Set"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-recordId="@Model.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@(Model.HeadDisplayName is null ? T["Appoint a head…"] : T["Change the head…"])</a>
+                        }
                         <a class="designer-action" data-designer-action="retire"
                            asp-action="Retire"
                            asp-route-structureId="@Model.StructureId"
@@ -115,10 +127,14 @@
                     <span class="designer-card-type">@Model.DimensionTypeNameEn</span>
                     <code class="designer-card-code">@Model.Code</code>
                 </div>
-                @* A dash, not "Vacant": nothing can be a unit's head until employees exist, so the
-                   card cannot yet tell an unfilled post from an unbuilt feature. See the backlog
-                   note in the module README and in prompt 4 of the prompt library. *@
-                <div class="designer-card-head">@(Model.HeadDisplayName is null ? T["Head: —"] : T["Head: {0}", Model.HeadDisplayName])</div>
+                @* "Vacant", not a dash. The dash meant "not built yet" while no employee could
+                   exist; now that a unit can have a head, an unfilled post is a fact about the
+                   organisation and the card states it. Read through IEmployeeAssignmentService —
+                   the same source prompt 5's approval routing reads, so the chart and the routing
+                   cannot disagree. ADR-0012.
+
+                   Rendered either way, so a card does not change height as posts are filled. *@
+                <div class="designer-card-head">@(Model.HeadDisplayName is null ? T["Head: Vacant"] : T["Head: {0}", Model.HeadDisplayName])</div>
                 @* One expression rather than an @if block, so a unit with nobody at it renders an
                    element with no whitespace in it at all — which is what :empty needs to hide it. *@
                 <div class="designer-card-employees">@(Model.EmployeeCount is { } employees ? T["{0} employees", employees].Value : string.Empty)</div>

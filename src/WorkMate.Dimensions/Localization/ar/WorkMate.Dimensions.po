@@ -652,10 +652,6 @@ msgid "Expand or collapse this unit"
 msgstr "توسيع هذه الوحدة أو طيّها"
 
 #: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
-msgid "Head: —"
-msgstr "الرئيس: —"
-
-#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
 msgid "Head: {0}"
 msgstr "الرئيس: {0}"
 
@@ -1322,3 +1318,121 @@ msgstr "غادر {0} في {1} ولا يمكن تعيينه رئيساً لوحد
 #: WorkMate.Dimensions.Internal.Graph.DimensionValidator
 msgid "{0} already heads '{1}' from {2}. A unit has one head at a time; end that term first."
 msgstr "يرأس {0} بالفعل '{1}' اعتباراً من {2}. للوحدة رئيس واحد في كل وقت؛ أنهِ تلك المدة أولاً."
+
+# ---- the unit head's own screens (prompt 4, session A2; ADR-0012) ----
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Head: Vacant"
+msgstr "الرئيس: شاغر"
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Appoint a head…"
+msgstr "تعيين رئيس…"
+
+#: Views/OrganisationDesignerAdmin/_DesignerNode.cshtml
+msgid "Change the head…"
+msgstr "تغيير الرئيس…"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Who heads {0}?"
+msgstr "من يرأس {0}؟"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "On {0}, in {1}."
+msgstr "في {0}، ضمن {1}."
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "This unit has no head on that date."
+msgstr "لا يوجد رئيس لهذه الوحدة في ذلك التاريخ."
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "{0} has headed it since {1}. Appointing somebody else ends that term the day before the new one starts."
+msgstr "يرأسها {0} منذ {1}. تعيين شخص آخر ينهي تلك المدة في اليوم السابق لبداية المدة الجديدة."
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "A head does not have to work in the unit they head. An acting head borrowed from another department is ordinary, and an appointment carries no allocation — nobody is counted by this unit's headcount or charged to its cost centre because of it."
+msgstr "ليس بالضرورة أن يعمل الرئيس في الوحدة التي يرأسها. الرئيس بالإنابة المنتدب من إدارة أخرى أمر معتاد، والتعيين لا يحمل أي نسبة توزيع — فلا يُحتسب أحد ضمن عدد موظفي هذه الوحدة ولا يُحمَّل على مركز تكلفتها بسببه."
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Head of this unit"
+msgstr "رئيس هذه الوحدة"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "The first day of the new term. Prompt 5's approval routing resolves the head for the date it is asked about, so this is the date from which approvals start reaching them."
+msgstr "أول يوم في المدة الجديدة. يحدد توجيه الموافقات رئيس الوحدة حسب التاريخ المسؤول عنه، فهذا هو التاريخ الذي تبدأ الموافقات تصل إليه منه."
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Appoint"
+msgstr "تعيين"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Leave the post vacant instead"
+msgstr "ترك المنصب شاغراً بدلاً من ذلك"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Who has headed this unit"
+msgstr "من رأس هذه الوحدة"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "Head"
+msgstr "الرئيس"
+
+#: Views/UnitHeadAdmin/Set.cshtml
+msgid "present"
+msgstr "حتى الآن"
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "Leave {0} without a head"
+msgstr "ترك {0} بلا رئيس"
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "This unit already has no head on that date."
+msgstr "هذه الوحدة بلا رئيس أصلاً في ذلك التاريخ."
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "{0} has headed it since {1}."
+msgstr "يرأسها {0} منذ {1}."
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "Prompt 5's approval routing reads the same source this screen does. From the day after the date below, an approval that routes to this unit's head will have nowhere to go until somebody is appointed."
+msgstr "يقرأ توجيه الموافقات المصدر نفسه الذي تقرأه هذه الشاشة. اعتباراً من اليوم التالي للتاريخ أدناه، لن يجد طلب الموافقة الموجَّه إلى رئيس هذه الوحدة جهة يصل إليها حتى يُعيَّن شخص."
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "Last day as head"
+msgstr "آخر يوم في الرئاسة"
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "Inclusive: they still head the unit on this day, and not the day after."
+msgstr "شامل: لا يزال يرأس الوحدة في هذا اليوم، وليس في اليوم التالي."
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "End the appointment"
+msgstr "إنهاء التعيين"
+
+#: Views/UnitHeadAdmin/Clear.cshtml
+msgid "Appoint somebody instead"
+msgstr "تعيين شخص بدلاً من ذلك"
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "A date is needed."
+msgstr "التاريخ مطلوب."
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "Choose somebody to head this unit."
+msgstr "اختر من يرأس هذه الوحدة."
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "{0} heads '{1}' from {2}."
+msgstr "يرأس {0} '{1}' اعتباراً من {2}."
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "A last day is needed."
+msgstr "آخر يوم مطلوب."
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "'{0}' has no head from {1}."
+msgstr "'{0}' بلا رئيس اعتباراً من {1}."
+
+#: WorkMate.Dimensions.Controllers.UnitHeadAdminController
+msgid "'{0}' already had no head."
+msgstr "'{0}' كانت بلا رئيس أصلاً."

@@ -1,0 +1,80 @@
+@model EmployeeEditViewModel
+
+<h1>@T["Employee: {0}", Model.Name]</h1>
+
+<form method="post" asp-action="Edit" id="employee-edit">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+
+    @* The two the form shows and cannot change. The code is the natural key every recipe and
+       integration names this person by, so it is immutable; the status is reachable only through
+       the dated transitions, because changing it closes placements and headships and raises an
+       event — none of which a field edit can carry out. *@
+    <dl class="row mb-4">
+        <dt class="col-sm-3">@T["Employee code"]</dt>
+        <dd class="col-sm-9"><code id="employee-code">@Model.Code</code></dd>
+
+        <dt class="col-sm-3">@T["Status"]</dt>
+        <dd class="col-sm-9">
+            <span class="badge bg-secondary" id="employee-status">@T[Model.Status.ToString()]</span>
+            <a class="ms-2 small" asp-controller="EmployeeLifecycleAdmin" asp-action="Exit"
+               asp-route-id="@Model.EmployeeId">@T["Change status"]</a>
+        </dd>
+
+        <dt class="col-sm-3">@T["Joined"]</dt>
+        <dd class="col-sm-9">@EmployeeDisplay.Date(Model.JoinDate)</dd>
+
+        <dt class="col-sm-3">@T["Placement"]</dt>
+        <dd class="col-sm-9">
+            @* Read-only here on purpose. The employee record holds no department and no cost
+               centre — architecture section 2 — and every placement is a dated decision, which a
+               field on this form has nowhere to put a date for. *@
+            <a asp-controller="EmployeePlacementAdmin" asp-action="Index"
+               asp-route-id="@Model.EmployeeId" id="employee-placement-link">@T["Where this person sits"]</a>
+        </dd>
+    </dl>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" />
+
+    <div class="row">
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="DateOfBirth">@T["Date of birth"]</label>
+            <input class="form-control" asp-for="DateOfBirth" type="date" />
+            <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+        </div>
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="NationalityCode">@T["Nationality"]</label>
+            <input class="form-control" asp-for="NationalityCode" maxlength="2" />
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="Gender">@T["Gender"]</label>
+        <select class="form-select" asp-for="Gender">
+            @foreach (var gender in Enum.GetValues<Gender>())
+            {
+                <option value="@gender">@T[gender.ToString()]</option>
+            }
+        </select>
+    </div>
+
+    <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="PhotoPath">@T["Photograph"]</label>
+        <input class="form-control" asp-for="PhotoPath" />
+        <div class="form-text">@T["A media path. A picker for it arrives with the form designer."]</div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">@T["Save"]</button>
+    <a class="btn btn-link" asp-action="Index">@T["Back to the list"]</a>
+</form>
+
+<hr class="my-4" />
+
+<h2>@T["Sections"]</h2>
+<p class="text-muted">
+    @T["Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of dated rows. They are edited on the content screen, which is where the standard editors for them live."]
+</p>
+<a class="btn btn-outline-secondary" id="employee-sections-link"
+   href="@Url.Content($"~/Admin/Contents/ContentItems/{Model.EmployeeId}/Edit")">@T["Edit sections"]</a>

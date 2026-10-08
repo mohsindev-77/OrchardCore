@@ -119,3 +119,453 @@ msgstr "لا يمكن أن يكون الموظف مديراً مباشراً ل�
 #: WorkMate.Records.Services.EmployeeService
 msgid "{0} already reports to this employee, directly or indirectly, so they cannot also be their manager."
 msgstr "{0} يتبع هذا الموظف بالفعل، مباشرة أو عبر سلسلة، فلا يمكن أن يكون مديره في الوقت نفسه."
+
+# ================================================================================
+# The admin screens (prompt 4, session A2).
+# ================================================================================
+
+# ---- the admin menu and the list ----
+
+#: WorkMate.Records.Navigation.AdminMenu
+msgid "People"
+msgstr "الأفراد"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Add employee"
+msgstr "إضافة موظف"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Search"
+msgstr "بحث"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Code or name, in either language"
+msgstr "الرمز أو الاسم، بأي من اللغتين"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Status"
+msgstr "الحالة"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Every status, including leavers"
+msgstr "كل الحالات، بما فيها من انتهت خدمته"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Filter"
+msgstr "تصفية"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "No employees yet."
+msgstr "لا يوجد موظفون بعد."
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "No employees match that filter."
+msgstr "لا يوجد موظفون يطابقون هذه التصفية."
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Code"
+msgstr "الرمز"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Name"
+msgstr "الاسم"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Joined"
+msgstr "تاريخ الالتحاق"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Where they sit"
+msgstr "موقعه التنظيمي"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Actions"
+msgstr "إجراءات"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "since {0}"
+msgstr "منذ {0}"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Not placed"
+msgstr "غير معيَّن"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Edit"
+msgstr "تحرير"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Placement"
+msgstr "التعيين التنظيمي"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Exit"
+msgstr "إنهاء الخدمة"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Showing {0} of {1}."
+msgstr "يُعرض {0} من {1}."
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Next page"
+msgstr "الصفحة التالية"
+
+# ---- creating and editing ----
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Everybody is added as prospective, whatever their join date. Starting work is a dated decision somebody makes afterwards — which is what lets the record say 'hired, never turned up'."
+msgstr "يُضاف الجميع بحالة «مرتقب» أياً كان تاريخ التحاقهم. مباشرة العمل قرار مؤرَّخ يتخذه شخص لاحقاً — وهو ما يتيح للسجل أن يقول «تم التعيين ولم يباشر»."
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Employee code"
+msgstr "رمز الموظف"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Unique in this tenant, including against employees who have left, and never changed afterwards: every recipe, export and integration names this person by it. Letters, digits, hyphens, underscores, dots or slashes — a plain payroll number is fine."
+msgstr "فريد في هذا المستأجر، حتى مقابل من انتهت خدمتهم، ولا يتغير بعد ذلك أبداً: كل وصفة وتصدير وتكامل يشير إلى هذا الشخص به. حروف أو أرقام أو شرطات أو شرطات سفلية أو نقاط أو خطوط مائلة — ورقم الرواتب العادي مقبول."
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Join date"
+msgstr "تاريخ الالتحاق"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Date of birth"
+msgstr "تاريخ الميلاد"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Nationality"
+msgstr "الجنسية"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "A two-letter ISO country code. Statutory treatment depends on it."
+msgstr "رمز دولة من حرفين وفق معيار ISO. تعتمد عليه المعاملة النظامية."
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Gender"
+msgstr "الجنس"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Left unspecified rather than guessed when nobody has said."
+msgstr "يُترك غير محدد بدلاً من تخمينه عندما لا يذكره أحد."
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Line manager"
+msgstr "المدير المباشر"
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Who they report to, which is a different fact from which unit they sit in — customers routinely have the two differ. Placement is set separately."
+msgstr "الجهة التي يتبعها إدارياً، وهي حقيقة مختلفة عن الوحدة التي يعمل بها — ويختلف الاثنان عادةً لدى العملاء. يُحدَّد التعيين التنظيمي بشكل منفصل."
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Cancel"
+msgstr "إلغاء"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Employee: {0}"
+msgstr "الموظف: {0}"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Change status"
+msgstr "تغيير الحالة"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Where this person sits"
+msgstr "موقع هذا الشخص التنظيمي"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Photograph"
+msgstr "الصورة"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "A media path. A picker for it arrives with the form designer."
+msgstr "مسار ملف وسائط. تصل أداة اختياره مع مصمم النماذج."
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Save"
+msgstr "حفظ"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Back to the list"
+msgstr "العودة إلى القائمة"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Sections"
+msgstr "الأقسام"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of dated rows. They are edited on the content screen, which is where the standard editors for them live."
+msgstr "بيانات الوظيفة والمستندات والبيانات البنكية والمؤهلات والمعالون وجهات الاتصال قوائم على هذا الموظف، كل منها مجموعة سجلات مؤرَّخة. تُحرَّر من شاشة المحتوى، حيث توجد المحررات القياسية الخاصة بها."
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Edit sections"
+msgstr "تحرير الأقسام"
+
+# ---- the lifecycle ----
+
+#: Views/EmployeeLifecycleAdmin/Transition.cshtml
+msgid "{0}: {1}"
+msgstr "{0}: {1}"
+
+#: Views/EmployeeLifecycleAdmin/Transition.cshtml
+msgid "{0} has been {1} since {2}."
+msgstr "{0} حالته {1} منذ {2}."
+
+#: Views/EmployeeLifecycleAdmin/Transition.cshtml
+msgid "Effective from"
+msgstr "ساري اعتباراً من"
+
+#: Views/EmployeeLifecycleAdmin/Transition.cshtml
+msgid "The first day the new status is true. Suggested as today; change it if the decision was made for another date."
+msgstr "أول يوم تسري فيه الحالة الجديدة. مقترح أنه اليوم؛ غيّره إذا اتُّخذ القرار لتاريخ آخر."
+
+#: Views/EmployeeLifecycleAdmin/Transition.cshtml
+msgid "Confirm"
+msgstr "تأكيد"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "End {0}'s employment"
+msgstr "إنهاء خدمة {0}"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Ending employment closes every placement and every unit this person heads, on every axis, on their last day of service. See what it would close before committing to it."
+msgstr "إنهاء الخدمة يُغلق كل تعيين تنظيمي وكل وحدة يرأسها هذا الشخص، على كل المحاور، في آخر يوم عمل له. اطّلع على ما سيُغلق قبل اعتماده."
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Last day of service"
+msgstr "آخر يوم عمل"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "The last day they are employed, inclusive. Placements and headships are closed on it, and they are an ex-employee the day after."
+msgstr "آخر يوم يكون فيه على رأس العمل، شاملاً. تُغلق فيه التعيينات والرئاسات، ويصبح موظفاً سابقاً في اليوم التالي."
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Show me what this would close"
+msgstr "أرني ما سيُغلق"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "What this would close"
+msgstr "ما الذي سيُغلق"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Placements"
+msgstr "التعيينات التنظيمية"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "None. This person is not placed anywhere on that date."
+msgstr "لا شيء. هذا الشخص غير معيَّن في أي مكان في ذلك التاريخ."
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Axis"
+msgstr "المحور"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Unit"
+msgstr "الوحدة"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Allocation"
+msgstr "نسبة التوزيع"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Primary"
+msgstr "الأساسي"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Yes"
+msgstr "نعم"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "No"
+msgstr "لا"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "Units this would leave without a head"
+msgstr "الوحدات التي ستبقى بلا رئيس"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "None. This person heads no unit on that date."
+msgstr "لا شيء. هذا الشخص لا يرأس أي وحدة في ذلك التاريخ."
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "These units will have no head from the day after {0}. Prompt 5's approval routing reads the same source this does, so an approval that routes to a unit head will have nowhere to go until somebody is appointed."
+msgstr "ستبقى هذه الوحدات بلا رئيس اعتباراً من اليوم التالي لـ {0}. يقرأ توجيه الموافقات المصدر نفسه الذي تقرأه هذه الشاشة، فلن يجد طلب الموافقة الموجَّه إلى رئيس وحدة جهة يصل إليها حتى يُعيَّن شخص."
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "on {0}"
+msgstr "على {0}"
+
+#: Views/EmployeeLifecycleAdmin/Exit.cshtml
+msgid "End employment on {0}"
+msgstr "إنهاء الخدمة في {0}"
+
+# ---- placement ----
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Where {0} sits"
+msgstr "موقع {0} التنظيمي"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Place on an axis"
+msgstr "التعيين على محور"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "The employee record holds no department and no cost centre. Every placement below is a dated row in the dimension engine, which is what makes a mid-month transfer two rows rather than an overwrite — and what lets this screen answer the question for any date."
+msgstr "لا يحتوي سجل الموظف على إدارة ولا مركز تكلفة. كل تعيين أدناه سجل مؤرَّخ في محرك الأبعاد، وهو ما يجعل النقل في منتصف الشهر سجلين بدلاً من استبدال، وما يتيح لهذه الشاشة الإجابة عن السؤال لأي تاريخ."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "As at"
+msgstr "كما في تاريخ"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Show"
+msgstr "عرض"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "End here"
+msgstr "إنهاء التعيين هنا"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Not placed on this axis on that date."
+msgstr "غير معيَّن على هذا المحور في ذلك التاريخ."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "From"
+msgstr "من"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "To"
+msgstr "إلى"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "open"
+msgstr "مفتوح"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Units this person heads"
+msgstr "الوحدات التي يرأسها هذا الشخص"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "None on that date."
+msgstr "لا شيء في ذلك التاريخ."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Heads are appointed and cleared on the organisation designer, on the unit's own card."
+msgstr "يُعيَّن الرؤساء ويُعفون من مصمم الهيكل التنظيمي، من بطاقة الوحدة نفسها."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Place {0}"
+msgstr "تعيين {0}"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Choose an axis…"
+msgstr "اختر محوراً…"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Whatever this displaces is closed the day before, which is how a mid-month transfer becomes two rows rather than an overwrite."
+msgstr "يُغلق ما يحل هذا محله في اليوم السابق، وهكذا يصبح النقل في منتصف الشهر سجلين بدلاً من استبدال."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Choose a unit…"
+msgstr "اختر وحدة…"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Only units this axis says may hold employees. An axis that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."
+msgstr "الوحدات التي يسمح هذا المحور باحتوائها موظفين فقط. المحور الذي لا يحدد أياً منها غير مقيَّد ويعرضها كلها؛ والذي يحدد بعضها يعرض تلك، لأن الموظف المعيَّن في وحدة حاوية يُحتسب عليها ومرة أخرى في كل تجميع تحتها."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "This axis has no units that may hold employees on that date."
+msgstr "لا توجد في هذا المحور وحدات يمكن أن تحتوي موظفين في ذلك التاريخ."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Allocation (%)"
+msgstr "نسبة التوزيع (%)"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "100 unless the cost is split. Concurrent placements on one axis must total 100."
+msgstr "100 ما لم تكن التكلفة موزعة. يجب أن يكون مجموع التعيينات المتزامنة على محور واحد 100."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "This is where they work"
+msgstr "هذا هو مكان عمله"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Exactly one concurrent placement on an axis is primary. Untick it for the second half of a matrix — a home department and a site team."
+msgstr "تعيين واحد فقط من التعيينات المتزامنة على المحور يكون أساسياً. أزل التحديد للنصف الثاني من المصفوفة — إدارة أصلية وفريق موقع."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Place"
+msgstr "تعيين"
+
+#: Views/EmployeePlacementAdmin/End.cshtml
+msgid "End {0}'s placement on {1}"
+msgstr "إنهاء تعيين {0} على {1}"
+
+#: Views/EmployeePlacementAdmin/End.cshtml
+msgid "This closes every placement they hold on this axis, on the day given, inclusive. It changes nothing on any other axis and does not end their employment."
+msgstr "يُغلق هذا كل تعيين له على هذا المحور، في اليوم المحدد وشاملاً إياه. لا يغيّر شيئاً على أي محور آخر ولا ينهي خدمته."
+
+#: Views/EmployeePlacementAdmin/End.cshtml
+msgid "Last day"
+msgstr "آخر يوم"
+
+#: Views/EmployeePlacementAdmin/End.cshtml
+msgid "Inclusive: they are still placed here on this day, and not the day after."
+msgstr "شامل: لا يزال معيَّناً هنا في هذا اليوم، وليس في اليوم التالي."
+
+#: Views/EmployeePlacementAdmin/End.cshtml
+msgid "End the placement"
+msgstr "إنهاء التعيين"
+
+# ---- what the controllers say back ----
+
+#: WorkMate.Records.Controllers.EmployeesAdminController
+msgid "A join date is needed."
+msgstr "تاريخ الالتحاق مطلوب."
+
+#: WorkMate.Records.Controllers.EmployeesAdminController
+msgid "{0} was added, and is prospective until somebody activates them."
+msgstr "تمت إضافة {0}، وحالته «مرتقب» حتى يفعّله شخص."
+
+#: WorkMate.Records.Controllers.EmployeesAdminController
+msgid "{0} was updated."
+msgstr "تم تحديث {0}."
+
+#: WorkMate.Records.Controllers.EmployeeLifecycleAdminController
+msgid "A last day of service is needed."
+msgstr "آخر يوم عمل مطلوب."
+
+#: WorkMate.Records.Controllers.EmployeeLifecycleAdminController
+msgid "A date is needed. Nothing here is defaulted on a write."
+msgstr "التاريخ مطلوب. لا يُفترض شيء هنا عند الكتابة."
+
+#: WorkMate.Records.Controllers.EmployeeLifecycleAdminController
+msgid "{0} left on {1}. {2} placement(s) and {3} headship(s) were closed."
+msgstr "غادر {0} في {1}. تم إغلاق {2} تعيين و{3} رئاسة."
+
+#: WorkMate.Records.Controllers.EmployeeLifecycleAdminController
+msgid "'{0}' now has no head. Appoint one on the organisation designer."
+msgstr "'{0}' بلا رئيس الآن. عيّن رئيساً من مصمم الهيكل التنظيمي."
+
+#: WorkMate.Records.Controllers.EmployeeLifecycleAdminController
+msgid "{0} is {1} from {2}."
+msgstr "{0} حالته {1} اعتباراً من {2}."
+
+#: WorkMate.Records.Controllers.EmployeePlacementAdminController
+msgid "A date is needed."
+msgstr "التاريخ مطلوب."
+
+#: WorkMate.Records.Controllers.EmployeePlacementAdminController
+msgid "Choose an axis and a unit."
+msgstr "اختر محوراً ووحدة."
+
+#: WorkMate.Records.Controllers.EmployeePlacementAdminController
+msgid "{0} was placed from {1}."
+msgstr "تم تعيين {0} اعتباراً من {1}."
+
+#: WorkMate.Records.Controllers.EmployeePlacementAdminController
+msgid "A last day is needed."
+msgstr "آخر يوم مطلوب."
+
+#: WorkMate.Records.Controllers.EmployeePlacementAdminController
+msgid "{0} placement(s) ended on {1}."
+msgstr "تم إنهاء {0} تعيين في {1}."

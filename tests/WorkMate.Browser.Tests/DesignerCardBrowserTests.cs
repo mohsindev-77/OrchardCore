@@ -49,7 +49,7 @@ public sealed class DesignerCardBrowserTests
         var page = await context.NewPageAsync();
 
         await OpenAsync(page, structureCode, "Chart");
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         var escaped = await page.EvaluateAsync<string[]>(
             """
@@ -114,7 +114,7 @@ public sealed class DesignerCardBrowserTests
         var page = await context.NewPageAsync();
 
         await OpenAsync(page, Zenith, "Chart", culture);
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         var names = await page.EvaluateAsync<string[]>(
             """
@@ -160,7 +160,7 @@ public sealed class DesignerCardBrowserTests
 
         await page.SetViewportSizeAsync(900, 800);
         await OpenAsync(page, Zenith, "Chart");
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         var edges = await page.EvaluateAsync<Edges>(
             """
@@ -208,7 +208,7 @@ public sealed class DesignerCardBrowserTests
 
         await page.SetViewportSizeAsync(900, 800);
         await OpenAsync(page, Zenith, "Chart");
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         await page.ClickAsync("[data-designer-zoom='fit']");
 
@@ -261,7 +261,7 @@ public sealed class DesignerCardBrowserTests
         var page = await context.NewPageAsync();
 
         await OpenAsync(page, Zenith, view);
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         (await ChildCodesAsync(page, "zenith-org")).Should().Equal(
             "zenith-div-engineering", "zenith-div-projects", "zenith-div-corporate");
@@ -273,7 +273,7 @@ public sealed class DesignerCardBrowserTests
             "zenith-team-electrical-works", "zenith-team-civil-works");
 
         await OpenAsync(page, Crescent, view);
-        await ExpandEverythingAsync(page);
+        await DesignerTree.ExpandEverythingAsync(page);
 
         (await ChildCodesAsync(page, "crescent-org")).Should().Equal(
             "crescent-div-head-office", "crescent-div-branch-network");
@@ -350,41 +350,6 @@ public sealed class DesignerCardBrowserTests
             }
             """,
             unitCode);
-
-    /// <summary>Opens every branch, so the assertions see the whole tree rather than its top.</summary>
-    private static async Task ExpandEverythingAsync(IPage page)
-    {
-        const string collapsed = "#designer-tree .designer-node[data-expanded='false']:not([data-child-count='0'])";
-
-        // Clicking a toggle loads a branch, which replaces part of the tree, which can detach the
-        // very element a click is in the middle of landing on. That is the tree working, not
-        // failing, so a timed-out click is re-queried rather than fatal — but only a few times,
-        // because a toggle that genuinely never takes is the defect this suite exists to catch.
-        var retries = 5;
-
-        for (var round = 0; round < 200; round++)
-        {
-            if (await page.Locator(collapsed).CountAsync() == 0)
-            {
-                return;
-            }
-
-            try
-            {
-                await page.Locator(collapsed).First
-                    .Locator(".designer-toggle").First
-                    .ClickAsync(new LocatorClickOptions { Timeout = 10000 });
-            }
-            catch (TimeoutException) when (retries-- > 0)
-            {
-                continue;
-            }
-
-            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        }
-
-        throw new InvalidOperationException("The tree would not stay open.");
-    }
 
     /// <summary>
     /// Settable properties and a parameterless constructor, which is what Playwright's deserialiser

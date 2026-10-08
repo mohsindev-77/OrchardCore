@@ -1,4 +1,5 @@
 using System.Globalization;
+using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
@@ -7,6 +8,7 @@ using OrchardCore.Title.Models;
 using WorkMate.Records.Indexes;
 using WorkMate.Records.Models;
 using WorkMate.Records.Services;
+using YesSql;
 using YesSql.Sql;
 
 namespace WorkMate.Records;
@@ -42,9 +44,23 @@ public sealed class Migrations : DataMigration
     private const int StatusLength = 32;
 
     private readonly IContentDefinitionManager _contentDefinitionManager;
+    private readonly IContentManager _contentManager;
 
-    public Migrations(IContentDefinitionManager contentDefinitionManager) =>
+    /// <summary>
+    /// For the one step that repairs data rather than schema. <see cref="UpdateFrom1Async"/> has to
+    /// read and rewrite stored content items, which <c>SchemaBuilder</c> cannot do.
+    /// </summary>
+    private readonly ISession _session;
+
+    public Migrations(
+        IContentDefinitionManager contentDefinitionManager,
+        IContentManager contentManager,
+        ISession session)
+    {
         _contentDefinitionManager = contentDefinitionManager;
+        _contentManager = contentManager;
+        _session = session;
+    }
 
     public async Task<int> CreateAsync()
     {
@@ -227,6 +243,96 @@ public sealed class Migrations : DataMigration
             ]);
     }
 
+    /// <summary>
+    /// Gives every employee who already exists the display text they should always have had.
+    /// </summary>
+    /// <remarks>
+    /// The repair half of the fix on <see cref="Handlers.EmployeeHandler"/>: the <c>TitlePart</c>
+    /// pattern produces nothing for a record created outside an HTTP request, because
+    /// <c>TitlePartHandler</c> renders it through Liquid and that throws there. The handler fixes it
+    /// from here on; this fixes what is already stored.
+    ///
+    /// A separate step rather than an edit to <see cref="CreateAsync"/>, per ADR-0009, even though
+    /// the window in which an affected employee could have been created is one commit wide: the
+    /// rule is that a shipped step is never edited, and a rule with an exception for "it is probably
+    /// fine" is not a rule. The cost of being wrong about that is a tenant whose employees are
+    /// permanently blank in every picker.
+    ///
+    /// Only fills what is absent, so it never overwrites a title somebody has, and is therefore
+    /// idempotent — a retried half-finished run does not undo the half that worked.
+    /// </remarks>
+    public async Task<int> UpdateFrom1Async()
+    {
+        // The ids from the index, then each item through IContentManager, which is the way a
+        // content item is written everywhere else in this product. See
+        // WorkMate.Dimensions.Migrations.UpdateFrom6Async for why an ISession.SaveAsync would be
+        // the wrong tool for a content item even where no guard forbids it.
+        var ids = (await _session
+                .QueryIndex<EmployeeIndex>(index => index.Latest)
+                .ListAsync())
+            .Select(row => row.ContentItemId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var id in ids)
+        {
+            var employee = await _contentManager.GetAsync(id);
+
+            if (employee is null ||
+                !string.IsNullOrWhiteSpace(employee.DisplayText) ||
+                !employee.TryGet<EmployeePart>(out var part) ||
+                string.IsNullOrWhiteSpace(part.NameEn))
+            {
+                continue;
+            }
+
+            employee.DisplayText = part.NameEn;
+
+            await _contentManager.UpdateAsync(employee);
+        }
+
+        return 2;
+    }
+
+    /// <summary>
+    /// Takes <c>Employee</c> off Orchard's generic "new content item" list, so there is one way to
+    /// create an employee rather than two.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this closes.</b> <c>IEmployeeService.CreateAsync</c> raises
+    /// <c>EmployeeCreated</c>, which specification section 5 requires leave, attendance and payroll
+    /// to subscribe to. Orchard's generic content editor does not call it: an employee created that
+    /// way is validated by <see cref="Handlers.EmployeeHandler"/> and is correct in every visible
+    /// respect, and the three modules that needed telling are never told. The failure is permanent
+    /// and silent — there is no later moment at which anybody notices the event did not fire.
+    ///
+    /// Listable and securable stay on. The type still appears in Orchard's content list and still
+    /// obeys its per-type permissions; it simply has no "New" button, which is what makes this
+    /// module's own Add-employee screen the only way in. Editing is unaffected, which is what the
+    /// standard sections are edited through.
+    ///
+    /// <b>A new step, and <see cref="CreateAsync"/> is amended to match.</b> The append-only rule:
+    /// <see cref="CreateAsync"/> is kept producing the current schema for a brand-new tenant and
+    /// never carries an upgrade, so it now says <c>Creatable = false</c> and this step applies the
+    /// same change to a tenant that already ran it. The same shape as
+    /// <c>WorkMate.Dimensions.Migrations.UpdateFrom4Async</c> and
+    /// <c>StructureIndex.ContainmentRuleCount</c>.
+    /// </remarks>
+    public async Task<int> UpdateFrom2Async()
+    {
+        await _contentDefinitionManager.AlterTypeDefinitionAsync(
+            EmployeeFieldNames.ContentType,
+            type => type.WithSettings(new ContentTypeSettings
+            {
+                Creatable = false,
+                Listable = true,
+                Securable = true,
+                Draftable = false,
+            }));
+
+        return 3;
+    }
+
     /// <summary>One field on one section item type.</summary>
     private sealed record SectionField(string Name, string FieldType, string Label);
 
@@ -328,7 +434,12 @@ public sealed class Migrations : DataMigration
                 }))
                 .WithSettings(new ContentTypeSettings
                 {
-                    Creatable = true,
+                    // Not creatable through Orchard's generic "new content item" screen. That path
+                    // does not call IEmployeeService.CreateAsync, so it would never raise
+                    // EmployeeCreated — and leave, attendance and payroll would simply never be
+                    // told about the person. This module's Add-employee screen is the one way in.
+                    // UpdateFrom2Async applies the same change to a tenant created before it.
+                    Creatable = false,
                     Listable = true,
                     Securable = true,
                     Draftable = false,

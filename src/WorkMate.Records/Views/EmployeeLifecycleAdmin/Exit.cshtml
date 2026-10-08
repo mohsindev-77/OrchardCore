@@ -1,0 +1,100 @@
+@model EmployeeExitViewModel
+
+<h1>@T["End {0}'s employment", Model.Name]</h1>
+
+<p class="text-muted">
+    @T["Ending employment closes every placement and every unit this person heads, on every axis, on their last day of service. See what it would close before committing to it."]
+</p>
+
+@* Two forms, one date. The first computes the dry run and writes nothing; the second commits. They
+   are separate so that nothing about looking can be mistaken for doing — the same shape a move, a
+   merge, a retirement and a level change already have. *@
+<form method="post" asp-action="ExitPreview" id="employee-exit-preview">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+
+    <div class="row align-items-end mb-3">
+        <div class="col-sm-5">
+            <label class="form-label" asp-for="LastDay">@T["Last day of service"]</label>
+            <input class="form-control" asp-for="LastDay" type="date" required />
+            <div class="form-text">
+                @T["The last day they are employed, inclusive. Placements and headships are closed on it, and they are an ex-employee the day after."]
+            </div>
+        </div>
+        <div class="col-sm-5">
+            <button type="submit" class="btn btn-secondary">@T["Show me what this would close"]</button>
+        </div>
+    </div>
+</form>
+
+@if (Model.HasPlan)
+{
+    <div id="employee-exit-plan">
+        <h2>@T["What this would close"]</h2>
+
+        <h3 class="h5">@T["Placements"]</h3>
+        @if (Model.Placements.Count == 0)
+        {
+            <p id="exit-no-placements">@T["None. This person is not placed anywhere on that date."]</p>
+        }
+        else
+        {
+            <table class="table table-sm" id="exit-placements">
+                <thead>
+                    <tr>
+                        <th>@T["Axis"]</th>
+                        <th>@T["Unit"]</th>
+                        <th>@T["Allocation"]</th>
+                        <th>@T["Primary"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var placement in Model.Placements)
+                    {
+                        <tr class="exit-placement">
+                            <td>@placement.StructureName</td>
+                            <td>@placement.UnitName <code class="small">@placement.UnitCode</code></td>
+                            <td>@placement.AllocationPercent%</td>
+                            <td>@(placement.IsPrimary ? T["Yes"] : T["No"])</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <h3 class="h5">@T["Units this would leave without a head"]</h3>
+        @if (!Model.LeavesAUnitVacant)
+        {
+            <p id="exit-no-headships">@T["None. This person heads no unit on that date."]</p>
+        }
+        else
+        {
+            @* The half worth reading. A department losing its approver on Friday is something
+               somebody has to act on, and finding out from a stuck approval the following week is
+               too late — which is the whole reason this screen exists. *@
+            <div class="alert alert-warning" id="exit-headships">
+                <p>
+                    @T["These units will have no head from the day after {0}. Prompt 5's approval routing reads the same source this does, so an approval that routes to a unit head will have nowhere to go until somebody is appointed.", Model.LastDay ?? string.Empty]
+                </p>
+                <ul>
+                    @foreach (var unit in Model.UnitsLosingTheirHead)
+                    {
+                        <li class="exit-headship">
+                            @unit.Name <code class="small">@unit.RecordCode</code>
+                            <span class="text-muted">@T["on {0}", unit.StructureCode ?? string.Empty]</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+
+        <form method="post" asp-action="Exit" id="employee-exit-commit">
+            <input type="hidden" asp-for="EmployeeId" />
+            <input type="hidden" asp-for="LastDay" />
+            <button type="submit" class="btn btn-danger">
+                @T["End employment on {0}", Model.LastDay ?? string.Empty]
+            </button>
+            <a class="btn btn-link" asp-controller="EmployeesAdmin" asp-action="Index">@T["Cancel"]</a>
+        </form>
+    </div>
+}

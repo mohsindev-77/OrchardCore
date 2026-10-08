@@ -1,0 +1,64 @@
+@model EmployeeCreateViewModel
+
+<h1>@T["Add employee"]</h1>
+
+<p class="text-muted">
+    @T["Everybody is added as prospective, whatever their join date. Starting work is a dated decision somebody makes afterwards — which is what lets the record say 'hired, never turned up'."]
+</p>
+
+<form method="post" asp-action="Create" id="employee-create">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="Code">@T["Employee code"]</label>
+        <input class="form-control" asp-for="Code" required />
+        <span asp-validation-for="Code" class="text-danger"></span>
+        <div class="form-text">
+            @T["Unique in this tenant, including against employees who have left, and never changed afterwards: every recipe, export and integration names this person by it. Letters, digits, hyphens, underscores, dots or slashes — a plain payroll number is fine."]
+        </div>
+    </div>
+
+    @* English required, Arabic optional unless the tenant says otherwise. The tag helper marks the
+       English input required and never the Arabic one, because a tenant setting is not something a
+       tag helper can see and the server is the authority either way. ADR-0003's addendum. *@
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" />
+
+    <div class="row">
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="JoinDate">@T["Join date"]</label>
+            <input class="form-control" asp-for="JoinDate" type="date" required />
+            <span asp-validation-for="JoinDate" class="text-danger"></span>
+        </div>
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="DateOfBirth">@T["Date of birth"]</label>
+            <input class="form-control" asp-for="DateOfBirth" type="date" />
+            <span asp-validation-for="DateOfBirth" class="text-danger"></span>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="NationalityCode">@T["Nationality"]</label>
+            <input class="form-control" asp-for="NationalityCode" maxlength="2" />
+            <div class="form-text">@T["A two-letter ISO country code. Statutory treatment depends on it."]</div>
+        </div>
+        <div class="col-sm-6 mb-3">
+            <label class="form-label" asp-for="Gender">@T["Gender"]</label>
+            <select class="form-select" asp-for="Gender">
+                @foreach (var gender in Enum.GetValues<Gender>())
+                {
+                    <option value="@gender">@T[gender.ToString()]</option>
+                }
+            </select>
+            <div class="form-text">@T["Left unspecified rather than guessed when nobody has said."]</div>
+        </div>
+    </div>
+
+    <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+    <div class="form-text mb-3">
+        @T["Who they report to, which is a different fact from which unit they sit in — customers routinely have the two differ. Placement is set separately."]
+    </div>
+
+    <button type="submit" class="btn btn-primary">@T["Add employee"]</button>
+    <a class="btn btn-link" asp-action="Index">@T["Cancel"]</a>
+</form>

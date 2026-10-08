@@ -36,9 +36,18 @@ public sealed class DesignerNodeViewModel
     public int? EmployeeCount { get; set; }
 
     /// <summary>
-    /// The unit's head, once employees exist. Always null today, and rendered as an empty line on
-    /// the card so the layout does not move when it starts being filled.
+    /// The unit's head on the date being shown, or null when the post is vacant.
     /// </summary>
+    /// <remarks>
+    /// <b>Null means vacant, and the card says so.</b> It used to mean "not built yet" and the card
+    /// showed a dash, because no employee could exist; the 5 October backlog note was written about
+    /// exactly that distinction, and once head appointments ship a dash would be a claim about the
+    /// organisation that nothing had checked.
+    ///
+    /// Read through <c>IEmployeeAssignmentService.GetHeadsAsync</c> — the same source prompt 5's
+    /// approval routing reads — so what the chart shows and what an approval routes to cannot
+    /// disagree. A head appointment is its own dated record and not an assignment: ADR-0012.
+    /// </remarks>
     public string? HeadDisplayName { get; set; }
 
     /// <summary>
@@ -85,6 +94,16 @@ public sealed class DesignerNodeViewModel
     /// same reason.
     /// </summary>
     public bool CanMerge { get; set; }
+
+    /// <summary>
+    /// Whether this card offers to appoint or change the unit's head — <c>AssignEmployees</c>.
+    /// </summary>
+    /// <remarks>
+    /// The same permission that places somebody, not an eighth of its own: appointing a head and
+    /// placing an employee are the same kind of act, and splitting them would leave a customer
+    /// granting two permissions to achieve one thing.
+    /// </remarks>
+    public bool CanAssignEmployees { get; set; }
 
     /// <summary>The structure the card belongs to, which every action link needs.</summary>
     public string StructureId { get; set; } = string.Empty;
@@ -153,8 +172,12 @@ public sealed class DesignerNodeViewModel
         string asAtIso = "",
         bool canEdit = false,
         bool canMove = false,
-        bool canMerge = false) => new()
+        bool canMerge = false,
+        string? headDisplayName = null,
+        bool canAssignEmployees = false) => new()
     {
+        HeadDisplayName = headDisplayName,
+        CanAssignEmployees = canAssignEmployees,
         StructureId = structureId,
         AsAtIso = asAtIso,
         CanEdit = canEdit,

@@ -1,0 +1,22 @@
+@model EndPlacementViewModel
+
+<h1>@T["End {0}'s placement on {1}", Model.Name, Model.StructureName ?? string.Empty]</h1>
+
+<p class="text-muted">
+    @T["This closes every placement they hold on this axis, on the day given, inclusive. It changes nothing on any other axis and does not end their employment."]
+</p>
+
+<form method="post" asp-action="End" id="employee-end-placement">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+    <input type="hidden" asp-for="StructureId" />
+
+    <div class="mb-3">
+        <label class="form-label" asp-for="LastDay">@T["Last day"]</label>
+        <input class="form-control" asp-for="LastDay" type="date" required />
+        <div class="form-text">@T["Inclusive: they are still placed here on this day, and not the day after."]</div>
+    </div>
+
+    <button type="submit" class="btn btn-danger">@T["End the placement"]</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+</form>

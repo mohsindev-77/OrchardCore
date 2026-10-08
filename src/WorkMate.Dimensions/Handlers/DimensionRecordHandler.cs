@@ -105,6 +105,65 @@ public sealed class DimensionRecordHandler : ContentHandlerBase
         }
     }
 
+    /// <summary>
+    /// Gives the record the display text every Orchard screen shows it by: its English name.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is here and not left to <c>TitlePart</c>.</b> The generated type binds
+    /// <c>TitlePartSettings.Pattern</c> to the English name with
+    /// <c>TitlePartOptions.GeneratedDisabled</c>, exactly as specification section 4 requires, and
+    /// on a real tenant it produces nothing: <c>TitlePartHandler</c> renders the pattern through
+    /// <c>ILiquidTemplateManager</c>, and that throws a <c>NullReferenceException</c> outside an
+    /// HTTP request. Measured, not inferred — rendering the pattern directly against a real tenant
+    /// in a shell scope throws, and <c>DisplayText</c> comes back null.
+    ///
+    /// Which means pattern-generated titles never worked for anything created by a service, a
+    /// recipe import or a background job — which is every record on a tenant seeded from a recipe.
+    /// The symptom is silent: the record is correct in every other respect and simply has no name
+    /// on Orchard's own content list, in a content picker, or anywhere else that reads
+    /// <c>DisplayText</c>.
+    ///
+    /// So the handler is the authority and the pattern stays as it is. The two cannot disagree —
+    /// both are "the English name" — and keeping the pattern means a tenant where Liquid does work
+    /// gets the same answer rather than a different one.
+    ///
+    /// Set on the present-tense hooks, before the item is written, rather than on
+    /// <c>CreatedAsync</c>/<c>UpdatedAsync</c> as <c>TitlePartHandler</c> does, so the value is in
+    /// the document the first time it is saved rather than in one that needs saving again.
+    /// </remarks>
+    private static void SetDisplayText(ContentItem contentItem)
+    {
+        if (contentItem.TryGet<DimensionRecordPart>(out var part) && !string.IsNullOrWhiteSpace(part.NameEn))
+        {
+            contentItem.DisplayText = part.NameEn;
+        }
+    }
+
+    public override Task CreatingAsync(CreateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
+    public override Task UpdatingAsync(UpdateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Covers a rename, which reaches the record through publish rather than update.</summary>
+    public override Task PublishingAsync(PublishContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
     public override async Task ValidatingAsync(ValidateContentContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

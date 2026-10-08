@@ -46,6 +46,53 @@ public sealed class EmployeeHandler : ContentHandlerBase
         S = stringLocalizer;
     }
 
+    /// <summary>
+    /// Gives the employee the display text every Orchard screen shows them by: their English name.
+    /// </summary>
+    /// <remarks>
+    /// The <c>Employee</c> type binds <c>TitlePart</c> to the English name with a generated
+    /// pattern, and on a real tenant that produces nothing, for a reason that has nothing to do
+    /// with this module: <c>TitlePartHandler</c> renders the pattern through
+    /// <c>ILiquidTemplateManager</c>, which throws outside an HTTP request. Every dimension record
+    /// has the same empty title for the same reason;
+    /// <c>DimensionRecordHandler.SetDisplayText</c> carries the full account.
+    ///
+    /// The handler is therefore the authority. It and the pattern cannot disagree — both are "the
+    /// English name" — and the pattern is kept so a path where Liquid does work gives the same
+    /// answer rather than a different one.
+    /// </remarks>
+    private static void SetDisplayText(ContentItem contentItem)
+    {
+        if (contentItem.TryGet<EmployeePart>(out var part) && !string.IsNullOrWhiteSpace(part.NameEn))
+        {
+            contentItem.DisplayText = part.NameEn;
+        }
+    }
+
+    public override Task CreatingAsync(CreateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
+    public override Task UpdatingAsync(UpdateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
+    public override Task PublishingAsync(PublishContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        SetDisplayText(context.ContentItem);
+
+        return Task.CompletedTask;
+    }
+
     public override async Task ValidatingAsync(ValidateContentContext context)
     {
         ArgumentNullException.ThrowIfNull(context);

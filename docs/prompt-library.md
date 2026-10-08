@@ -449,6 +449,29 @@ last March" differently in the imported tenant. The round-trip test in
 transfer and a split allocation, export, import, and compare
 `IEmployeeAssignmentService`'s answers on dates either side of each change.
 
+**Backlog note, 8 October 2026 — two abstractions duplicated between
+`WorkMate.Dimensions` and `WorkMate.Records`.** Raised and deliberately accepted
+while building prompt 4 session A1.
+
+`RecordResult<T>` / `RecordError` / `RecordRule` mirror `DimensionResult<T>` /
+`DimensionError` / `DimensionRule`, and `IRecordsAuthorisation` mirrors
+`IDimensionAuthorisation` — the permission check plus "what is today in the
+tenant's time zone". Neither could simply be reused: the result types carry a
+module's own rule enum, so sharing one would make every employee-record failure
+describe itself in the dimension engine's vocabulary; and the authorisation seam
+would leave the employee record's permission gate named for, and owned by, another
+module.
+
+The end state is one shared abstraction each — a `WorkMateResult<TRule>` in
+`WorkMate.Core` and one authorisation seam in `WorkMate.Platform` — which every
+module takes. Hoisting either means editing **every write path in
+`WorkMate.Dimensions`** for no behaviour change, which is its own reviewable piece
+of work with its own risk; doing it inside a feature slice would bury it.
+
+Every module added after `WorkMate.Records` makes the duplication worse, so the
+right moment is before the first HCM module needs a result type — prompt 6 at the
+latest. Recorded in `src/WorkMate.Records/README.md` under known limitations.
+
 ```
 # Task: WorkMate.Records — the employee record and the form designer
 

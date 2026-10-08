@@ -46,6 +46,14 @@ public sealed class OrganisationDesignerAdminController : Controller
     private readonly IDimensionGraphService _graphService;
     private readonly IEmployeeAssignmentService _assignmentService;
     private readonly IDimensionService _dimensionService;
+
+    /// <summary>How a card resolves its head's name. See <c>HeadNamesAsync</c>.</summary>
+    /// <remarks>
+    /// A collection, so the designer still draws on a tenant with <c>WorkMate.Records</c> disabled:
+    /// the cards read "Head: Vacant", which is true of a tenant that can hold no employees.
+    /// </remarks>
+    private readonly IEnumerable<IEmployeeLookup> _employeeLookups;
+
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
     private readonly IStringLocalizer S;
@@ -56,6 +64,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         IDimensionGraphService graphService,
         IEmployeeAssignmentService assignmentService,
         IDimensionService dimensionService,
+        IEnumerable<IEmployeeLookup> employeeLookups,
         IDimensionAuthorisation authorisation,
         IAuthorizationService authorizationService,
         IStringLocalizer<OrganisationDesignerAdminController> stringLocalizer)
@@ -65,6 +74,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         _graphService = graphService;
         _assignmentService = assignmentService;
         _dimensionService = dimensionService;
+        _employeeLookups = employeeLookups;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
         S = stringLocalizer;
@@ -1222,16 +1232,74 @@ public sealed class OrganisationDesignerAdminController : Controller
         var childCounts = await _graphService.CountChildrenAsync(
             structureId, recordIds, asAt, cancellationToken);
 
+        var heads = await HeadNamesAsync(structureId, recordIds, asAt, cancellationToken);
+
         var canEdit = await CanEditAsync();
         var canMove = await CanMoveAsync();
         var canMerge = await CanMergeAsync();
+        var canAssign = await _authorizationService.AuthorizeAsync(User, Permissions.AssignEmployees);
 
         return
         [
             .. nodes.Select(node => DesignerNodeViewModel.Of(
                 node, typesById, employeeCounts, childCounts,
-                structureId, asAt.ToIso(), canEdit, canMove, canMerge)),
+                structureId, asAt.ToIso(), canEdit, canMove, canMerge,
+                heads.GetValueOrDefault(node.RecordId), canAssign)),
         ];
+    }
+
+    /// <summary>
+    /// Who heads each of these units on the date, by name, absent where the post is vacant.
+    /// </summary>
+    /// <remarks>
+    /// Two batched queries for a whole row of cards, never two per card: the appointments in one
+    /// (<c>GetHeadsAsync</c>) and then the names of whoever they found in one more
+    /// (<c>IEmployeeLookup.GetManyAsync</c>). A card that resolved its own head would be a query
+    /// per card on every expand, which is exactly what <c>CountEmployeesAtAsync</c> was batched to
+    /// avoid.
+    ///
+    /// <b>Absent means vacant, and the card says "Vacant" rather than nothing.</b> The distinction
+    /// the 5 October backlog note was written about: a dash meant "not built yet", and once this
+    /// ships a dash would be a claim about the organisation that nothing had checked.
+    ///
+    /// An employee whose name cannot be resolved — <c>WorkMate.Records</c> disabled, or a record
+    /// removed out from under the appointment — is left absent too, which reads as vacant. Showing
+    /// a content item id instead would tell the reader strictly less than the word "Vacant" does.
+    /// </remarks>
+    private async Task<IReadOnlyDictionary<string, string>> HeadNamesAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var heads = await _assignmentService.GetHeadsAsync(structureId, recordIds, asAt, cancellationToken);
+
+        if (heads.Count == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var lookup = _employeeLookups.FirstOrDefault();
+
+        if (lookup is null)
+        {
+            return new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        var people = await lookup.GetManyAsync(
+            [.. heads.Values.Select(head => head.EmployeeId)], cancellationToken);
+
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var (recordId, head) in heads)
+        {
+            if (people.TryGetValue(head.EmployeeId, out var person))
+            {
+                names[recordId] = person.ForCulture();
+            }
+        }
+
+        return names;
     }
 
     /// <summary>

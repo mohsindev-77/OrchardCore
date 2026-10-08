@@ -1,3 +1,4 @@
+using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
@@ -51,9 +52,22 @@ public sealed class Migrations : DataMigration
     /// </summary>
     private readonly ISession _session;
 
-    public Migrations(IContentDefinitionManager contentDefinitionManager, ISession session)
+    /// <summary>
+    /// For <see cref="UpdateFrom6Async"/>, which repairs content items. A content item is written
+    /// through the content manager, never through <c>ISession</c>: it carries no <c>Version</c>
+    /// property, so it cannot take part in the optimistic-concurrency rule this module's own
+    /// documents are held to, and <c>ConcurrencyCheckedSaveTests</c> enforces that rule at source
+    /// level.
+    /// </summary>
+    private readonly IContentManager _contentManager;
+
+    public Migrations(
+        IContentDefinitionManager contentDefinitionManager,
+        IContentManager contentManager,
+        ISession session)
     {
         _contentDefinitionManager = contentDefinitionManager;
+        _contentManager = contentManager;
         _session = session;
     }
 
@@ -435,6 +449,61 @@ public sealed class Migrations : DataMigration
         });
 
         return 6;
+    }
+
+    /// <summary>
+    /// Gives every record that already exists the display text it should always have had.
+    /// </summary>
+    /// <remarks>
+    /// The repair half of the fix described on <c>DimensionRecordHandler.SetDisplayText</c>: the
+    /// <c>TitlePart</c> pattern never produced a title for a record created outside an HTTP request,
+    /// which is every record on a tenant seeded by a recipe, so those records carry a null
+    /// <c>DisplayText</c> and show as blank on Orchard's own content list and in every content
+    /// picker. The handler fixes it from here on; this fixes what is already stored.
+    ///
+    /// <b>Data, not schema</b>, so it reads and rewrites content items rather than touching
+    /// <c>SchemaBuilder</c>. Additive in the sense ADR-0009 requires: it only fills a value that is
+    /// absent and never overwrites one somebody has, so a record whose title was set — by having
+    /// been created through a request, or by hand — is left exactly as it is.
+    ///
+    /// Idempotent for the same reason. Running it twice changes nothing the second time, which
+    /// matters because a half-finished run that is retried must not undo the half that worked.
+    /// </remarks>
+    public async Task<int> UpdateFrom6Async()
+    {
+        // The ids from the index, then each item through IContentManager — the way every other
+        // content-item write in this module goes.
+        //
+        // Not ISession.SaveAsync: this module writes its own documents under optimistic
+        // concurrency, which ConcurrencyCheckedSaveTests enforces at source level, and a content
+        // item cannot take part in that — ContentItem carries no Version property for YesSql to
+        // drive the check from. Reaching for SaveCheckedAsync here would have satisfied the guard
+        // while asking for a check that could not happen.
+        var ids = (await _session
+                .QueryIndex<DimensionRecordPartIndex>(index => index.Latest)
+                .ListAsync())
+            .Select(row => row.ContentItemId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var id in ids)
+        {
+            var record = await _contentManager.GetAsync(id);
+
+            if (record is null ||
+                !string.IsNullOrWhiteSpace(record.DisplayText) ||
+                !record.TryGet<DimensionRecordPart>(out var part) ||
+                string.IsNullOrWhiteSpace(part.NameEn))
+            {
+                continue;
+            }
+
+            record.DisplayText = part.NameEn;
+
+            await _contentManager.UpdateAsync(record);
+        }
+
+        return 7;
     }
 
     /// <summary>

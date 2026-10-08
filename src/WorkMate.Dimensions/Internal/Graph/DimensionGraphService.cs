@@ -302,6 +302,34 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. matches.OrderBy(record => record.NameEn, StringComparer.Ordinal).Take(50)];
     }
 
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetEmployeeAttachableUnitsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var date = await ResolveDateAsync(asAt);
+        var units = new List<DimensionNodeRef>();
+
+        // The structure's own rule, read forwards. PermitsEmployeesAt is the same method the
+        // validator calls, so a unit this offers is a unit that will be accepted — and one it
+        // withholds is one that would have been refused.
+        foreach (var level in structure.Levels.Where(level => structure.PermitsEmployeesAt(level.DimensionTypeId)))
+        {
+            foreach (var record in await RecordsOfTypeAsync(level.DimensionTypeId, cancellationToken))
+            {
+                if (record.EffectiveRange.Contains(date))
+                {
+                    units.Add(record);
+                }
+            }
+        }
+
+        return [.. units.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
+    }
+
     public async Task<bool> IsUnderAsync(
         string structureId,
         string recordId,

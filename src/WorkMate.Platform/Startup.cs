@@ -33,6 +33,12 @@ public sealed class Startup : StartupBase
         services.AddScoped<IWorkMateSettingsService, WorkMateSettingsService>();
         services.AddScoped<IBilingualNamePolicy, BilingualNamePolicy>();
 
+        // Who may see which employees. A stub that allows everything until specification section 9's
+        // visibility by node is built in prompt 9 — declared and wired now so that every candidate
+        // set in the product already goes through it, and prompt 9 has nothing to go and find. See
+        // IVisibilityService for why a permissive stub is the right one.
+        services.AddScoped<IVisibilityService, AllowAllVisibilityService>();
+
         // System authority: the explicit opt-in a recipe step or background task enters when it
         // genuinely runs as the platform. Scoped, so it cannot outlive the shell scope that
         // entered it. Every module's services consult it, which is why it lives here.
