@@ -182,6 +182,12 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
 
         builder.UseContentRoot(_contentRoot);
 
+        // A test subscriber to the employee lifecycle events, on every tenant this host creates.
+        // Specification section 5 requires those events to reach leave, attendance and payroll;
+        // none of those modules exists yet, so the only way to prove they reach anybody is to be
+        // somebody. See RecordingLifecycleHandler.
+        builder.ConfigureServices(services => services.AddRecordingLifecycleHandler());
+
         // Production, not Development. In Development Orchard compiles Razor views at runtime,
         // and the runtime compiler in a test host has no language version to go on, so it falls
         // back to C# 8 and fails on Orchard's own views ("Feature 'not pattern' is not available

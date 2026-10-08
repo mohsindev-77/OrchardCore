@@ -13,9 +13,20 @@ namespace WorkMate.Dimensions.Services;
 /// </remarks>
 /// <param name="RootDimensionTypeIds">The types a record may be a root of this axis as.</param>
 /// <param name="Containment">Every permitted parent-child pairing.</param>
+/// <param name="EmployeeAttachableDimensionTypeIds">
+/// The types that may hold employees on this axis, or null to say nothing about it.
+/// </param>
+/// <remarks>
+/// <paramref name="EmployeeAttachableDimensionTypeIds"/> is nullable where the other two are not,
+/// and the difference is load-bearing. Null means "this caller is not describing employee
+/// attachment", so an update leaves whatever the structure already declares; an empty list means
+/// "this axis constrains nothing", which is a statement. A caller that could only say the latter
+/// would silently clear a tenant's rule every time a screen that predates it posted a structure.
+/// </remarks>
 public sealed record StructureShape(
     IReadOnlyList<string> RootDimensionTypeIds,
-    IReadOnlyList<StructureContainment> Containment)
+    IReadOnlyList<StructureContainment> Containment,
+    IReadOnlyList<string>? EmployeeAttachableDimensionTypeIds = null)
 {
     /// <summary>
     /// The shape the old chain-and-skip-flag description permitted: adjacent pairs always, deeper
@@ -26,6 +37,12 @@ public sealed record StructureShape(
     /// reads a row still written the old way, and this service's own default. Two derivations
     /// would mean an upgraded tenant and a freshly seeded one could end up with different rules
     /// from the same description.
+    ///
+    /// It deliberately derives <em>nothing</em> about employee attachment, and leaves it null. A
+    /// chain says which types this axis uses and in what order; it does not say which of them hold
+    /// people, and guessing "the last level" would quietly impose a constraint on every structure
+    /// that has ever been described as a chain — including every one the v5 migration upgraded.
+    /// Unconstrained is the only answer a chain actually gives.
     /// </remarks>
     public static StructureShape FromChain(
         IReadOnlyList<string> levelDimensionTypeIds,

@@ -26,6 +26,17 @@ internal sealed class DimensionValidator : IDimensionValidator
     private readonly IStructureLookup _structureLookup;
     private readonly IDimensionRecordLookup _recordLookup;
     private readonly IEnumerable<IDimensionDeletionBlockerProvider> _blockerProviders;
+
+    /// <summary>
+    /// How this module asks whether a head is a real employee who has not left.
+    /// </summary>
+    /// <remarks>
+    /// A collection rather than a single service so that the dimension engine still starts when
+    /// <c>WorkMate.Records</c> is disabled, and so that the absence is reportable instead of
+    /// invisible. See <see cref="IEmployeeLookup"/>.
+    /// </remarks>
+    private readonly IEnumerable<IEmployeeLookup> _employeeLookups;
+
     private readonly IDimensionAuthorisation _authorisation;
 
     /// <summary>
@@ -42,6 +53,7 @@ internal sealed class DimensionValidator : IDimensionValidator
         IStructureLookup structureLookup,
         IDimensionRecordLookup recordLookup,
         IEnumerable<IDimensionDeletionBlockerProvider> blockerProviders,
+        IEnumerable<IEmployeeLookup> employeeLookups,
         IDimensionAuthorisation authorisation,
         IBilingualNamePolicy namePolicy,
         IStringLocalizer<DimensionValidator> stringLocalizer)
@@ -51,6 +63,7 @@ internal sealed class DimensionValidator : IDimensionValidator
         _structureLookup = structureLookup;
         _recordLookup = recordLookup;
         _blockerProviders = blockerProviders;
+        _employeeLookups = employeeLookups;
         _authorisation = authorisation;
         _namePolicy = namePolicy;
         S = stringLocalizer;
@@ -539,7 +552,7 @@ internal sealed class DimensionValidator : IDimensionValidator
 
     // ---- assignments ------------------------------------------------------------------
 
-    public Task<IReadOnlyList<DimensionError>> ValidateAssignmentAsync(
+    public async Task<IReadOnlyList<DimensionError>> ValidateAssignmentAsync(
         string employeeId,
         string structureId,
         IReadOnlyList<AssignmentSplitEntry> split,
@@ -558,7 +571,7 @@ internal sealed class DimensionValidator : IDimensionValidator
                 employeeId,
                 S["A placement needs at least one unit. Use the end operation to remove an employee from a structure."]));
 
-            return Task.FromResult<IReadOnlyList<DimensionError>>(errors);
+            return errors;
         }
 
         var total = split.Sum(entry => entry.AllocationPercent);
@@ -601,7 +614,273 @@ internal sealed class DimensionValidator : IDimensionValidator
                 S["An employee cannot be placed at the same node twice on the same date."]));
         }
 
-        return Task.FromResult<IReadOnlyList<DimensionError>>(errors);
+        errors.AddRange(await ValidateAttachmentAsync(structureId, split, effectiveFrom, cancellationToken));
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Where an employee may be attached on this axis: the declared rule, and the advisory one.
+    /// </summary>
+    /// <remarks>
+    /// Both are asked of every unit in the split, not only the primary one, because a secondary
+    /// placement is counted by exactly the same roll-ups the primary is — the Zenith matrix is the
+    /// worked example, and its whole point is that cost rolls up by project over the secondary rows.
+    ///
+    /// An unknown structure is not reported here. Every caller has already resolved it, and a
+    /// second "that structure does not exist" from a method about allocations would be noise on top
+    /// of the error that already said so.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateAttachmentAsync(
+        string structureId,
+        IReadOnlyList<AssignmentSplitEntry> split,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
+
+        if (structure is null)
+        {
+            return [];
+        }
+
+        var errors = new List<DimensionError>();
+        var on = EffectiveDates.ToColumn(effectiveFrom);
+
+        foreach (var entry in split.DistinctBy(entry => entry.RecordId, StringComparer.Ordinal))
+        {
+            var record = await _recordLookup.GetAsync(entry.RecordId, cancellationToken);
+
+            if (record is null)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.UnknownReference,
+                    entry.RecordId,
+                    S["There is no dimension record with the id '{0}' in this tenant.", entry.RecordId]));
+
+                continue;
+            }
+
+            if (!structure.PermitsEmployeesAt(record.DimensionTypeId))
+            {
+                var type = await _typeLookup.GetAsync(record.DimensionTypeId, cancellationToken);
+
+                errors.Add(new DimensionError(
+                    DimensionRule.UnitDoesNotHoldEmployees,
+                    record.Code,
+                    S["'{0}' is a {1}, and '{2}' does not place employees on a {1}. Place them at a unit beneath it.",
+                        record.NameEn,
+                        type?.Name.En ?? record.DimensionTypeId,
+                        structure.Name.En]));
+
+                // No point also warning that it has children: the blocking rule has already
+                // answered, and two messages about one unit is one more than anybody can act on.
+                continue;
+            }
+
+            var children = await _session
+                .QueryIndex<DimensionLinkIndex>(index =>
+                    index.StructureId == structureId &&
+                    index.ParentId == entry.RecordId &&
+                    index.EffectiveFrom <= on &&
+                    on <= index.EffectiveToInclusive)
+                .CountAsync(cancellationToken);
+
+            if (children > 0)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.EmployeeAtContainerUnit,
+                    record.Code,
+                    S["'{0}' has {1} unit(s) under it on {2}. Somebody placed here is counted by this unit and again by every roll-up beneath it.",
+                        record.NameEn,
+                        children,
+                        effectiveFrom]));
+            }
+        }
+
+        return errors;
+    }
+
+    // ---- head appointments ------------------------------------------------------------
+
+    public async Task<IReadOnlyList<DimensionError>> ValidateHeadAppointmentAsync(
+        string structureId,
+        string recordId,
+        string employeeId,
+        EffectiveRange range,
+        CancellationToken cancellationToken = default)
+    {
+        var errors = new List<DimensionError>();
+
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
+
+        if (structure is null)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.UnknownReference,
+                structureId,
+                S["There is no structure with the id '{0}' in this tenant.", structureId]));
+        }
+
+        var record = await _recordLookup.GetAsync(recordId, cancellationToken);
+
+        if (record is null)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.UnknownReference,
+                recordId,
+                S["There is no dimension record with the id '{0}' in this tenant.", recordId]));
+        }
+
+        if (range.To is not null && range.To < range.From)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.EffectiveRangeInvalid,
+                recordId,
+                S["A head's term cannot end before it starts."]));
+        }
+
+        errors.AddRange(await ValidateHeadIsEligibleAsync(recordId, employeeId, range, cancellationToken));
+        errors.AddRange(await ValidateNoCompetingHeadAsync(structureId, recordId, employeeId, range, cancellationToken));
+
+        return errors;
+    }
+
+    /// <summary>
+    /// That the head is somebody this tenant employs, and had not already left when their term
+    /// starts.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately checks the <em>start</em> of the term rather than the whole of it. A head who
+    /// leaves mid-term is not an invalid appointment, it is an appointment that ends — and
+    /// <c>IEmployeeService.ExitAsync</c> closes it on the exit date rather than refusing the exit.
+    /// Refusing here on the strength of a future end date would make it impossible to record a
+    /// past leaver's headship at all, which is precisely the history this engine exists to keep.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateHeadIsEligibleAsync(
+        string recordId,
+        string employeeId,
+        EffectiveRange range,
+        CancellationToken cancellationToken)
+    {
+        var lookup = _employeeLookups.FirstOrDefault();
+
+        if (lookup is null)
+        {
+            return
+            [
+                new DimensionError(
+                    DimensionRule.HeadNotEligible,
+                    recordId,
+                    S["A unit head cannot be appointed on this tenant: the employee record (WorkMate.Records) is not enabled."]),
+            ];
+        }
+
+        var employee = await lookup.GetAsync(employeeId, cancellationToken);
+
+        if (employee is null)
+        {
+            return
+            [
+                new DimensionError(
+                    DimensionRule.HeadNotEligible,
+                    employeeId,
+                    S["There is no employee with the id '{0}' in this tenant.", employeeId]),
+            ];
+        }
+
+        if (employee.HasLeftBy(range.From))
+        {
+            return
+            [
+                new DimensionError(
+                    DimensionRule.HeadNotEligible,
+                    employee.Code,
+                    S["{0} left on {1} and cannot be appointed to head a unit from {2}.",
+                        employee.NameEn,
+                        employee.ExitedOn!.Value,
+                        range.From]),
+            ];
+        }
+
+        return [];
+    }
+
+    /// <summary>
+    /// That nobody else's term stands in the way of the one being claimed.
+    /// </summary>
+    /// <remarks>
+    /// <b>A handover is not a clash, and this is the distinction the rule turns on.</b> Appointing a
+    /// successor from 1 April while the sitting head's term runs open-ended from 2024 overlaps on
+    /// paper and is the most ordinary thing that happens to a unit: <c>SetHeadAsync</c> closes the
+    /// outgoing term on 31 March, the same displacement a new placement performs on the one it
+    /// replaces. A naive overlap test refuses every handover there has ever been.
+    ///
+    /// Two things genuinely do stand in the way, and both are refused:
+    /// <list type="bullet">
+    /// <item><b>A term already on record that starts on or after the new date.</b> Somebody has
+    /// recorded a future appointment; writing over it would delete a decision rather than supersede
+    /// one.</item>
+    /// <item><b>A closed term by somebody else covering days this one claims.</b> This is backdating
+    /// into a period another head is recorded as having led. The engine splits rather than overwrites
+    /// when a <em>placement</em> is backdated (ADR-0005's addendum), but a head is not a placement:
+    /// truncating a completed term changes who an approval from that period resolves to, which is
+    /// the one thing dating the appointment exists to keep stable.</item>
+    /// </list>
+    ///
+    /// A term the same employee already holds is never a clash. Re-appointing somebody already in
+    /// post is a no-op a recipe re-run does constantly, and refusing it would make <c>unit-heads</c>
+    /// fail its second application for a reason ADR-0008 promises it will not.
+    ///
+    /// Read from the index rather than from the document: it is the same rows either way, and it is
+    /// what the write path will have flushed, so the validator and the writer cannot disagree about
+    /// what is already there.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateNoCompetingHeadAsync(
+        string structureId,
+        string recordId,
+        string employeeId,
+        EffectiveRange range,
+        CancellationToken cancellationToken)
+    {
+        var from = EffectiveDates.ToColumn(range.From);
+        var to = EffectiveDates.ToInclusiveEndColumn(range.To);
+        var openEnded = EffectiveDates.OpenEnded;
+
+        var overlapping = await _session
+            .QueryIndex<UnitHeadIndex>(index =>
+                index.StructureId == structureId &&
+                index.NodeId == recordId &&
+                index.EmployeeId != employeeId &&
+                index.EffectiveFrom <= to &&
+                from <= index.EffectiveToInclusive &&
+                // Either it begins inside the claimed period — a future appointment this one would
+                // delete — or it is a closed term reaching into it, which is backdating over
+                // somebody else's recorded tenure. An open-ended term that began earlier is the
+                // handover case and is displaced, not refused.
+                (from <= index.EffectiveFrom || index.EffectiveToInclusive < openEnded))
+            .ListAsync(cancellationToken);
+
+        if (!overlapping.Any())
+        {
+            return [];
+        }
+
+        var record = await _recordLookup.GetAsync(recordId, cancellationToken);
+        var clash = overlapping.First();
+        var incumbent = await (_employeeLookups.FirstOrDefault()?.GetAsync(clash.EmployeeId, cancellationToken)
+            ?? Task.FromResult<EmployeeRef?>(null));
+
+        return
+        [
+            new DimensionError(
+                DimensionRule.SingleHeadPerUnit,
+                record?.Code ?? recordId,
+                S["{0} already heads '{1}' from {2}. A unit has one head at a time; end that term first.",
+                    incumbent?.NameEn ?? clash.EmployeeId,
+                    record?.NameEn ?? recordId,
+                    EffectiveDates.FromColumn(clash.EffectiveFrom)]),
+        ];
     }
 
     // ---- merge ------------------------------------------------------------------------

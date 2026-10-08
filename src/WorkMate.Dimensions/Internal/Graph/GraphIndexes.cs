@@ -155,3 +155,41 @@ internal sealed class EmployeeAssignmentIndexProvider : IndexProvider<EmployeeAs
             }));
     }
 }
+
+/// <summary>One dated term of one employee leading one unit on one axis.</summary>
+/// <remarks>
+/// A table of its own rather than a column on <see cref="EmployeeAssignmentIndex"/>, per ADR-0012:
+/// leading a unit and being allocated to it are different facts, and a head who is not a member has
+/// no assignment row to hang a flag on.
+/// </remarks>
+internal sealed class UnitHeadIndex : MapIndex
+{
+    public string StructureId { get; set; } = string.Empty;
+
+    /// <summary>The unit being led. Named for the node, like <c>EmployeeAssignmentIndex.NodeId</c>.</summary>
+    public string NodeId { get; set; } = string.Empty;
+
+    public string EmployeeId { get; set; } = string.Empty;
+
+    public DateTime EffectiveFrom { get; set; }
+
+    public DateTime EffectiveToInclusive { get; set; }
+}
+
+internal sealed class UnitHeadIndexProvider : IndexProvider<HeadAppointmentDocument>
+{
+    public override void Describe(DescribeContext<HeadAppointmentDocument> context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        context.For<UnitHeadIndex>()
+            .Map(document => document.Terms.Select(term => new UnitHeadIndex
+            {
+                StructureId = document.StructureId,
+                NodeId = document.RecordId,
+                EmployeeId = term.EmployeeId,
+                EffectiveFrom = EffectiveDates.ToColumn(term.Range.From),
+                EffectiveToInclusive = EffectiveDates.ToInclusiveEndColumn(term.Range.To),
+            }));
+    }
+}

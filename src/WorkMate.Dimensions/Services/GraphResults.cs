@@ -68,6 +68,22 @@ public sealed record EmployeeAssignment(
     bool IsPrimary);
 
 /// <summary>
+/// One dated term of one employee leading one unit on one axis.
+/// </summary>
+/// <remarks>
+/// Not an assignment and deliberately not derived from one — ADR-0012. A head need not be a member
+/// of the unit they head, so an appointment carries no allocation and is counted by no headcount
+/// and charged to no cost centre. It is the single source for the organisation designer's card and
+/// for prompt 5's "route to the unit head", so that what the chart shows and what an approval
+/// routes to cannot disagree.
+/// </remarks>
+public sealed record HeadAppointment(
+    string StructureId,
+    string RecordId,
+    string EmployeeId,
+    EffectiveRange Range);
+
+/// <summary>
 /// One disagreement between the closure index and the links it is supposed to be derived from.
 /// </summary>
 /// <remarks>

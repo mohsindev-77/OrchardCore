@@ -31,6 +31,7 @@
         "OrchardCore.Contents",
         "OrchardCore.ContentTypes",
         "OrchardCore.ContentFields",
+        "OrchardCore.Flows",
         "OrchardCore.Localization",
         "OrchardCore.Localization.AdminCulturePicker",
         "OrchardCore.ContentLocalization",

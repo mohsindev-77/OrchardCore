@@ -93,13 +93,45 @@ public interface IDimensionValidator
 
     /// <summary>
     /// Rules for an employee's concurrent placements on one axis: no overlap, allocations
-    /// totalling 100 percent, exactly one primary.
+    /// totalling 100 percent, exactly one primary, and that each unit is one this axis says may
+    /// hold employees.
     /// </summary>
+    /// <remarks>
+    /// The last of those is the leaf-attachment rule, and it comes in two halves that are
+    /// deliberately not the same strength. <see cref="DimensionRule.UnitDoesNotHoldEmployees"/>
+    /// blocks, because an axis that has declared which types hold people has said so on purpose.
+    /// <see cref="DimensionRule.EmployeeAtContainerUnit"/> only warns, because a unit with children
+    /// may still legitimately have somebody at it and refusing that would be wrong far more often
+    /// than it would be right.
+    /// </remarks>
     Task<IReadOnlyList<DimensionError>> ValidateAssignmentAsync(
         string employeeId,
         string structureId,
         IReadOnlyList<AssignmentSplitEntry> split,
         DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rules for appointing somebody to lead a unit: at most one head per unit per date, and a
+    /// head who is a real employee and has not already left.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately <em>not</em> a rule that the head is assigned to the unit. ADR-0012: a head
+    /// need not be a member of what they lead, and the whole reason an appointment is its own
+    /// record rather than a flag on an assignment is that requiring one would mean inventing an
+    /// allocation for somebody who has none there.
+    ///
+    /// Employee existence is answered through <see cref="IEmployeeLookup"/>, which
+    /// <c>WorkMate.Records</c> implements. On a tenant where that module is disabled there is no
+    /// way to check, and this reports exactly that — <see cref="DimensionRule.HeadNotEligible"/>
+    /// naming the missing module — rather than passing an unverifiable appointment.
+    /// </remarks>
+    /// <param name="range">The term being claimed, open ended when its end is null.</param>
+    Task<IReadOnlyList<DimensionError>> ValidateHeadAppointmentAsync(
+        string structureId,
+        string recordId,
+        string employeeId,
+        EffectiveRange range,
         CancellationToken cancellationToken = default);
 
     /// <summary>Rules for folding one record into another.</summary>

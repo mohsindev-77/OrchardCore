@@ -34,14 +34,18 @@ public sealed record DimensionError(
     /// Whether this is advisory rather than blocking.
     /// </summary>
     /// <remarks>
-    /// Two rules are. A parent that is not yet effective when its child is, because pre-building
-    /// next year's structure is legitimate and must not be refused. And a pairing a non-strict
+    /// Three rules are. A parent that is not yet effective when its child is, because pre-building
+    /// next year's structure is legitimate and must not be refused. A pairing a non-strict
     /// structure has no rule for, because that is exactly what a structure says when it declares
-    /// itself non-strict — see ADR-0010.
+    /// itself non-strict — see ADR-0010. And an employee placed at a unit that has units under it,
+    /// because a department with sections and a departmental secretary is ordinary, and the roll-up
+    /// double-counting it risks is worth saying out loud and not worth refusing over.
     ///
     /// Derived from the rule rather than carried as a flag on purpose: whether something blocks is
     /// a property of the rule, not of the occasion, so it cannot be set differently in two places.
     /// </remarks>
     public bool IsAdvisory =>
-        Rule is DimensionRule.ParentNotEffectiveWhenChildIs or DimensionRule.ParentTypeNotDeclared;
+        Rule is DimensionRule.ParentNotEffectiveWhenChildIs
+            or DimensionRule.ParentTypeNotDeclared
+            or DimensionRule.EmployeeAtContainerUnit;
 }

@@ -214,3 +214,47 @@ internal sealed record AssignmentRow(
     EffectiveRange Range,
     decimal AllocationPercent,
     bool IsPrimary);
+
+/// <summary>
+/// Who has led one unit on one axis, over time.
+/// </summary>
+/// <remarks>
+/// <b>A record of its own, not a flag on an assignment row.</b> ADR-0012 is the decision and the
+/// argument; the short form is that a head need not be a member of the unit they head. Architecture
+/// section 8's seed data requires "a unit head who is not a member of the unit", and an acting head
+/// borrowed from another department is ordinary rather than exotic. Expressing that as an
+/// assignment would mean inventing an allocation for somebody who has none there — and
+/// <c>ValidateAssignmentAsync</c> refuses an allocation of zero — so the only way to carry it on an
+/// assignment row is to fake a split, which would then be counted by headcount and charged by cost.
+/// A head appointment is counted by neither, because it is neither.
+///
+/// The grain is one document per structure and record, for the reason ADR-0005 gives for the other
+/// three: the rule that matters — at most one head per unit per date — is a rule about one unit on
+/// one axis, so it is decidable inside a single document without reading anything else.
+/// </remarks>
+internal sealed class HeadAppointmentDocument
+{
+    public long Id { get; set; }
+
+    /// <summary>YesSql's optimistic concurrency token, per ADR-0005.</summary>
+    public long Version { get; set; }
+
+    public string StructureId { get; set; } = string.Empty;
+
+    /// <summary>The unit being led.</summary>
+    public string RecordId { get; set; } = string.Empty;
+
+    /// <summary>The terms over time, earliest first. May be empty: a unit's post can be vacant.</summary>
+    public IReadOnlyList<HeadTerm> Terms { get; set; } = [];
+
+    /// <summary>Who led the unit on <paramref name="asAt"/>, or null when the post was vacant.</summary>
+    public HeadTerm? TermOn(DateOnly asAt) => Terms.FirstOrDefault(term => term.Range.Contains(asAt));
+}
+
+/// <summary>One period during which one employee led one unit on one axis.</summary>
+/// <remarks>
+/// Dated like everything else in this engine, so "who led this unit last March" is answerable from
+/// the live data. Prompt 5's approval routing reads the same terms the designer's card does, which
+/// is what stops what the chart shows and what an approval routes to from ever disagreeing.
+/// </remarks>
+internal sealed record HeadTerm(string EmployeeId, EffectiveRange Range);

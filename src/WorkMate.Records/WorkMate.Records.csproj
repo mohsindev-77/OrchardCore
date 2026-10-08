@@ -6,6 +6,17 @@
     <PackageReference Include="OrchardCore.Recipes.Abstractions" />
     <PackageReference Include="OrchardCore.Security" />
     <PackageReference Include="OrchardCore.Localization.Abstractions" />
+    <!--
+      BagPart and BagPartSettings, for the six standard sections. Verified against the pinned
+      version with tools/api-probe: both live in OrchardCore.Flows.Core, and the OrchardCore.Flows
+      feature has to be enabled on the tenant for the part definition to exist — which is why
+      recipes/base.recipe.json now names it.
+    -->
+    <PackageReference Include="OrchardCore.Flows.Core" />
+    <!-- TitlePartSettings, for the generated title on Employee and on every section item type. -->
+    <PackageReference Include="OrchardCore.Title" />
+    <!-- Where this module's three events are recorded. -->
+    <PackageReference Include="OrchardCore.AuditTrail.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WorkMate.Core/WorkMate.Core.csproj" />

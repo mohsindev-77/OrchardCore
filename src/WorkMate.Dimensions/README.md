@@ -92,6 +92,10 @@ place. Storage is decided in ADR-0005.
 - **`EmployeeAssignmentDocument` / `EmployeeAssignmentIndex`** — dated
   placements with allocation and primary flag, one document per employee and
   structure, which is exactly the boundary the assignment rules are about.
+- **`HeadAppointmentDocument` / `UnitHeadIndex`** — who has led a unit on an axis,
+  over time. One document per structure and record, which is the boundary "one
+  head per unit per date" is about. Not an assignment and carrying no allocation;
+  see **The unit head** below and ADR-0012.
 - **`IDimensionGraphService`** — ancestors, descendants, children, is-under,
   depth; link and closure maintenance; rebuild; verify with a divergence
   report. Cycles are refused across **every** date, not only today.
@@ -100,7 +104,8 @@ place. Storage is decided in ADR-0005.
   compute their plan once and `apply` only decides whether the writes follow,
   so the dry run cannot drift from what happens.
 - **`IEmployeeAssignmentService`** — place, end, reallocate; effective
-  assignment on a date; employees under a node, paged.
+  assignment on a date; employees under a node, paged; and the unit head's
+  appointment, ended and read.
 
 Two things worth knowing before changing any of it:
 
@@ -725,25 +730,117 @@ expanding, collapsing, switching view, zooming, search-to-branch — is covered 
 tenant seeded with the demo recipe. See that project's README; it needs browsers
 installed before it can run.
 
-### Waiting on the employee record: the unit head
+### The unit head (ADR-0012)
 
-**Backlog note, 5 October 2026.** Each unit has an effective-dated head: an
-employee assignment flagged as head of that unit, not a field on the dimension
-record — the same reason placement is an assignment row and not a department
-field on the employee. The designer's chart card shows the current head's name,
-and "Head: Vacant" when the unit has none.
+**A head appointment is its own dated record** — structure, record, employee,
+effective range — stored beside the link, closure and assignment tables as
+`HeadAppointmentDocument` / `UnitHeadIndex`, one document per structure and
+record. It is **not** an assignment and **not** a field on the dimension record.
 
-Neither is possible yet, because no employee can exist until
-`WorkMate.Records` ships, so the card shows `Head: —` today. The dash means
-"not built yet", not "nobody": a card that said "Vacant" while the feature is
-missing would be making a claim about the organisation that nothing has
-checked. The line is rendered rather than omitted so the card's height does not
-change when heads start arriving.
+The backlog note of 5 October proposed a flag on an assignment row, and prompt 4
+session A1 found that it does not work: `ValidateAssignmentAsync` refuses an
+allocation of zero, so a flag on an assignment cannot express a head who is **not
+a member** of the unit they head. Architecture section 8's seed data requires
+exactly that case, and acting heads borrowed from another department make it
+ordinary rather than exotic. The only way to carry the flag would be to invent a
+real allocation for somebody who has none there — and that allocation is then
+counted by the unit's headcount and charged to its cost centre. ADR-0012 has the
+full argument and the alternatives.
 
-Prompt 5's approval routing — route to the unit head, and the vacant-head
-rule — must read the same source, so that what the chart shows and what an
-approval routes to can never disagree. The same note is on prompt 4 in
-`/docs/prompt-library.md`.
+So an appointment carries no allocation, is counted by no headcount, is charged to
+no cost centre, and the head need not be assigned to the unit at all.
+
+| Rule | Behaviour |
+| --- | --- |
+| One head per unit per date | Blocked (`SingleHeadPerUnit`), naming the incumbent and when their term began |
+| The employee exists and had not already left when the term starts | Blocked (`HeadNotEligible`) |
+| A head who leaves mid-term | **Not a rule.** `IEmployeeService.ExitAsync` ends it on the exit date; recording a past leader's term is exactly the history this engine keeps |
+| The head is assigned to the unit | **Deliberately not a rule.** This is the point |
+
+**A handover is not a clash, and that distinction is the whole of the rule.**
+Appointing a successor from 1 April while the sitting head's term runs open-ended
+from 2024 overlaps on paper and is the most ordinary thing that happens to a unit:
+`SetHeadAsync` closes the outgoing term on 31 March, the same displacement a new
+placement performs on the one it replaces. What *is* refused is a term already on
+record that starts on or after the new date — a future appointment this one would
+delete rather than supersede — and a **closed** term by somebody else covering days
+the new one claims, which is backdating over a completed tenure. The engine splits
+rather than overwrites when a *placement* is backdated (ADR-0005's addendum), but a
+head is not a placement: truncating a completed term changes who an approval from
+that period resolves to, which is the one thing dating the appointment exists to
+keep stable.
+
+Re-appointing the head already in post from the same date changes nothing and
+succeeds, which is what makes the `unit-heads` recipe step safe to re-run.
+
+**`IEmployeeAssignmentService` carries the surface** — `SetHeadAsync`,
+`ClearHeadAsync`, `GetHeadAsync`, `GetHeadsAsync` (batched for a row of cards),
+`GetHeadshipsOfAsync`, `EndHeadshipsOfAsync`, `GetHeadHistoryAsync` — rather than a
+service of its own, because there must be exactly one source for "who leads this
+unit": the designer's card and prompt 5's approval routing both read
+`GetHeadAsync`, so what the chart shows and what an approval routes to cannot
+disagree. All of it is gated by `AssignEmployees`.
+
+**`DimensionRecordPart.HeadEmployeeId` is retired, not deleted.** Nothing reads it
+when resolving a head and the record editor no longer offers it, but the property
+and every stored value stay where they are: ADR-0009's rule is that a migration
+never destroys data, and the old field is undated, so there is no term to derive
+from it and inventing one would assert that every head had led their unit since
+the beginning of time. The same shape as `AllowsSelfNesting` after ADR-0010's
+addendum.
+
+**`IEmployeeLookup`** is how this module asks whether a head is a real employee who
+has not left. Declared here, implemented in `WorkMate.Records`, resolved as a
+collection — the same shape as `IDimensionDeletionBlockerProvider`, and for the
+same reason. A tenant with `WorkMate.Records` disabled gets a named refusal rather
+than every employee reported as missing.
+
+### Where employees may attach
+
+Specification section 5's backlog note: employees attach to leaf-capable units,
+never to a Division, a Region or a Project, "because an employee attached to one
+would be counted by every roll-up beneath it". That rule is **declared**, not
+derived, for the reason ADR-0010 made containment declared — and it genuinely
+cannot be derived:
+
+- **Not from the containment map.** Crescent's `Branch → Department` edge makes
+  Branch a container, and yet a branch with no departments holds its own staff.
+- **Not from today's tree.** That would let an empty Division take staff and would
+  invalidate a staffed Department the moment somebody put a section under it.
+
+So `StructureDocument.EmployeeAttachableDimensionTypeIds` names the types that may
+hold employees on that axis, and **empty means unconstrained** — which is every
+structure written before this rule existed, the same way ADR-0008 treats a recipe
+row that states nothing. `StructureContainmentDerivation.FromChain` deliberately
+derives nothing for it: a chain says which types an axis uses and in what order,
+not which of them hold people, and guessing "the last level" would impose a
+constraint on every structure that has ever been described as a chain.
+
+Two rules, enforced in `ValidateAssignmentAsync` so the service, the recipe step
+and the employee editor all get the same answer from the same code:
+
+| | Rule | Blocking? |
+| --- | --- | --- |
+| `UnitDoesNotHoldEmployees` | The unit's type is not one this axis declared | **Yes**, when the axis declared any |
+| `EmployeeAtContainerUnit` | The unit has units under it on that date | **No — advisory** |
+
+The second is advisory on purpose, and both halves of that matter. Blocking would
+refuse a department that has three sections and a departmental secretary, which is
+an ordinary shape. Saying nothing would hide the thing the rule is about: that
+person is counted once by the department and again by every roll-up beneath it,
+and the two numbers stay plausible while disagreeing.
+
+Both are asked of **every** unit in a split, not only the primary one. A secondary
+placement is counted by exactly the same roll-ups — the Zenith matrix is the worked
+example, and its whole point is that cost rolls up by project over the secondary
+rows.
+
+An update that says nothing about employee attachment leaves it alone.
+`StructureShape.EmployeeAttachableDimensionTypeIds` is nullable where its two
+siblings are not, and the difference is load-bearing: null means "this caller is
+not describing it", empty means "this axis constrains nothing". A caller that could
+only say the latter would silently clear a tenant's rule every time a screen that
+predates the setting posted a structure.
 
 ## Known limitation: simultaneous creation of the same code
 
@@ -791,9 +888,16 @@ move is the one record-level operation this module requires one for.
 
 ## Recipe steps
 `dimension-types`, `structures` and `dimension-records` are built, in
-`Recipes/`. `employee-assignments` has not landed yet — it arrives with the
-employee record in prompt 4, where its full shape is specified in the prompt
-library so the two are built as one thing.
+`Recipes/`. `employee-assignments` and `unit-heads` have not landed yet — they
+arrive with the employee record in prompt 4 session A3, where
+`employee-assignments`' full shape is specified in the prompt library so the two
+are built as one thing.
+
+**Two steps rather than one.** A head appointment is not an assignment (ADR-0012):
+it carries no allocation and no primary flag, and the employee need not be placed
+at the unit at all. A row that carried both would be two things wearing one shape,
+and the half that was absent would have to be expressed by nulls that mean
+different things in each direction.
 
 ### Export (ADR-0011)
 
@@ -889,8 +993,13 @@ them. `DimensionsRecipeStepsTenantTests` covers running the demo recipe
 twice, a fixed re-run after a deliberately broken one, and a same-code row
 with different content.
 
-### For whoever writes `employee-assignments`
+### For whoever writes `employee-assignments` and `unit-heads`
 
+- **Resolve employees through `IEmployeeLookup`**, by code and never by id, the
+  same rule every other step follows. The lookup is resolved as a collection, so
+  a step that finds none must say *that* — "the employee record is not enabled on
+  this tenant" — rather than reporting every row's employee as missing, which is
+  the same failure wearing a misleading message.
 - **Open a validation batch** with `IDimensionValidator.BeginBatch()` and pass
   it to every create in the step, or duplicates within one import file go
   undetected. Every `CreateAsync` takes one. See the three built steps for
@@ -960,6 +1069,25 @@ with different content.
   `DimensionsMigrationUpgradeTenantTests` both reproduces the exact historical
   defect and checks, for every index table this module defines, that a fresh
   tenant's live columns match the C# class exactly.
+- **ADR-0012** — the unit head is a dated appointment of its own, not a flag on
+  an assignment row and not the undated `DimensionRecordPart.HeadEmployeeId`
+  field, which is retired without being deleted. `Migrations.UpdateFrom5Async`
+  (schema version 6) creates `UnitHeadIndex`.
+
+  **A new table goes in the new step and `CreateAsync` is left alone**, exactly as
+  `UpdateFrom1Async` and `UpdateFrom2Async` created the record and graph layers'
+  tables. That is why this step needs none of the `ColumnExistsAsync` guarding
+  `UpdateFrom3Async` and `UpdateFrom4Async` need: those add a *column* that
+  `CreateAsync` also produces, so they have to handle a brand-new tenant and an
+  upgrading one differently, and a table is not in `CreateAsync` at all.
+
+  One thing to know before adding the next table: `DimensionsMigrationUpgradeTenantTests`
+  simulates an old tenant by rolling the recorded version back, and a tenant at
+  version N does not have the tables the steps above N create — `CreateMapIndexTableAsync`
+  fails on one that is already there, which fails the whole catch-up and leaves
+  the shared tenant stuck below head, so every later test in the collection fails
+  too. `TablesByVersion` in that file is the one place that knowledge lives; add a
+  row to it.
 
 ## Open questions this module is waiting on
 

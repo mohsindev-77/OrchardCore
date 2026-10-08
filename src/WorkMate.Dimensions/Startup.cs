@@ -87,6 +87,10 @@ public sealed class Startup : StartupBase
         services.AddIndexProvider<DimensionClosureIndexProvider>();
         services.AddIndexProvider<EmployeeAssignmentIndexProvider>();
 
+        // Unit heads. A table of their own, not a column on the assignment index: ADR-0012, and
+        // the remarks on HeadAppointmentDocument.
+        services.AddIndexProvider<UnitHeadIndexProvider>();
+
         services.AddScoped<IDimensionGraphService, DimensionGraphService>();
         services.AddScoped<IEmployeeAssignmentService, EmployeeAssignmentService>();
         services.AddScoped<IDimensionService, DimensionService>();

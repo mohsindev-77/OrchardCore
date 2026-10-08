@@ -62,6 +62,26 @@ public sealed class StructureDocument
     public IReadOnlyList<StructureContainment> Containment { get; set; } = [];
 
     /// <summary>
+    /// The types that may hold employees on this axis. Empty means this axis does not constrain it.
+    /// </summary>
+    /// <remarks>
+    /// The leaf-attachment rule, declared rather than derived, for the reason ADR-0010 made
+    /// containment a declared map. It cannot be read off the containment map: Crescent's
+    /// <c>Branch → Department</c> edge makes Branch a container, and yet a branch with no
+    /// departments holds its own staff. It cannot be read off today's tree either: that would let
+    /// an empty Division take staff and would invalidate a staffed Department the moment somebody
+    /// put a section under it.
+    ///
+    /// <b>Empty means unconstrained, not "nothing may hold employees".</b> Every structure written
+    /// before this property existed deserialises to empty, and nothing about them changes — the
+    /// same rule ADR-0008 sets for a recipe row that states nothing. A tenant that wants the
+    /// constraint ticks the types on the structures editor; <c>StructureContainmentDerivation</c>
+    /// deliberately does not derive it from a chain, so an upgraded tenant and a chain-described
+    /// one are both left alone.
+    /// </remarks>
+    public IReadOnlyList<string> EmployeeAttachableDimensionTypeIds { get; set; } = [];
+
+    /// <summary>
     /// Whether a record may sit under a parent more than one level above it — a Section directly
     /// under a Business Unit.
     /// </summary>
@@ -120,6 +140,14 @@ public sealed class StructureDocument
         Containment.Any(pair =>
             string.Equals(pair.ParentDimensionTypeId, parentDimensionTypeId, StringComparison.Ordinal) &&
             string.Equals(pair.ChildDimensionTypeId, childDimensionTypeId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Whether a record of this type may hold employees on this axis. True for everything while the
+    /// axis declares nothing.
+    /// </summary>
+    public bool PermitsEmployeesAt(string dimensionTypeId) =>
+        EmployeeAttachableDimensionTypeIds.Count == 0 ||
+        EmployeeAttachableDimensionTypeIds.Contains(dimensionTypeId, StringComparer.Ordinal);
 
     /// <summary>The types this axis declares may sit under <paramref name="parentDimensionTypeId"/>.</summary>
     public IReadOnlyList<string> DeclaredChildTypeIdsOf(string parentDimensionTypeId) =>

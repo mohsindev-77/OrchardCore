@@ -146,6 +146,9 @@ internal sealed class StructureService : IStructureService
             Levels = ToLevels(levelDimensionTypeIds),
             RootDimensionTypeIds = resolved.RootDimensionTypeIds,
             Containment = resolved.Containment,
+            // Empty when the caller said nothing, which means this axis does not constrain where
+            // employees attach — see StructureDocument.EmployeeAttachableDimensionTypeIds.
+            EmployeeAttachableDimensionTypeIds = resolved.EmployeeAttachableDimensionTypeIds ?? [],
             AllowSkipLevel = allowSkipLevel,
             IsStrict = isStrict,
             IsPrimaryOrganisation = isPrimaryOrganisation,
@@ -239,6 +242,15 @@ internal sealed class StructureService : IStructureService
         document.Levels = ToLevels(levelDimensionTypeIds);
         document.RootDimensionTypeIds = resolved.RootDimensionTypeIds;
         document.Containment = resolved.Containment;
+
+        // Only when this caller actually described it. A screen or a recipe row that predates the
+        // employee-attachment rule says nothing about it, and treating that silence as "clear it"
+        // would quietly drop a tenant's rule every time somebody renamed their structure.
+        if (resolved.EmployeeAttachableDimensionTypeIds is not null)
+        {
+            document.EmployeeAttachableDimensionTypeIds = resolved.EmployeeAttachableDimensionTypeIds;
+        }
+
         document.AllowSkipLevel = allowSkipLevel;
         document.IsStrict = isStrict;
         document.IsPrimaryOrganisation = isPrimaryOrganisation;
@@ -331,7 +343,13 @@ internal sealed class StructureService : IStructureService
         {
             return new StructureShape(
                 Internal.StructureContainmentDerivation.DeduplicateRoots(shape.RootDimensionTypeIds),
-                Internal.StructureContainmentDerivation.Deduplicate(shape.Containment));
+                Internal.StructureContainmentDerivation.Deduplicate(shape.Containment),
+                // Null stays null. A caller that said nothing about employee attachment is not
+                // asking for it to be cleared, and an update reads that difference below.
+                shape.EmployeeAttachableDimensionTypeIds is null
+                    ? null
+                    : Internal.StructureContainmentDerivation.DeduplicateRoots(
+                        shape.EmployeeAttachableDimensionTypeIds));
         }
 
         var selfNesting = (await _typeLookup.ListAsync(cancellationToken))

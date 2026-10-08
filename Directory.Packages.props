@@ -39,6 +39,14 @@
     <PackageVersion Include="OrchardCore.ContentFields" Version="$(OrchardCoreVersion)" />
     <PackageVersion Include="OrchardCore.Title" Version="$(OrchardCoreVersion)" />
     <!--
+      Referenced by WorkMate.Records for BagPart and BagPartSettings, which carry the six standard
+      employee sections. Verified against the pinned version with tools/api-probe: BagPart is
+      OrchardCore.Flows.Models.BagPart in OrchardCore.Flows.Core, and BagPartSettings is what
+      restricts a bag to one contained content type. The OrchardCore.Flows feature is enabled by
+      recipes/base.recipe.json, without which the part definition does not exist on the tenant.
+    -->
+    <PackageVersion Include="OrchardCore.Flows.Core" Version="$(OrchardCoreVersion)" />
+    <!--
       Test-only. OrchardCore.Settings gives tests the concrete ISite implementation; the rest
       declare the Permission constants the base recipe names, so that a permission name in a
       recipe is checked against the pinned version rather than trusted. The Roles recipe step

@@ -184,6 +184,10 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             session.Save(record);
             await session.SaveChangesAsync();
 
+            // A tenant at version 4 does not have the tables the later steps create, and the catch-up
+            // re-runs those steps. See TablesByVersion.
+            await DropTablesCreatedAfterAsync(services, 4);
+
             await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
         });
 
@@ -305,7 +309,132 @@ public sealed class DimensionsMigrationUpgradeTenantTests
         typeof(DimensionLinkIndex),
         typeof(DimensionClosureIndex),
         typeof(EmployeeAssignmentIndex),
+        typeof(UnitHeadIndex),
     ];
+
+    /// <summary>
+    /// A tenant that predates the unit head catches up, and the table becomes usable.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0012 added <c>UnitHeadIndex</c> in <c>UpdateFrom5Async</c> rather than by editing
+    /// <see cref="WorkMate.Dimensions.Migrations.UpdateFrom2Async"/>, which is where the other three
+    /// graph tables were created. That is the append-only rule, and the reason it exists is in
+    /// <see cref="ATenantStuckBeforeTheNameArColumnUpgradesCleanlyAndTheColumnBecomesUsable"/>: a
+    /// tenant already past a shipped step never runs it again, so an edit to it reaches nobody who
+    /// has already upgraded.
+    ///
+    /// Like that test, this does not stop at "the table exists". It appoints a head through the same
+    /// service the designer and the recipe step use and reads the appointment back, which is the
+    /// operation that would throw "no such table" on a tenant the migration had missed.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantStuckBeforeTheUnitHeadTableUpgradesCleanlyAndCanAppointAHead()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+            var head = migration.Version;
+
+            head.Should().BeGreaterThanOrEqualTo(
+                6, "this test's premise is a schema that already includes the unit head table");
+
+            migration.Version = 5;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            // Version 5 means UpdateFrom5Async has never run, so a real tenant at that version has
+            // no UnitHeadIndex table at all. Dropping it is what makes this the same state rather
+            // than a tenant with the table and a lower version number — and re-running
+            // CreateMapIndexTableAsync over an existing table would fail for a reason that has
+            // nothing to do with the defect being reproduced.
+            await DropTablesCreatedAfterAsync(services, 5);
+
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+
+            var after = (await session.Query<DataMigrationRecord>().FirstOrDefaultAsync())!
+                .DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            after.Version.Should().Be(head, "the upgrade runs every step the tenant had not reached");
+        });
+
+        // A second scope, because the migration above committed its schema change in the first one
+        // and the appointment has to be written through a session that opened after it.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = await DimensionGraphScenario.TypesAsync(services);
+            var structure = await DimensionGraphScenario.StructureAsync(services, "upgrade-head");
+            var assignments = services.GetRequiredService<IEmployeeAssignmentService>();
+
+            var opened = new DateOnly(2024, 1, 1);
+            var department = await DimensionGraphScenario.RecordAsync(services, types.Department, "upgrade-head-dep", opened);
+            var employee = await EmployeeScenario.ActiveEmployeeAsync(services, "upgrade-head-emp");
+
+            var appointed = await assignments.SetHeadAsync(structure, department, employee, opened);
+
+            appointed.Succeeded.Should().BeTrue(
+                string.Join("; ", appointed.Errors.Select(error => error.Message.Value)));
+
+            (await assignments.GetHeadAsync(structure, department, opened))!
+                .EmployeeId.Should().Be(employee);
+        });
+    }
+
+    /// <summary>
+    /// The index tables this module creates, and the schema version each one first appears at.
+    /// </summary>
+    /// <remarks>
+    /// Rolling the recorded version back to N is only half of simulating a tenant at version N: that
+    /// tenant also does not have the tables the steps above N create, and
+    /// <c>CreateMapIndexTableAsync</c> fails on one that is already there. When it fails the whole
+    /// catch-up fails, which rolls back the document rewrites <c>UpdateFrom4Async</c> had already
+    /// made and leaves the shared tenant stuck below head — so the test that forgot it fails, and so
+    /// does every test in the collection that runs after it.
+    ///
+    /// <b>A new <c>UpdateFromNAsync</c> that creates a table has to be added here.</b> This map is
+    /// the one place that knowledge lives, so adding a row is the whole of it.
+    /// </remarks>
+    private static readonly IReadOnlyList<(Type IndexType, int FirstVersion)> TablesByVersion =
+    [
+        (typeof(DimensionLinkIndex), 3),
+        (typeof(DimensionClosureIndex), 3),
+        (typeof(EmployeeAssignmentIndex), 3),
+        (typeof(UnitHeadIndex), 6),
+    ];
+
+    /// <summary>
+    /// Drops every index table a tenant recorded at <paramref name="version"/> would not yet have.
+    /// </summary>
+    private static async Task DropTablesCreatedAfterAsync(IServiceProvider services, int version)
+    {
+        var store = services.GetRequiredService<IStore>();
+        var connection = store.Configuration.ConnectionFactory.CreateConnection();
+
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            foreach (var (indexType, _) in TablesByVersion.Where(entry => entry.FirstVersion > version))
+            {
+                var tableName = store.Configuration.TablePrefix
+                    + store.Configuration.TableNameConvention.GetIndexTable(indexType, string.Empty);
+
+                using var command = connection.CreateCommand();
+                command.CommandText = $"DROP TABLE IF EXISTS {tableName}";
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+        finally
+        {
+            await connection.CloseAsync();
+            await connection.DisposeAsync();
+        }
+    }
 
     private static async Task RevertSchemaToVersion2Async(IServiceProvider services)
     {
@@ -329,17 +458,17 @@ public sealed class DimensionsMigrationUpgradeTenantTests
                 await command.ExecuteNonQueryAsync();
             }
 
-            foreach (var indexType in new[] { typeof(DimensionLinkIndex), typeof(DimensionClosureIndex), typeof(EmployeeAssignmentIndex) })
-            {
-                using var command = connection.CreateCommand();
-                command.CommandText = $"DROP TABLE {TableFor(indexType)}";
-                await command.ExecuteNonQueryAsync();
-            }
         }
         finally
         {
             await connection.CloseAsync();
             await connection.DisposeAsync();
         }
+
+        // Everything the steps above version 2 create. Kept in one place — see TablesByVersion —
+        // because the failure when a new table is missed from it is loud and misleading: this test
+        // fails on "table already exists", and then so does every other test in the collection,
+        // because the tenant they share is left stuck below head with a half-reverted schema.
+        await DropTablesCreatedAfterAsync(services, 2);
     }
 }

@@ -1,0 +1,121 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: WorkMate.Records\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+# Arabic translations for WorkMate.Records.
+#
+# Tracked here, beside the module that raises the strings. Directory.Build.targets copies this
+# file into the host's content root at build time, where Orchard's ModularPoFileLocationProvider
+# finds it as Localization/ar/WorkMate.Records.po.
+#
+# English is the msgid, so there is no en file.
+#
+# Every sentence is translated whole, with the placeholders left where Arabic puts them rather
+# than where English does — a message assembled from fragments reads as a machine in either
+# language. Names and dates arrive already in the reader's language and format; see
+# BilingualDisplay in WorkMate.Dimensions for the rule they go through.
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "Employees"
+msgstr "الموظفون"
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "Employee changed"
+msgstr "تغيّر سجل موظف"
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "An employee record was created or its core fields were changed."
+msgstr "تم إنشاء سجل موظف أو تغيير حقوله الأساسية."
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "Employment status changed"
+msgstr "تغيّرت حالة التوظيف"
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "An employee was activated, put on leave, suspended, exited or reinstated."
+msgstr "تم تفعيل موظف أو منحه إجازة ممتدة أو إيقافه أو إنهاء خدمته أو إعادته للعمل."
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "Join date corrected"
+msgstr "تم تصحيح تاريخ الالتحاق"
+
+#: WorkMate.Records.Services.RecordsAuditTrailOptionsConfiguration
+msgid "An employee's join date was corrected, which moves every figure computed from tenure."
+msgstr "تم تصحيح تاريخ التحاق موظف، وهو ما يغيّر كل رقم يُحتسب على أساس مدة الخدمة."
+
+# ---- the employee code ----
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee needs a code. It is the natural key every recipe, export and integration names them by."
+msgstr "لا بد للموظف من رمز. هو المفتاح الطبيعي الذي تشير به إليه كل وصفة وكل تصدير وكل تكامل."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "'{0}' is not a valid employee code. Use up to {1} letters, digits, hyphens, underscores, dots or slashes, with no spaces."
+msgstr "'{0}' ليس رمز موظف صالحاً. استخدم حتى {1} من الحروف أو الأرقام أو الشرطات أو الشرطات السفلية أو النقاط أو الخطوط المائلة، بدون مسافات."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "The employee code '{0}' is already used by {1}."
+msgstr "رمز الموظف '{0}' مستخدم بالفعل من قبل {1}."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "The employee code '{0}' is already used by {1}. Codes stay unique against employees who have left, because payroll history resolves through them."
+msgstr "رمز الموظف '{0}' مستخدم بالفعل من قبل {1}. تبقى الرموز فريدة حتى مقابل من انتهت خدمتهم، لأن سجل الرواتب يُحلّ من خلالهم."
+
+# ---- names and dates ----
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee needs an English name."
+msgstr "لا بد للموظف من اسم بالإنجليزية."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "This tenant requires an Arabic name."
+msgstr "يشترط هذا المستأجر وجود اسم بالعربية."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee needs a join date. Nothing is defaulted on a write."
+msgstr "لا بد للموظف من تاريخ التحاق. لا يُفترض أي تاريخ عند الكتابة."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee's status needs a date it took effect from."
+msgstr "لا بد لحالة الموظف من تاريخ تسري منه."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "A date of birth of {0} is not before the join date of {1}."
+msgstr "تاريخ الميلاد {0} ليس قبل تاريخ الالتحاق {1}."
+
+# ---- the lifecycle ----
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee who is {0} cannot become {1}."
+msgstr "الموظف الذي حالته {0} لا يمكن أن يصبح {1}."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "This employee has been {0} since {1}, so a change cannot take effect on {2}."
+msgstr "هذا الموظف حالته {0} منذ {1}، لذا لا يمكن أن يسري تغيير اعتباراً من {2}."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "This employee joined on {0}, so a change cannot take effect on {1}."
+msgstr "التحق هذا الموظف في {0}، لذا لا يمكن أن يسري تغيير اعتباراً من {1}."
+
+# ---- references ----
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "There is no employee with the id '{0}' in this tenant."
+msgstr "لا يوجد موظف بالمعرّف '{0}' في هذا المستأجر."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "There is no employee with the id '{0}' to report to."
+msgstr "لا يوجد موظف بالمعرّف '{0}' ليكون مديراً مباشراً."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "An employee cannot report to themselves."
+msgstr "لا يمكن أن يكون الموظف مديراً مباشراً لنفسه."
+
+#: WorkMate.Records.Services.EmployeeService
+msgid "{0} already reports to this employee, directly or indirectly, so they cannot also be their manager."
+msgstr "{0} يتبع هذا الموظف بالفعل، مباشرة أو عبر سلسلة، فلا يمكن أن يكون مديره في الوقت نفسه."

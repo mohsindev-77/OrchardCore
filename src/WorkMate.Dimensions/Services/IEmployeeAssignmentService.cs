@@ -129,4 +129,111 @@ public interface IEmployeeAssignmentService
         IReadOnlyList<string> recordIds,
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default);
+
+    // ---- unit heads -------------------------------------------------------------------
+    //
+    // On this interface rather than on one of their own because a head is answered from the same
+    // place a placement is, and because the one thing that must never happen is two sources for
+    // "who leads this unit" — the designer's card and prompt 5's approval routing both read these,
+    // so what the chart shows and what an approval routes to cannot disagree.
+    //
+    // Not an assignment, though. ADR-0012: a head need not be a member of the unit they head, so
+    // an appointment carries no allocation, is counted by no headcount and is charged to no cost
+    // centre. None of the methods below touches AllocationPercent or IsPrimary, and that is the
+    // whole of the distinction.
+
+    /// <summary>
+    /// Records <paramref name="employeeId"/> as the head of a unit from
+    /// <paramref name="effectiveFrom"/>, closing whatever term it displaces the day before.
+    /// </summary>
+    /// <remarks>
+    /// The same displacement arithmetic as a placement: the outgoing head's term runs to the day
+    /// before and the incoming one from the date given, with no overlap and no gap. Re-appointing
+    /// the employee who already holds the post from that date changes nothing and succeeds, which
+    /// is what makes <c>unit-heads</c> safe to re-run.
+    /// </remarks>
+    Task<DimensionResult<HeadAppointment>> SetHeadAsync(
+        string structureId,
+        string recordId,
+        string employeeId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ends the unit's current headship on <paramref name="lastDay"/>, inclusive, leaving the post
+    /// vacant from the day after.
+    /// </summary>
+    /// <returns>How many terms were closed: one, or zero when the post was already vacant.</returns>
+    Task<DimensionResult<int>> ClearHeadAsync(
+        string structureId,
+        string recordId,
+        DateOnly lastDay,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Who led the unit on a date, or null when the post was vacant then.
+    /// </summary>
+    /// <remarks>
+    /// Null is "Vacant", and a caller must say so rather than say nothing: a card that omits the
+    /// line when there is no head is a card whose height changes as posts are filled, and one that
+    /// shows a dash is making a claim about the organisation that nothing has checked.
+    /// </remarks>
+    Task<HeadAppointment?> GetHeadAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Who led each of <paramref name="recordIds"/> on a date, keyed by record id, absent for a
+    /// unit whose post was vacant.
+    /// </summary>
+    /// <remarks>
+    /// Batched for the same reason <see cref="CountEmployeesAtAsync"/> is, and with the same
+    /// caveat: the ids go in as an <c>IN</c> list because the caller is a row of designer cards —
+    /// tens of ids — never a whole subtree.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, HeadAppointment>> GetHeadsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Every unit this employee leads on a date, across every axis.</summary>
+    /// <remarks>
+    /// Read by the employee's own profile, and by the exit dry run, which has to be able to say
+    /// which units would be left vacant before anybody commits to leaving them that way.
+    /// </remarks>
+    Task<IReadOnlyList<HeadAppointment>> GetHeadshipsOfAsync(
+        string employeeId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Ends every headship this employee holds, on every axis, on <paramref name="lastDay"/>.
+    /// </summary>
+    /// <remarks>
+    /// What <c>IEmployeeService.ExitAsync</c> calls, alongside ending their placements. A leaver
+    /// who stays recorded as a head is how an approval routes to somebody who no longer works here
+    /// — the failure is silent, because the chart and the routing agree with each other and both
+    /// are wrong.
+    /// </remarks>
+    Task<DimensionResult<int>> EndHeadshipsOfAsync(
+        string employeeId,
+        DateOnly lastDay,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every term on record for a unit, earliest first — who led it and when, not only who leads
+    /// it now.
+    /// </summary>
+    /// <remarks>
+    /// "Who led this unit last March" is answerable from <see cref="GetHeadAsync"/>; this is what
+    /// the export carries, because an export that kept only the current head would answer that
+    /// question differently in the imported tenant.
+    /// </remarks>
+    Task<IReadOnlyList<HeadAppointment>> GetHeadHistoryAsync(
+        string structureId,
+        string recordId,
+        CancellationToken cancellationToken = default);
 }

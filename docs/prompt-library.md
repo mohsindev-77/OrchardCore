@@ -316,14 +316,32 @@ steps. Show me each running before moving on.
 
 **Backlog note, 5 October 2026 — the unit head.** Raised while building the
 organisation designer's chart view in prompt 3. Each unit has an effective-dated
-head: an employee assignment flagged as head of that unit, not a field on the
-dimension record. The chart card shows the current head's name, and
-"Head: Vacant" when the unit has none. Until this lands the card shows
-"Head: —", which means "not built yet" rather than "nobody" — the designer
+head, not a field on the dimension record. The chart card shows the current
+head's name, and "Head: Vacant" when the unit has none. Until this lands the card
+shows "Head: —", which means "not built yet" rather than "nobody" — the designer
 cannot tell an unfilled post from an unbuilt feature while no employee can
 exist. Prompt 5's approval routing — route to the unit head, and the
 vacant-head rule — must read the same source, so that what the chart shows and
 what an approval routes to can never disagree.
+
+> **Amended 8 October 2026 — ADR-0012.** This note originally said "an employee
+> *assignment* flagged as head of that unit". Built in prompt 4 session A1, that
+> turned out not to work: `DimensionValidator.ValidateAssignmentAsync` refuses an
+> allocation of zero, so a flag on an assignment row cannot express a head who is
+> **not a member** of the unit they head — which architecture section 8's seed
+> data requires explicitly ("a unit head who is not a member of the unit") and
+> which acting heads borrowed from another department make ordinary. The only way
+> to carry the flag would be to invent a real allocation for somebody who has
+> none there, and that allocation is then counted by the unit's headcount and
+> charged to its cost centre.
+>
+> So a head appointment is **its own dated record** — structure, record, employee,
+> effective range — stored beside the link, closure and assignment tables in
+> `WorkMate.Dimensions`, carrying no allocation, counted by no headcount. The rest
+> of the note stands unchanged, including the part that matters most: prompt 5
+> reads `IEmployeeAssignmentService.GetHeadAsync`, the same source the card does.
+> Heads travel in their own `unit-heads` recipe step rather than in
+> `employee-assignments`, for the same reason they are their own record.
 
 **Backlog note, 7 October 2026 — the `employee-assignments` recipe step and its
 export.** Raised while building the dimension export in prompt 3 (ADR-0011).
@@ -459,12 +477,13 @@ content-type definition. Read spec section 5 in full. Follow CLAUDE.md.
 - A Placement section that reads and writes through
   IEmployeeAssignmentService. The employee holds no department or cost
   centre field; a test asserts none exists.
-- The unit head: an employee assignment flagged as head of a dimension
-  record, effective-dated like every other assignment, so that who led a
-  unit last March is answerable. The organisation designer's chart card
-  reads it and shows "Head: Vacant" when a unit has none; prompt 5's
-  approval routing must read the same source rather than its own. See the
-  backlog note above this brief.
+- The unit head: a dated head appointment against a dimension record — its
+  own record, not a flag on an assignment (ADR-0012) — so that who led a
+  unit last March is answerable, and so that a head who is not a member of
+  the unit is expressible. The organisation designer's chart card reads it
+  and shows "Head: Vacant" when a unit has none; prompt 5's approval routing
+  must read the same source rather than its own. See the backlog note above
+  this brief and its amendment.
 - IEmployeeService with the lifecycle transitions from spec section 5, each
   dated, each raising a domain event. Exit closes open assignments on the
   exit date.

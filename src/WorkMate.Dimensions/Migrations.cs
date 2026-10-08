@@ -384,6 +384,60 @@ public sealed class Migrations : DataMigration
     }
 
     /// <summary>
+    /// ADR-0012: the unit head, as a dated record of its own rather than a flag on an assignment.
+    /// </summary>
+    /// <remarks>
+    /// A new table, so this step creates it and <see cref="CreateAsync"/> does not — the same shape
+    /// as <see cref="UpdateFrom1Async"/> and <see cref="UpdateFrom2Async"/>, which created the
+    /// record and graph layers' tables without ever being folded back into
+    /// <see cref="CreateAsync"/>. A brand-new tenant runs <see cref="CreateAsync"/> and then every
+    /// <c>UpdateFromNAsync</c> in order, so it arrives here with no table, exactly as a tenant
+    /// upgrading from version 5 does. That is why this step needs none of the
+    /// <see cref="ColumnExistsAsync"/> guarding <see cref="UpdateFrom3Async"/> and
+    /// <see cref="UpdateFrom4Async"/> need: those two add a <em>column</em> that
+    /// <see cref="CreateAsync"/> also produces, and so have to handle both states.
+    ///
+    /// Nothing is migrated into it. <c>DimensionRecordPart.HeadEmployeeId</c> is retired by
+    /// ADR-0012 but its stored values are left exactly where they are, per ADR-0009: a migration
+    /// never destroys data. Converting them would also be wrong on the facts — the old field is
+    /// undated, so there is no term to invent for it, and inventing one would assert that every
+    /// head had led their unit since the beginning of time.
+    /// </remarks>
+    public async Task<int> UpdateFrom5Async()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<UnitHeadIndex>(table => table
+            .Column<string>(nameof(UnitHeadIndex.StructureId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(UnitHeadIndex.NodeId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(UnitHeadIndex.EmployeeId), column => column.WithLength(IdentifierLength))
+            .Column<DateTime>(nameof(UnitHeadIndex.EffectiveFrom))
+            .Column<DateTime>(nameof(UnitHeadIndex.EffectiveToInclusive)));
+
+        await SchemaBuilder.AlterIndexTableAsync<UnitHeadIndex>(table =>
+        {
+            // "Who heads this unit on this date" — what the designer's card asks of every unit in a
+            // row and what prompt 5's routing asks of one. The column order is the order both
+            // filter in.
+            table.CreateIndex(
+                $"IDX_{nameof(UnitHeadIndex)}_Node",
+                nameof(UnitHeadIndex.StructureId),
+                nameof(UnitHeadIndex.NodeId),
+                nameof(UnitHeadIndex.EffectiveFrom),
+                nameof(UnitHeadIndex.EffectiveToInclusive));
+
+            // "What does this person head" — asked by the exit transition, which has to close an
+            // employee's headships on the day they leave across every axis at once, and by the
+            // employee's own profile.
+            table.CreateIndex(
+                $"IDX_{nameof(UnitHeadIndex)}_Employee",
+                nameof(UnitHeadIndex.EmployeeId),
+                nameof(UnitHeadIndex.EffectiveFrom),
+                nameof(UnitHeadIndex.EffectiveToInclusive));
+        });
+
+        return 6;
+    }
+
+    /// <summary>
     /// Whether <paramref name="tableName"/> already has a column named <paramref name="columnName"/>,
     /// read from the database itself rather than assumed from what the code expects — the whole
     /// point of the check in <see cref="UpdateFrom3Async"/> is to stop trusting that.

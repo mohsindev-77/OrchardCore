@@ -118,7 +118,48 @@ public enum DimensionRule
     /// <summary>An employee has no primary assignment on a date, or more than one.</summary>
     SinglePrimaryAssignment,
 
+    /// <summary>
+    /// The unit's dimension type is not one this structure says may hold employees.
+    /// </summary>
+    /// <remarks>
+    /// The leaf-attachment rule. Declared per structure as
+    /// <c>StructureDocument.EmployeeAttachableDimensionTypeIds</c>, not derived, for the reason
+    /// ADR-0010 made containment a declared map: *"may a Department hold employees"* is an
+    /// axis-specific fact. A Branch with no departments holds its own staff and a Branch with
+    /// departments does not, so nothing about the type decides it and nothing about today's shape
+    /// of the tree may decide it either — a rule that read the children would let an empty Division
+    /// take staff and would invalidate a staffed Department the moment somebody added a section
+    /// under it.
+    ///
+    /// A structure that declares nothing is unconstrained, which is every structure written before
+    /// this rule existed.
+    /// </remarks>
+    UnitDoesNotHoldEmployees,
+
+    // Assignment and head rules, continued.
+
+    /// <summary>Two employees are recorded as heading one unit on one date.</summary>
+    SingleHeadPerUnit,
+
+    /// <summary>
+    /// A head appointment names somebody who is not an employee of this tenant, or who had already
+    /// left before the term it claims.
+    /// </summary>
+    HeadNotEligible,
+
     // Advisory. Reported but never blocking, per architecture section 6.
+
+    /// <summary>
+    /// The employee is being placed at a unit that has units under it on that date.
+    /// </summary>
+    /// <remarks>
+    /// Advisory, not blocking, and the two halves of that matter equally. Blocking would refuse a
+    /// department that has three sections and a departmental secretary, which is an ordinary shape.
+    /// Saying nothing would hide the thing the leaf-attachment rule exists to prevent: somebody
+    /// placed at a container is counted once by the container's own headcount and again by every
+    /// roll-up beneath it, and the two numbers stay plausible while disagreeing.
+    /// </remarks>
+    EmployeeAtContainerUnit,
 
     /// <summary>The parent is not effective for the whole period the child is. Warned, not blocked,
     /// because customers legitimately pre-build future structures.</summary>

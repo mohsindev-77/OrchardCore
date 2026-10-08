@@ -1292,3 +1292,33 @@ msgstr "تعذّر إعادة تسمية '{0}'."
 #: WorkMate.Dimensions.Recipes.DimensionRecordsRecipeStep
 msgid "'{0}' could not be given its attribute values."
 msgstr "تعذّر تعيين قيم سمات '{0}'."
+
+# ---- ADR-0012: the unit head, and the leaf-attachment rule (prompt 4, session A1) ----
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' is a {1}, and '{2}' does not place employees on a {1}. Place them at a unit beneath it."
+msgstr "'{0}' من نوع {1}، و'{2}' لا يضع الموظفين على {1}. ضعهم في وحدة تابعة له."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "'{0}' has {1} unit(s) under it on {2}. Somebody placed here is counted by this unit and again by every roll-up beneath it."
+msgstr "يوجد تحت '{0}' عدد {1} من الوحدات في {2}. من يوضع هنا يُحتسب على هذه الوحدة ومرة أخرى في كل تجميع تحتها."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "A head's term cannot end before it starts."
+msgstr "لا يمكن أن تنتهي مدة رئيس الوحدة قبل أن تبدأ."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "A unit head cannot be appointed on this tenant: the employee record (WorkMate.Records) is not enabled."
+msgstr "لا يمكن تعيين رئيس وحدة في هذا المستأجر: سجل الموظفين (WorkMate.Records) غير مُفعَّل."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "There is no employee with the id '{0}' in this tenant."
+msgstr "لا يوجد موظف بالمعرّف '{0}' في هذا المستأجر."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "{0} left on {1} and cannot be appointed to head a unit from {2}."
+msgstr "غادر {0} في {1} ولا يمكن تعيينه رئيساً لوحدة اعتباراً من {2}."
+
+#: WorkMate.Dimensions.Internal.Graph.DimensionValidator
+msgid "{0} already heads '{1}' from {2}. A unit has one head at a time; end that term first."
+msgstr "يرأس {0} بالفعل '{1}' اعتباراً من {2}. للوحدة رئيس واحد في كل وقت؛ أنهِ تلك المدة أولاً."
