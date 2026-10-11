@@ -31,7 +31,7 @@ public sealed class DateRangeTagHelper : TagHelper
     public ModelExpression To { get; set; } = default!;
 
     /// <summary>The label for the pair. Already localised by the caller.</summary>
-    public string? Label { get; set; }
+    public object? Label { get; set; }
 
     /// <summary>Whether the range may be left open-ended. Most dated records may.</summary>
     public bool AllowOpenEnded { get; set; } = true;
@@ -50,10 +50,10 @@ public sealed class DateRangeTagHelper : TagHelper
 
         var content = new System.Text.StringBuilder();
 
-        if (!string.IsNullOrWhiteSpace(Label))
+        if (TagHelperLabel.Html(Label) is { } label)
         {
             content.Append("<legend class=\"form-label\">")
-                   .Append(System.Net.WebUtility.HtmlEncode(Label))
+                   .Append(label)
                    .Append("</legend>");
         }
 

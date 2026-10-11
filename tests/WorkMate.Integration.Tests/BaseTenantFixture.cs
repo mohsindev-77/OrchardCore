@@ -42,6 +42,30 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     private readonly string _contentRoot =
         Path.Combine(Path.GetTempPath(), "workmate-integration", Guid.NewGuid().ToString("n"));
 
+    /// <summary>
+    /// Orchard features struck out of the base recipe before this tenant is set up.
+    /// </summary>
+    /// <remarks>
+    /// For asserting what a module brings with it on its own. A feature a module needs is declared
+    /// in its manifest, which Orchard enables with it; listing it in the base recipe as well
+    /// reaches new tenants only, because a recipe is applied once at setup and a later edit to it
+    /// never arrives anywhere. Withholding the recipe line is how a test tells the two apart — if
+    /// the module still works, the manifest is carrying it.
+    /// </remarks>
+    private string[] _withheldFeatures = [];
+
+    /// <summary>
+    /// A fixture whose tenant is set up with these features struck out of the base recipe.
+    /// </summary>
+    /// <remarks>
+    /// A factory rather than a second constructor: xUnit activates a collection fixture by
+    /// reflection and refuses a type with more than one public constructor, so adding an overload
+    /// breaks every test in <c>UsesTheBaseTenant</c> — with a message about constructors, which is a
+    /// long way from the overload that caused it.
+    /// </remarks>
+    public static BaseTenantFixture Withholding(params string[] features) =>
+        new() { _withheldFeatures = features };
+
     private string ApplicationData => Path.Combine(_contentRoot, "App_Data");
 
     /// <summary>A client signed in as the site administrator.</summary>
@@ -197,6 +221,38 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     }
 
     /// <summary>
+    /// The same recipe with the named features struck out of its <c>Feature</c> step's enable list.
+    /// </summary>
+    /// <remarks>
+    /// Edited as JSON rather than by text replacement, because a feature id is a substring of
+    /// longer ids — striking "OrchardCore.Flows" textually would also damage any
+    /// "OrchardCore.Flows.Something" beside it, and the test would then be measuring the wrong
+    /// absence.
+    /// </remarks>
+    private static string WithoutFeatures(string recipe, string[] withheld)
+    {
+        var document = System.Text.Json.Nodes.JsonNode.Parse(recipe)!.AsObject();
+
+        foreach (var step in document["steps"]?.AsArray() ?? [])
+        {
+            if (step?["enable"] is not System.Text.Json.Nodes.JsonArray enabled)
+            {
+                continue;
+            }
+
+            var kept = enabled
+                .Select(feature => (string?)feature)
+                .Where(feature => feature is not null && !withheld.Contains(feature, StringComparer.Ordinal))
+                .Select(feature => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(feature!))
+                .ToArray();
+
+            step["enable"] = new System.Text.Json.Nodes.JsonArray(kept);
+        }
+
+        return document.ToJsonString();
+    }
+
+    /// <summary>
     /// Lays out what Orchard reads from the content root: the recipes, so the base recipe is
     /// offered at setup, and the PO files. Both are copied from where they are tracked rather
     /// than from the host's folders, so the test does not depend on a build having copied them
@@ -230,7 +286,16 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
         foreach (var recipe in Directory.EnumerateFiles(
             Path.Combine(repositoryRoot, "recipes"), "*.recipe.json", SearchOption.AllDirectories))
         {
-            File.Copy(recipe, Path.Combine(recipes, Path.GetFileName(recipe)), overwrite: true);
+            var destination = Path.Combine(recipes, Path.GetFileName(recipe));
+
+            if (_withheldFeatures.Length == 0)
+            {
+                File.Copy(recipe, destination, overwrite: true);
+
+                continue;
+            }
+
+            File.WriteAllText(destination, WithoutFeatures(File.ReadAllText(recipe), _withheldFeatures));
         }
 
         foreach (var module in Directory.EnumerateDirectories(Path.Combine(repositoryRoot, "src")))

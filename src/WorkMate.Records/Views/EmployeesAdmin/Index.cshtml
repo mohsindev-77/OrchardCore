@@ -1,15 +1,58 @@
 @model EmployeeListViewModel
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1>@T["Employees"]</h1>
+    <h1>
+        @if (Model.Unit is null)
+        {
+            @T["Employees"]
+        }
+        else
+        {
+            @* Which unit, on which axis, on which date — all three, because all three were chosen
+               on the designer and any one of them being different makes this a different list. *@
+            <span id="employee-unit-heading">@T["Employees in {0} ({1}) as at {2}",
+                Model.Unit.UnitName, Model.Unit.StructureName, EmployeeDisplay.DateFromIso(Model.Unit.AsAtIso)]</span>
+        }
+    </h1>
     @if (Model.CanManage)
     {
         <a asp-action="Create" class="btn btn-primary">@T["Add employee"]</a>
     }
 </div>
 
+@if (Model.Unit is not null)
+{
+    <p class="text-muted" id="employee-unit-total">
+        @if (Model.Unit.IncludeSubUnits)
+        {
+            @T["{0} at this unit and below it.", Model.Unit.MemberTotal]
+        }
+        else
+        {
+            @T["{0} at this unit.", Model.Unit.MemberTotal]
+        }
+        @* The head is on the list and not in the number, and the screen says so rather than leaving
+           a reader to work out why the two differ by one. ADR-0012: a head need not work in the unit
+           they head, and the unit they do work in is already counting them. *@
+        @T["A head who is not a member of the unit is listed but not counted."]
+        <a asp-controller="OrganisationDesignerAdmin" asp-action="Index"
+           asp-route-structureId="@Model.Unit.StructureId"
+           asp-route-asAt="@Model.Unit.AsAtIso"
+           asp-route-expand="@Model.Unit.RecordId"
+           id="employee-unit-back">@T["Back to the chart"]</a>
+    </p>
+}
+
 @* A GET form, so a filtered list is a URL somebody can bookmark, share and come back to. *@
 <form method="get" class="row g-2 align-items-end mb-3" id="employee-filter">
+    @if (Model.Unit is not null)
+    {
+        @* The unit travels with the search rather than being dropped by it: a filter form that
+           quietly widened to the whole tenant on first use would be worse than no search at all. *@
+        <input type="hidden" name="structureId" value="@Model.Unit.StructureId" />
+        <input type="hidden" name="recordId" value="@Model.Unit.RecordId" />
+        <input type="hidden" name="asAt" value="@Model.Unit.AsAtIso" />
+    }
     <div class="col-sm-5">
         <label class="form-label" for="employee-search">@T["Search"]</label>
         <input class="form-control" id="employee-search" type="search" name="search" value="@Model.Search"
@@ -28,6 +71,23 @@
     <div class="col-sm-3">
         <button type="submit" class="btn btn-secondary">@T["Filter"]</button>
     </div>
+    @if (Model.Unit is not null)
+    {
+        @* Off by default. The card is the way in, the card's number counts the unit itself, and a
+           screen that opened showing a different number from the one just clicked would be
+           answering a question nobody asked. One click turns it on and the heading says so. *@
+        <div class="col-12">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="true"
+                       id="employee-include-sub-units" name="includeSubUnits"
+                       checked="@Model.Unit.IncludeSubUnits" />
+                <label class="form-check-label" for="employee-include-sub-units">
+                    @T["Include sub-units"]
+                </label>
+                <div class="form-text">@T["Everybody below this unit on this axis as well, not only those placed at it."]</div>
+            </div>
+        </div>
+    }
 </form>
 
 @if (Model.Employees.Count == 0)
@@ -53,16 +113,32 @@ else
                 <th>@T["Status"]</th>
                 <th>@T["Joined"]</th>
                 <th>@T["Where they sit"]</th>
+                @if (Model.Unit is not null)
+                {
+                    <th>@T["Role here"]</th>
+                    <th class="text-end">@T["Allocation"]</th>
+                }
                 <th class="text-end">@T["Actions"]</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var employee in Model.Employees)
             {
-                <tr class="employee-row" data-employee-code="@employee.Code">
+                @* The role is on the row as data as well as in a cell as words: a list of a unit's
+                   members is one of the few places where "who is actually counted here" is a
+                   question worth being able to ask of the markup, and a head who is not a member is
+                   the row that answers it differently from how it reads. *@
+                <tr class="employee-row" data-employee-code="@employee.Code"
+                    data-unit-role="@employee.RoleHere">
                     <td><code>@employee.Code</code></td>
                     <td>
-                        <div dir="ltr" lang="en">@employee.NameEn</div>
+                        @if (employee.IsHeadHere)
+                        {
+                            @* A star rather than a column of its own: there is one head, so a
+                               column would be blank on every row but one. *@
+                            <span class="employee-head-marker" title="@T["Heads this unit"]">★</span>
+                        }
+                        <div dir="ltr" lang="en" class="employee-name d-inline">@employee.NameEn</div>
                         @* Only when there is Arabic to show: it is optional since ADR-0003's
                            addendum, so an untranslated row would otherwise carry a blank line. *@
                         @if (!string.IsNullOrWhiteSpace(employee.NameAr))
@@ -88,6 +164,25 @@ else
                             @employee.PrimaryUnitName
                         }
                     </td>
+                    @if (Model.Unit is not null)
+                    {
+                        <td class="employee-role-here">
+                            <partial name="_UnitRole" model="employee" />
+                        </td>
+                        <td class="text-end employee-allocation">
+                            @if (employee.AllocationPercent is { } allocation)
+                            {
+                                @EmployeeDisplay.Percent(allocation)
+                            }
+                            else
+                            {
+                                @* Not a zero: an appointment carries no allocation, and a zero would
+                                   say the unit accounts for none of them, which is a different and
+                                   false claim. *@
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                    }
                     <td class="text-end">
                         <div class="d-flex gap-1 justify-content-end align-items-start">
                             <div class="btn-group btn-group-sm">

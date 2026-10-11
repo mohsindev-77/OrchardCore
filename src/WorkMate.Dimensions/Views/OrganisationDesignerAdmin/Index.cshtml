@@ -18,7 +18,13 @@
             {
                 url = action.Controller is null
                     ? Url.Action(action.Action)
-                    : Url.Action(action.Action, action.Controller),
+                    : action.Area is null
+                        ? Url.Action(action.Action, action.Controller)
+                        // An Orchard module is an MVC area, so a controller in another module is
+                        // only reachable by naming it. Without this Url.Action returns null and the
+                        // script drops the action — which reads exactly like a permission the
+                        // viewer does not have.
+                        : Url.Action(action.Action, action.Controller, new { area = action.Area }),
                 targetsParent = action.TargetsParent,
             }));
 }

@@ -162,7 +162,79 @@ The export and the two new recipe steps needed **no migration** — they read an
 | 🟡 **Carried forward** | **The `employees` export carries a status, not a status history.** An employee's past statuses are in the audit trail rather than a dated table, so a round trip reproduces where somebody is and not the route they took. That is a limit of the model, not of the export — making it answerable is a model change. |
 | 🟡 **Carried forward** | **Two simultaneous creates can share an employee code.** YesSql 5.4.7 has no unique index API; the service checks then writes. Recorded in the module README. |
 | 🟡 **Carried forward** | **Audit display of an empty bilingual half** still has nowhere to appear — no WorkMate-authored audit display driver yet. From prompt 3. |
-| 🟡 **Known gap, pre-existing and widened** | **The deployment step *drivers* have no tests.** Both round-trip tests drive the `IDeploymentSource` directly, which is what a plan ends up calling but not how a person configures one. The combination rules live in the driver — records need types and structures, assignments and heads need records — and none of them, including prompt 3's, is covered. A wrong rule there produces a file that fails on arrival rather than a refusal on the screen. Testing a `DisplayDriver`'s `UpdateAsync` needs an `UpdateEditorContext`, which is why it was skipped rather than done badly. |
+| ✅ **Closed** | ~~The deployment step drivers have no tests.~~ `DeploymentStepDriverTenantTests`. Finding the screen did not open at all is what the gap was hiding. |
+| ✅ **Closed** | ~~The "unsuppressed advisory still fails the build" proof is not in the repository.~~ `NuGetAuditPolicyTests` every build, `tools/verify-nuget-audit.sh` on demand. |
+| 🟡 **Second reviewer** | `OrchardCore.AdminMenu` added to `WorkMate.Platform`'s manifest and to `base.recipe.json` — needed because `OrchardCore.Contents` contributes a data-localization provider that depends on it. Without it the deployment plan screen throws. |
+| 🟡 **Second reviewer** | Six features added to `WorkMate.Records`' manifest, one to `WorkMate.Dimensions`', two to `WorkMate.Platform`'s. These change which features a tenant enables, including existing ones. |
+| 🟡 **Known limit** | **Without JavaScript the employee picker is a `<select>` of the first page.** The control is still correct — it posts, binds and validates identically — but reaching somebody past the first page needs the search, and the search needs the script. Everything else in the admin already requires script to expand a chart, so this is consistent rather than new; it is written down because "never a hard cap that hides people" is true with script and degraded without it. |
+
+---
+
+## Session A follow-up: picker, feature dependencies, unit employee list, closed BELIEVED items
+
+### The employee picker now searches the tenant
+
+It was a `<select>` of the first hundred employees of any status. On the Zenith demo organisation that is a hundred of a hundred and fifty-eight — **fifty-eight people could not be chosen as a head, a line manager or anything else, from any screen**, and the control said nothing about it. It also offered leavers to the one form that cannot accept them.
+
+Now: server-side search (`EmployeePickerAdminController.Search`), an ARIA combobox the script builds over the existing `<select>` so the posted value and validation are unchanged without it, options carrying **name, code and where they sit**, and per-form rules — appointing a head offers everybody regardless of placement (ADR-0012) and excludes leavers, saying why. `IVisibilityService` still filters.
+
+### `OrchardCore.Flows` — and five more — are manifest dependencies now
+
+Your tenant's employee sections did not work because Flows was added to `base.recipe.json` and nowhere else. **A recipe is applied once, at setup; editing it reaches tenants created afterwards and no others, ever.** A manifest dependency is resolved every time a shell is built.
+
+The audit found six more of the same: `WorkMate.Records` declared none of Flows, Title, ContentFields, AuditTrail, Deployment or Media; `WorkMate.Dimensions` had no Deployment; `WorkMate.Platform` had no Contents or ContentTypes.
+
+| Guard | What it holds |
+| --- | --- |
+| `ModuleFeatureDependencyTests` | Every Orchard package a module references implies a feature its manifest must declare, through a table that **fails on any package it does not classify** — so adding a reference forces somebody to say whether it brings a feature. Verified to bite: removing the Flows line fails with "Add to src/WorkMate.Records/Manifest.cs: 'OrchardCore.Flows'". |
+| `ModuleFeatureDependencyTenantTests` | A tenant set up with all eight features **struck out of the base recipe** still has them, and an employee's `BagPart` sections still resolve. The source guard proves the manifest says the right thing; this proves saying it has an effect. |
+
+### A unit's employees, from the designer
+
+The card's count is a link and the ⋯ menu gains **View employees**; both open the employee list filtered to that unit, axis and date. Header, an **Include sub-units** checkbox (off by default — the card's number counts the node itself, and opening on a different number from the one just clicked answers a question nobody asked), and columns for **Role here** (primary, or secondary with the home unit named), **Allocation %** and a ★ head marker. The head who is not a member is listed, marked, and **not** counted. The figure comes from the same service call that draws the card.
+
+Both ways in are hidden — not disabled — without `ViewEmployees`, asked of the module that owns it via `IEmployeeLookup.CanViewEmployeeListAsync`.
+
+### Both BELIEVED items from A3 are closed
+
+| Was | Now |
+| --- | --- |
+| "the deployment plan screens work" | `DeploymentStepDriverTenantTests`. **The screen did not open at all** — see below. The combination rules moved onto the step as `Problems()`, so they are testable without an HTTP context, while the sentences stayed on the driver where the localisation guard can see them. A plan executed through `IDeploymentManager` writes the same six steps in the same order as the direct source path. |
+| "an unsuppressed advisory still fails the build" | `NuGetAuditPolicyTests` on every build: the audit is on, set to `all` (the ImageSharp advisories are transitive and `direct` would hide them), at `low`, suppressing only advisories by id and only ones an ADR names. Plus `tools/verify-nuget-audit.sh` for the live end-to-end probe — **run, and it passes in both directions**: the unsuppressed advisory fails the restore, and suppressing it by id lets the same restore through. |
+
+### Two defects found while doing the above
+
+**The deployment plan screen threw on every request.** `OrchardCore.Contents` registers a data-localization provider depending on `OrchardCore.AdminMenu`; the base recipe enables `OrchardCore.DataLocalization` so content type names can be translated; AdminMenu was enabled by nothing. Resolving the providers therefore failed with a DI exception naming three features and no cause. The export was proved end to end while the only way for a person to reach it was broken — the same shape as the lifecycle buttons and the dropped menu entry. `WorkMate.Platform` now declares AdminMenu, which is also what reaches existing tenants.
+
+**The employee list ran one query per row** to resolve each person's unit, and resolved it only on the primary organisation axis — which the base recipe ships empty, so the column read "Not placed" against people plainly placed. Now one batched query, on the axis being viewed when there is one.
+
+---
+
+## Two picker defects found in the browser
+
+### The label read "LocalizedHtmlString"
+
+`label="@T["Head of this unit"]"` hands a tag helper a `LocalizedHtmlString`; the `Label` property was a `string`; Razor binds an expression to a `string` by calling `ToString()`, which that type does not override. It compiled, it rendered, and the label was the name of a class.
+
+Four views had it right with `.Value` and three had it wrong without — **that split is the defect**, not the three views. The `Label` properties on all three tag helpers now take `object?` and go through `TagHelperLabel`, which tells `IHtmlContent` (already encoded — encoding again turns an apostrophe into `&amp;#39;`), `LocalizedString` and plain `string` (encoded, and the half that matters, since a dimension attribute's label is tenant data) apart. Every call site is normalised to one idiom.
+
+`RenderedLabelTenantTests` sweeps fourteen admin screens for either type name, including in attributes a browser test would never look at. **Verified to bite**: forcing the old behaviour fails it with "/Admin/Employees/Create renders 'LocalizedHtmlString'".
+
+### Selecting with the mouse announced "No match"
+
+**The selection was never recorded as a fact** — it was inferred from the text in the box. The box holds a chosen person's *full label* ("Adeel Bhatti (zenith-labour-b-12) — Site Team B"), the focus handler re-read that as a search term, found nobody, and said so at a reader who had just chosen successfully.
+
+The posted value survived, which made it worse rather than better: the control claimed the selection had failed while quietly holding a correct one — so **clicking Appoint did work**, which is why nothing downstream complained. Its mirror image had the same cause and is the dangerous one: typing over a selection left the old id in the `<select>`, so the form would post somebody the reader had visibly moved away from.
+
+Now `chosen` is explicit state. Choosing records it; editing the text abandons it; focus searches for the query rather than the label; submitting text that names nobody is refused on the field. The error is a `.invalid-feedback` element of its own, because the status line is a running commentary on the search and a request already in flight overwrites anything written there.
+
+**Why the first picker tests missed it.** They selected an option and asserted the page that came back — and that page was right. They never looked at the control's state in between: the hidden `<select>` that is what gets posted, and the status line. Nor did they do the second thing a person does, which is look back at the box. `EmployeePickerSelectionBrowserTests` does both, by mouse and by keyboard, on Appoint a head, line manager and placement.
+
+Fixing it **unmasked a race** in an older test: `TheKeyboardAloneChoosesSomebody` waited for "the first option", which focus now makes visible immediately, so the keys landed on whoever sorts first alphabetically. It could not fail before because the bug left the list empty. It now waits for the option it means.
+
+### And one inconsistency between two screens
+
+The picker fell back across axes to answer "where they sit"; the employee list did not, and the base recipe ships an empty primary organisation — so the same person read "Mechanical" in the picker and "Not placed" in the list. Both now go through `EmployeeUnitNames`.
 
 ---
 
@@ -173,10 +245,10 @@ Full `dotnet build -warnaserror` with **NuGet audit ON**: 0 warnings, 0 errors.
 | Assembly | Passed | Skipped |
 | --- | ---: | ---: |
 | `WorkMate.Dimensions.Tests` | 181 | 0 |
-| `WorkMate.Platform.Tests` | 183 | 0 |
+| `WorkMate.Platform.Tests` | 199 | 0 |
 | `WorkMate.Records.Tests` | 75 | 0 |
-| `WorkMate.Integration.Tests` | 290 | 0 |
-| `WorkMate.Browser.Tests` | 78 | 3 |
-| **Total** | **807** | **3** |
+| `WorkMate.Integration.Tests` | 317 | 0 |
+| `WorkMate.Browser.Tests` | 92 | 3 |
+| **Total** | **864** | **3** |
 
 The three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` and skipped with a reason when nobody has offered any — unchanged from prompt 3.

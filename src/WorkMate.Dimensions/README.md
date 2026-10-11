@@ -388,6 +388,12 @@ the markup, the URL map on the surface and the script's wiring together; the
 script's `cardText` gives the lines of text, each naming the payload property it
 comes from. Adding either is one entry in one place.
 
+An action whose controller is in another module names its `Area`. An Orchard
+module is an MVC area, so a link to `EmployeesAdmin` from here resolves to
+nothing without it — and resolves to nothing *silently*: `Url.Action` returns
+null, the anchor renders with no href, and the result looks exactly like a
+permission the viewer does not have.
+
 Both lists were written for a defect of exactly this kind. "Appoint a head…" was
 added to the markup alone, and because the script removes any action it has no
 URL for, every fetched card quietly lost it. The head line was then filled by the
@@ -620,6 +626,16 @@ numbers are different facts and come from different places: the count is
 placements at the unit, the head is an appointment that carries no allocation, so
 a head who is not a member of the unit is named on the card and counted by
 nothing. ADR-0012.
+
+**The headcount is a link**, for anybody holding `ViewEmployees`, and the ⋯ menu
+carries **View employees** to the same place: `WorkMate.Records`' employee list,
+filtered to that unit, on that axis, as at that date. A number somebody reads is
+a number they immediately want the names behind, and whoever looks for actions in
+menus finds it there instead. Both are absent — not disabled — for a viewer who
+may not open the list, because a link that lands on a refusal is a worse answer
+than no link; whether they may is asked of the module that owns the permission,
+through `IEmployeeLookup.CanViewEmployeeListAsync`. Clicking the count does not
+also expand the card: the card's click handler has always ignored anchors.
 
 **A card shows one name, and it is the English one, in every UI language.** The
 Arabic name is stored, edited on *Add unit* and *Rename*, searchable in either

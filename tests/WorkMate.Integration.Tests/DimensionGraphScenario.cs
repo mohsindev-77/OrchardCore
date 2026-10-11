@@ -89,12 +89,13 @@ public static class DimensionGraphScenario
         IServiceProvider services,
         string dimensionTypeId,
         string code,
-        DateOnly from)
+        DateOnly from,
+        string? nameEn = null)
     {
         var created = await services.GetRequiredService<IDimensionService>().CreateAsync(
             dimensionTypeId,
             code,
-            new BilingualText(code, $"{code}-ar"),
+            new BilingualText(nameEn ?? code, $"{code}-ar"),
             new EffectiveRange(from, null));
 
         created.Succeeded.Should().BeTrue(

@@ -34,6 +34,7 @@ public sealed class EmployeesAdminController : Controller
     private readonly IEmployeeAssignmentService _assignments;
     private readonly IStructureService _structures;
     private readonly IDimensionService _dimensions;
+    private readonly EmployeeUnitNames _units;
     private readonly IRecordsAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
     private readonly INotifier _notifier;
@@ -45,6 +46,7 @@ public sealed class EmployeesAdminController : Controller
         IEmployeeAssignmentService assignments,
         IStructureService structures,
         IDimensionService dimensions,
+        EmployeeUnitNames units,
         IRecordsAuthorisation authorisation,
         IAuthorizationService authorizationService,
         INotifier notifier,
@@ -55,6 +57,7 @@ public sealed class EmployeesAdminController : Controller
         _assignments = assignments;
         _structures = structures;
         _dimensions = dimensions;
+        _units = units;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
         _notifier = notifier;
@@ -62,9 +65,22 @@ public sealed class EmployeesAdminController : Controller
         H = htmlLocalizer;
     }
 
+    /// <summary>
+    /// The employee list, optionally narrowed to one unit on one axis as at one date.
+    /// </summary>
+    /// <remarks>
+    /// One action rather than a second screen, because everything the unfiltered list already does
+    /// — search, status filter, paging, the row actions — is wanted when it is filtered too, and a
+    /// second screen would be a second copy of all of it drifting from this one. The unit is three
+    /// query-string parameters; absent them this is the list it has always been.
+    /// </remarks>
     public async Task<IActionResult> Index(
         string? search,
         EmploymentStatus? status,
+        string? structureId,
+        string? recordId,
+        string? asAt,
+        bool includeSubUnits = false,
         int skip = 0,
         int take = 50,
         CancellationToken cancellationToken = default)
@@ -74,7 +90,17 @@ public sealed class EmployeesAdminController : Controller
             return Forbid();
         }
 
-        var page = await _employees.ListAsync(search, status, skip, take, cancellationToken);
+        var unit = await UnitFilterAsync(structureId, recordId, asAt, includeSubUnits, cancellationToken);
+
+        // The members of the unit, when there is one. Resolved before the list, because the list is
+        // then narrowed to them: unit membership is an assignment row in the dimension engine and
+        // deliberately not a column on the employee record.
+        var membership = unit is null
+            ? null
+            : await MembershipAsync(unit, cancellationToken);
+
+        var page = await _employees.ListAsync(
+            search, status, skip, take, membership?.EveryoneListed, cancellationToken);
 
         var model = new EmployeeListViewModel
         {
@@ -84,30 +110,155 @@ public sealed class EmployeesAdminController : Controller
             Total = page.Total,
             Skip = skip,
             Take = take,
+            Unit = unit,
             CanManage = await _authorisation.AuthoriseAsync(Permissions.ManageEmployees),
             CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus),
             CanAssign = await _authorisation.AuthoriseAsync(
                 WorkMate.Dimensions.Permissions.AssignEmployees),
         };
 
-        await FillPrimaryUnitsAsync(model.Employees, cancellationToken);
+        // On the axis being looked at when there is one, and on the primary organisation otherwise.
+        // "home: Civil" beside a secondary row only means anything if the home is read off the same
+        // axis the secondary is on — and a tenant whose organisation chart is not the axis nominated
+        // as primary (every tenant until somebody populates that one) would otherwise show "Not
+        // placed" against people who are plainly placed.
+        await FillPrimaryUnitsAsync(model.Employees, unit?.StructureId, cancellationToken);
+
+        if (membership is not null)
+        {
+            FillRoles(model.Employees, membership);
+        }
 
         return View(model);
     }
 
     /// <summary>
-    /// Fills in where each person on the page sits today, on the primary organisation axis.
+    /// The unit the list is filtered to, resolved and counted, or null when it is not filtered.
     /// </summary>
     /// <remarks>
-    /// One query for the whole page rather than one per row — <c>GetAllAxesAsync</c> per employee
-    /// would be the N+1 that a list screen most easily grows — and then one batched name lookup for
-    /// the units it found. A page of fifty therefore costs two queries, not a hundred.
-    ///
-    /// Silently skipped when the tenant has nominated no primary organisation axis, which a brand
-    /// new tenant has not: the column is simply empty, which is true.
+    /// The count comes from the same <c>IEmployeeAssignmentService</c> call that draws the designer
+    /// card the reader clicked, so the header and the card show one number. Computing it from the
+    /// list instead would make them disagree the moment somebody typed in the search box, which is
+    /// precisely when a reader is most likely to be comparing them.
+    /// </remarks>
+    private async Task<UnitFilterViewModel?> UnitFilterAsync(
+        string? structureId,
+        string? recordId,
+        string? asAt,
+        bool includeSubUnits,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(structureId) || string.IsNullOrEmpty(recordId))
+        {
+            return null;
+        }
+
+        var structure = await _structures.GetAsync(structureId, cancellationToken);
+        var date = IsoDate.TryParse(asAt, out var parsed) ? parsed : await _authorisation.TodayAsync();
+        var record = await _dimensions.GetAsync(recordId, date, cancellationToken);
+
+        if (structure is null || record is null)
+        {
+            return null;
+        }
+
+        var total = includeSubUnits
+            ? (await _assignments.GetEmployeesUnderAsync(
+                structureId, recordId, date, includeDescendants: true, skip: 0, take: 1, cancellationToken)).Total
+            : (await _assignments.CountEmployeesAtAsync(structureId, [recordId], date, cancellationToken))
+                .GetValueOrDefault(recordId);
+
+        return new UnitFilterViewModel(
+            structureId,
+            recordId,
+            BilingualText.Display(structure.Name.En, structure.Name.Ar),
+            BilingualText.Display(record.NameEn, record.NameAr),
+            date.ToIso(),
+            includeSubUnits,
+            total);
+    }
+
+    /// <summary>
+    /// Who is at the unit, what each of them is there, and who heads it.
+    /// </summary>
+    /// <remarks>
+    /// The head is listed whether or not they are placed in the unit — ADR-0012 — because "who runs
+    /// this department" is the first thing anybody asks of a department, and a head borrowed from
+    /// another department is ordinary. They are not added to the count, because they work somewhere
+    /// else and that somewhere else is already counting them; counting them here would make the
+    /// company's headcount larger than the company.
+    /// </remarks>
+    private async Task<UnitMembership> MembershipAsync(
+        UnitFilterViewModel unit,
+        CancellationToken cancellationToken)
+    {
+        var date = IsoDate.TryParse(unit.AsAtIso, out var parsed) ? parsed : await _authorisation.TodayAsync();
+
+        var rows = await _assignments.GetAssignmentsAtAsync(
+            unit.StructureId, unit.RecordId, date, unit.IncludeSubUnits, cancellationToken);
+
+        var byEmployee = rows
+            .GroupBy(row => row.EmployeeId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                // Primary first: somebody with a primary and a secondary at the same unit — which
+                // a split allocation across a subtree produces — is primarily there.
+                group => group.OrderByDescending(row => row.IsPrimary).First(),
+                StringComparer.Ordinal);
+
+        // The head of the unit itself, never of a sub-unit: "who runs this" has one answer, and
+        // listing every sub-unit's head as though they ran this one would be several.
+        var head = await _assignments.GetHeadAsync(unit.StructureId, unit.RecordId, date, cancellationToken);
+
+        var listed = byEmployee.Keys.ToHashSet(StringComparer.Ordinal);
+
+        if (head is not null)
+        {
+            listed.Add(head.EmployeeId);
+        }
+
+        return new UnitMembership(byEmployee, head?.EmployeeId, listed);
+    }
+
+    private static void FillRoles(IReadOnlyList<EmployeeListItemViewModel> employees, UnitMembership membership)
+    {
+        foreach (var employee in employees)
+        {
+            employee.IsHeadHere = string.Equals(
+                employee.EmployeeId, membership.HeadEmployeeId, StringComparison.Ordinal);
+
+            if (membership.Rows.TryGetValue(employee.EmployeeId, out var row))
+            {
+                employee.RoleHere = row.IsPrimary ? UnitRole.Primary : UnitRole.Secondary;
+                employee.AllocationPercent = row.AllocationPercent;
+            }
+            else
+            {
+                // Listed and not placed: the head who is not a member. No allocation, because an
+                // appointment carries none.
+                employee.RoleHere = UnitRole.HeadOnly;
+            }
+        }
+    }
+
+    /// <summary>Who is at a unit, how, and who heads it.</summary>
+    private sealed record UnitMembership(
+        IReadOnlyDictionary<string, EmployeeAssignment> Rows,
+        string? HeadEmployeeId,
+        IReadOnlyCollection<string> EveryoneListed);
+    /// <summary>
+    /// Fills in where each person on the page sits, through the one service that answers it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EmployeeUnitNames"/> rather than a second copy here. This screen and the employee
+    /// picker both show "where they sit" and used to disagree: the picker fell back to another axis
+    /// when the primary organisation had nothing on it and this did not, so the same person read
+    /// "Mechanical" on one and "Not placed" on the other. There is one answer to the question now
+    /// and one place it is worked out.
     /// </remarks>
     private async Task FillPrimaryUnitsAsync(
         IReadOnlyList<EmployeeListItemViewModel> employees,
+        string? onStructureId,
         CancellationToken cancellationToken)
     {
         if (employees.Count == 0)
@@ -115,39 +266,18 @@ public sealed class EmployeesAdminController : Controller
             return;
         }
 
-        var organisation = await _structures.GetPrimaryOrganisationAsync(cancellationToken);
-
-        if (organisation is null)
-        {
-            return;
-        }
-
-        var today = await _authorisation.TodayAsync();
-        var placements = new Dictionary<string, string>(StringComparer.Ordinal);
+        var units = await _units.ForAsync(
+            [.. employees.Select(employee => employee.EmployeeId)],
+            onStructureId,
+            await _authorisation.TodayAsync(),
+            cancellationToken);
 
         foreach (var employee in employees)
         {
-            var assignment = await _assignments.GetEffectiveAsync(
-                employee.EmployeeId, organisation.StructureId, today, cancellationToken);
-
-            if (assignment is not null)
-            {
-                placements[employee.EmployeeId] = assignment.RecordId;
-            }
-        }
-
-        foreach (var employee in employees)
-        {
-            if (placements.TryGetValue(employee.EmployeeId, out var recordId))
-            {
-                var unit = await _dimensions.GetAsync(recordId, today, cancellationToken);
-
-                employee.PrimaryUnitName = unit is null
-                    ? null
-                    : BilingualText.Display(unit.NameEn, unit.NameAr);
-            }
+            employee.PrimaryUnitName = units.GetValueOrDefault(employee.EmployeeId);
         }
     }
+
 
     public async Task<IActionResult> Create(CancellationToken cancellationToken)
     {

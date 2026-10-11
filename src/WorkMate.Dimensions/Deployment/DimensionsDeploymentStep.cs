@@ -56,4 +56,68 @@ public sealed class DimensionsDeploymentStep : DeploymentStep
     /// rather than a meaning: both name people by code, so both need the employees to exist.
     /// </remarks>
     public bool IncludeHeads { get; set; }
+
+    /// <summary>
+    /// The combinations this step cannot produce a usable file from, and why.
+    /// </summary>
+    /// <remarks>
+    /// <b>Here rather than in the driver.</b> These are rules about what an export means, not about
+    /// how a screen is drawn, and a display driver can only be exercised with an HTTP context, a
+    /// theme and a shape factory around it — which is why they had no tests at all until the gap was
+    /// noticed. As a function of the step they are a function anybody can call, and the driver's job
+    /// shrinks to putting what it returns into model state.
+    ///
+    /// Every one of them is a reference the import resolves by code: a record names its type and its
+    /// structure, a placement names its unit, a head names its unit. Carrying the referrer without
+    /// the referent produces a file that cannot apply to a tenant that does not already hold it, so
+    /// it is refused where the person choosing can see why rather than on arrival somewhere else.
+    /// </remarks>
+    /// <remarks>
+    /// <b>Returns what is wrong, not what to say about it.</b> The sentences stay in the driver,
+    /// where <c>LocalisationResourceTests</c> can see them: a message built here would be a literal
+    /// string passed through a delegate, invisible to the source-level localisation checks, and the
+    /// day somebody edited the wording its Arabic translation would silently stop being used. The
+    /// rule and the sentence are different things and they belong in different places.
+    /// </remarks>
+    /// <returns>One entry per problem: the switch it belongs beside, and which problem it is.</returns>
+    public IReadOnlyList<(string Property, DimensionsExportProblem Problem)> Problems()
+    {
+        var problems = new List<(string, DimensionsExportProblem)>();
+
+        if (IncludeRecords && (!IncludeTypes || !IncludeStructures))
+        {
+            problems.Add((nameof(IncludeRecords), DimensionsExportProblem.RecordsNeedTypesAndStructures));
+        }
+
+        if (IncludeAssignments && !IncludeRecords)
+        {
+            problems.Add((nameof(IncludeAssignments), DimensionsExportProblem.AssignmentsNeedRecords));
+        }
+
+        if (IncludeHeads && !IncludeRecords)
+        {
+            problems.Add((nameof(IncludeHeads), DimensionsExportProblem.HeadsNeedRecords));
+        }
+
+        return problems;
+    }
+}
+
+/// <summary>
+/// A combination of switches that would produce an export nothing could import.
+/// </summary>
+/// <remarks>
+/// Each is a reference the import resolves by code. The wording lives on
+/// <see cref="DimensionsDeploymentStepDriver"/>; this is the fact, and that is how it is put.
+/// </remarks>
+public enum DimensionsExportProblem
+{
+    /// <summary>A record names its dimension type and its structure.</summary>
+    RecordsNeedTypesAndStructures,
+
+    /// <summary>A placement names the unit it is at.</summary>
+    AssignmentsNeedRecords,
+
+    /// <summary>A head names the unit they lead.</summary>
+    HeadsNeedRecords,
 }

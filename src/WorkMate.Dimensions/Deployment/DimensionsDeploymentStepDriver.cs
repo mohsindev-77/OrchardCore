@@ -21,6 +21,32 @@ public sealed class DimensionsDeploymentStepDriver : DisplayDriver<DeploymentSte
     public DimensionsDeploymentStepDriver(IStringLocalizer<DimensionsDeploymentStepDriver> localizer) =>
         S = localizer;
 
+    /// <summary>
+    /// What to tell an operator about a combination the step cannot export.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on the step, so the sentences are where the localisation checks look for
+    /// them — a literal handed to the step would be invisible to <c>LocalisationResourceTests</c>,
+    /// and its Arabic translation would quietly stop being used the next time the wording changed.
+    /// Public and static so that a test can assert each problem has something to say without
+    /// needing an HTTP context, a theme and a shape factory to build a display driver.
+    /// </remarks>
+    public static string Describe(DimensionsExportProblem problem, IStringLocalizer S)
+    {
+        ArgumentNullException.ThrowIfNull(S);
+
+        return problem switch
+        {
+            DimensionsExportProblem.RecordsNeedTypesAndStructures =>
+                S["Records reference their dimension type and their structure by code, so exporting them needs both to be included too."].Value,
+            DimensionsExportProblem.AssignmentsNeedRecords =>
+                S["Placements reference the unit they are at by code, so exporting them needs the units to be included too."].Value,
+            DimensionsExportProblem.HeadsNeedRecords =>
+                S["Head appointments reference the unit they lead by code, so exporting them needs the units to be included too."].Value,
+            _ => throw new ArgumentOutOfRangeException(nameof(problem)),
+        };
+    }
+
     public override Task<IDisplayResult> DisplayAsync(DimensionsDeploymentStep step, BuildDisplayContext context) =>
         CombineAsync(
             View("DimensionsDeploymentStep_Fields_Summary", step).Location("Summary", "Content"),
@@ -59,28 +85,13 @@ public sealed class DimensionsDeploymentStepDriver : DisplayDriver<DeploymentSte
         // what already exists, so a file carrying records without both is a file that cannot apply
         // to a tenant that does not already hold them. Refused here, where the person choosing can
         // see why, rather than at import time on somebody else's machine.
-        if (step.IncludeRecords && (!step.IncludeTypes || !step.IncludeStructures))
+        // The rules themselves are on the step — see DimensionsDeploymentStep.Problems, which
+        // explains why. All that is left here is saying what each one means and putting it beside
+        // the switch it is about, so the message appears under the checkbox somebody just ticked
+        // rather than at the top of a form with five of them on it.
+        foreach (var (property, problem) in step.Problems())
         {
-            context.Updater.ModelState.AddModelError(
-                $"{Prefix}.{nameof(DimensionsDeploymentStepViewModel.IncludeRecords)}",
-                S["Records reference their dimension type and their structure by code, so exporting them needs both to be included too."].Value);
-        }
-
-        // The same reasoning one level down: a placement names the unit it is at and a head names
-        // the unit they lead, both by code, so neither can apply to a tenant that does not already
-        // hold the units. Refused here rather than at import time on somebody else's machine.
-        if (step.IncludeAssignments && !step.IncludeRecords)
-        {
-            context.Updater.ModelState.AddModelError(
-                $"{Prefix}.{nameof(DimensionsDeploymentStepViewModel.IncludeAssignments)}",
-                S["Placements reference the unit they are at by code, so exporting them needs the units to be included too."].Value);
-        }
-
-        if (step.IncludeHeads && !step.IncludeRecords)
-        {
-            context.Updater.ModelState.AddModelError(
-                $"{Prefix}.{nameof(DimensionsDeploymentStepViewModel.IncludeHeads)}",
-                S["Head appointments reference the unit they lead by code, so exporting them needs the units to be included too."].Value);
+            context.Updater.ModelState.AddModelError($"{Prefix}.{property}", Describe(problem, S));
         }
 
         return Edit(step, context);

@@ -39,6 +39,21 @@ public interface IEmployeeLookup
     Task<IReadOnlyDictionary<string, EmployeeRef>> GetManyAsync(
         IReadOnlyList<string> employeeIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether this caller may open the employee list at all.
+    /// </summary>
+    /// <remarks>
+    /// Asked here, by this module, because a designer card now offers a way into that list and must
+    /// not offer it to somebody who would be refused — a link that leads to a "forbidden" page is a
+    /// worse answer than no link.
+    ///
+    /// The permission belongs to the module that owns employees and this module must not reference
+    /// it, which is the same reason every other question on this interface is declared here and
+    /// answered there. Checking a permission by its name string instead would put the name in two
+    /// places and make a rename silently open the link to everybody.
+    /// </remarks>
+    Task<bool> CanViewEmployeeListAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

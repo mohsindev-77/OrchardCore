@@ -20,13 +20,19 @@ namespace WorkMate.Dimensions.ViewModels;
 /// True for <c>add</c> alone: adding a unit puts the new one <em>under</em> the card it was started
 /// from, where every other action is about the card itself.
 /// </param>
+/// <param name="Area">
+/// The module the controller lives in, when it is not this one. An Orchard module is an MVC area,
+/// so a link to another module's controller resolves to nothing without it — silently: Url.Action
+/// returns null and the anchor renders with no href, which looks like a link and does nothing.
+/// </param>
 /// <param name="IsPermitted">Whether this viewer may use it, given their permissions.</param>
 public sealed record DesignerCardAction(
     string Name,
     string Action,
     string? Controller,
     bool TargetsParent,
-    Func<OrganisationDesignerViewModel, bool> IsPermitted);
+    Func<OrganisationDesignerViewModel, bool> IsPermitted,
+    string? Area = null);
 
 /// <summary>
 /// Every action a designer card can offer, declared once.
@@ -50,6 +56,13 @@ public static class DesignerCardActions
         new("cancelmove", "CancelMove", Controller: null, TargetsParent: false, model => model.CanMove),
         new("merge", "Merge", Controller: null, TargetsParent: false, model => model.CanMerge),
         new("sethead", "Set", "UnitHeadAdmin", TargetsParent: false, model => model.CanAssignEmployees),
+
+        // The only action whose controller is in another module. Resolved by name at run time, so
+        // this module still does not reference WorkMate.Records — and on a tenant without it the
+        // route does not resolve, Url.Action returns null, and the existing "an action with no URL
+        // is one this viewer may not use" rule drops it from the menu.
+        new("viewemployees", "Index", "EmployeesAdmin", TargetsParent: false, model => model.CanViewEmployees,
+            Area: "WorkMate.Records"),
         new("retire", "Retire", Controller: null, TargetsParent: false, model => model.CanEdit),
     ];
 }

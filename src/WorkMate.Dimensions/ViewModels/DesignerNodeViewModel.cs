@@ -139,6 +139,9 @@ public sealed class DesignerNodeViewModel
     /// </remarks>
     public bool CanAssignEmployees { get; set; }
 
+    /// <summary>Whether this card offers a way into the employee list for its unit.</summary>
+    public bool CanViewEmployees { get; set; }
+
     /// <summary>The structure the card belongs to, which every action link needs.</summary>
     public string StructureId { get; set; } = string.Empty;
 
@@ -208,10 +211,12 @@ public sealed class DesignerNodeViewModel
         bool canMove = false,
         bool canMerge = false,
         string? headDisplayName = null,
-        bool canAssignEmployees = false) => new()
+        bool canAssignEmployees = false,
+        bool canViewEmployees = false) => new()
     {
         HeadDisplayName = headDisplayName,
         CanAssignEmployees = canAssignEmployees,
+        CanViewEmployees = canViewEmployees,
         StructureId = structureId,
         AsAtIso = asAtIso,
         CanEdit = canEdit,

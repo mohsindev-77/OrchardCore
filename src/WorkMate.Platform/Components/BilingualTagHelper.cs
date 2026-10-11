@@ -30,7 +30,7 @@ public sealed class BilingualTagHelper : TagHelper
     public ModelExpression Arabic { get; set; } = default!;
 
     /// <summary>The field label. Already localised by the caller; this does not localise data.</summary>
-    public string? Label { get; set; }
+    public object? Label { get; set; }
 
     public string? Hint { get; set; }
 
@@ -52,10 +52,10 @@ public sealed class BilingualTagHelper : TagHelper
 
         var content = new System.Text.StringBuilder();
 
-        if (!string.IsNullOrWhiteSpace(Label))
+        if (TagHelperLabel.Html(Label) is { } label)
         {
             content.Append("<legend class=\"form-label\">")
-                   .Append(System.Net.WebUtility.HtmlEncode(Label));
+                   .Append(label);
 
             if (Required)
             {

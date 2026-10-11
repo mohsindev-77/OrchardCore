@@ -80,6 +80,22 @@ public sealed class EmployeePickerTagHelper : PlaceholderPickerTagHelper
     /// </remarks>
     public bool AllowNone { get; set; } = true;
 
+
+    /// <summary>
+    /// Whether people who have left are offered, and the hint that says so when they are not.
+    /// </summary>
+    /// <remarks>
+    /// Default true, because most forms here record something dated and must be able to name
+    /// somebody who has since left. The one that must not is appointing a head — the service
+    /// refuses a head who had left by the effective date, so offering them would be offering a
+    /// choice that cannot be made. When this is false the control says why, because a picker that
+    /// silently withholds a person reads as a missing record rather than as a rule.
+    /// </remarks>
+    public bool IncludeExited { get; set; } = true;
+
+    /// <summary>How many options are rendered before the reader has typed anything.</summary>
+    private const int FirstPage = 20;
+
     public override async Task ProcessAsync(TagHelperContext context, TagHelperOutput output)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -99,11 +115,12 @@ public sealed class EmployeePickerTagHelper : PlaceholderPickerTagHelper
         var id = TagBuilder.CreateSanitizedId(name, "_");
         var selected = For.Model?.ToString() ?? string.Empty;
 
-        var choices = await directory.SearchAsync(Query);
+        var choices = await directory.SearchAsync(
+            new EmployeeDirectoryQuery(Query, Skip: 0, Take: FirstPage, IncludeExited));
 
-        // The stored value may not be in the offered set — it can be somebody who has since left,
-        // or somebody past the cap — and a control that silently dropped them would change the
-        // record the next time anybody saved the form.
+        // The stored value may not be on the first page — it can be somebody who has since left,
+        // or somebody the search has not reached — and a control that silently dropped them would
+        // change the record the next time anybody saved the form.
         var options = choices.Items.ToList();
 
         if (!string.IsNullOrEmpty(selected) &&
@@ -119,12 +136,17 @@ public sealed class EmployeePickerTagHelper : PlaceholderPickerTagHelper
 
         var markup = new System.Text.StringBuilder();
 
-        if (!string.IsNullOrWhiteSpace(Label))
+        if (TagHelperLabel.Html(Label) is { } label)
         {
-            markup.Append(CultureInfo.InvariantCulture, $"<label class=\"form-label\" for=\"{id}\">{Encode(Label)}</label>");
+            markup.Append(CultureInfo.InvariantCulture, $"<label class=\"form-label\" for=\"{id}\">{label}</label>");
         }
 
-        markup.Append(CultureInfo.InvariantCulture, $"<select class=\"form-select\" id=\"{id}\" name=\"{name}\">");
+        // A real <select>, still, and it is the form control: the script below hides it and drives
+        // it rather than replacing it, so the posted value, the model binding and the validation
+        // are the same whether or not the script ran. What the script adds is the search.
+        markup.Append(
+            CultureInfo.InvariantCulture,
+            $"<select class=\"form-select\" id=\"{id}\" name=\"{name}\" data-employee-picker>");
 
         if (AllowNone)
         {
@@ -139,30 +161,86 @@ public sealed class EmployeePickerTagHelper : PlaceholderPickerTagHelper
 
             markup.Append(
                 CultureInfo.InvariantCulture,
-                $"<option value=\"{Encode(option.EmployeeId)}\"{isSelected}>"
-                + $"{Encode(option.Name)} ({Encode(option.Code)})</option>");
+                $"<option value=\"{Encode(option.EmployeeId)}\"{isSelected} data-code=\"{Encode(option.Code)}\""
+                + $" data-where=\"{Encode(option.Where ?? string.Empty)}\">"
+                + $"{Encode(Describe(option))}</option>");
         }
 
         markup.Append("</select>");
 
-        if (choices.IsTruncated)
+        if (!IncludeExited)
         {
-            // Said out loud. A control showing the first hundred of four hundred without a word is
-            // a control somebody will use to pick the wrong person.
             markup.Append(
                 CultureInfo.InvariantCulture,
-                $"<div class=\"form-text\">{Encode(S["Showing {0} of {1} people. Narrow the list to see the rest.", options.Count, choices.Total].Value)}</div>");
+                $"<div class=\"form-text\">{Encode(S["People who have left are not offered: an appointment cannot start after somebody's last day."].Value)}</div>");
+        }
+
+        // The fallback caption, for the case where the script did not run. The script removes it,
+        // because once there is a search box "narrow the list" is advice about a control that is
+        // no longer there.
+        if (choices.IsTruncated)
+        {
+            markup.Append(
+                CultureInfo.InvariantCulture,
+                $"<div class=\"form-text\" data-employee-picker-fallback-note>"
+                + $"{Encode(S["Showing {0} of about {1} people.", options.Count, choices.Total].Value)}</div>");
         }
 
         output.TagName = "div";
         output.TagMode = TagMode.StartTagAndEndTag;
         output.Attributes.SetAttribute("class", $"mb-3 {CssClass}");
+
+        // Everything the script needs, on the wrapper: where to search, and the two rules this
+        // particular form has. Carried as data rather than guessed, so the typed search and the
+        // rendered options cannot disagree about who is eligible.
+        output.Attributes.SetAttribute("data-employee-picker-url", SearchUrl);
+        output.Attributes.SetAttribute("data-employee-picker-include-exited", IncludeExited ? "true" : "false");
+        output.Attributes.SetAttribute("data-employee-picker-allow-none", AllowNone ? "true" : "false");
+        output.Attributes.SetAttribute("data-employee-picker-query", Query ?? string.Empty);
+
+        // Localised once here, rather than in the script where there is no localiser.
+        output.Attributes.SetAttribute("data-employee-picker-strings", Strings());
+
         output.Content.SetHtmlContent(markup.ToString());
     }
 
+    /// <summary>
+    /// Where the search endpoint lives.
+    /// </summary>
+    /// <remarks>
+    /// A constant rather than <c>IUrlHelper</c>, because this tag helper is in
+    /// <c>WorkMate.Platform</c> and the controller is in <c>WorkMate.Records</c>, which this module
+    /// must not reference — the whole reason <see cref="IEmployeeDirectory"/> exists. The route is
+    /// pinned by <c>EmployeePickerRouteTests</c>, which resolves it for real, so a rename cannot
+    /// break this silently.
+    /// </remarks>
+    public const string SearchUrl = "/Admin/Employees/Picker/Search";
+
+    /// <summary>One option's text: who, which code, and where they sit.</summary>
+    /// <remarks>
+    /// Where they sit is in brackets after the code and omitted when they are not placed, rather
+    /// than rendered as a dash. An unplaced new starter is ordinary; a dash would read as a lookup
+    /// that failed.
+    /// </remarks>
+    private static string Describe(EmployeeChoice option) =>
+        string.IsNullOrEmpty(option.Where)
+            ? $"{option.Name} ({option.Code})"
+            : $"{option.Name} ({option.Code}) — {option.Where}";
+
+    private string Strings() => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+    {
+        ["search"] = S["Search by name or employee code"].Value,
+        ["none"] = S["— nobody —"].Value,
+        ["empty"] = S["No match. Try part of a name or an employee code."].Value,
+        ["more"] = S["Showing {0} of about {1}. Keep typing to narrow it."].Value,
+        ["all"] = S["Showing all {0}."].Value,
+        ["chosen"] = S["Chosen: {0}"].Value,
+        ["clear"] = S["Clear"].Value,
+        ["unresolved"] = S["Choose somebody from the list, or clear the box."].Value,
+    });
+
     private static string Encode(string value) => System.Net.WebUtility.HtmlEncode(value);
 }
-
 /// <summary>
 /// Shared behaviour for the two pickers that are declared now and implemented later.
 /// </summary>
@@ -180,7 +258,7 @@ public abstract class PlaceholderPickerTagHelper : TagHelper
     public ModelExpression For { get; set; } = default!;
 
     /// <summary>The label. Already localised by the caller.</summary>
-    public string? Label { get; set; }
+    public object? Label { get; set; }
 
     [HtmlAttributeNotBound]
     [ViewContext]
@@ -198,9 +276,9 @@ public abstract class PlaceholderPickerTagHelper : TagHelper
         output.TagMode = TagMode.StartTagAndEndTag;
         output.Attributes.SetAttribute("class", $"mb-3 {CssClass}");
 
-        var label = string.IsNullOrWhiteSpace(Label)
-            ? string.Empty
-            : $"<label class=\"form-label\" for=\"{id}\">{System.Net.WebUtility.HtmlEncode(Label)}</label>";
+        var label = TagHelperLabel.Html(Label) is { } text
+            ? $"<label class=\"form-label\" for=\"{id}\">{text}</label>"
+            : string.Empty;
 
         output.Content.SetHtmlContent($"""
             {label}

@@ -93,6 +93,19 @@
                                asp-route-recordId="@Model.RecordId"
                                asp-route-asAt="@Model.AsAtIso">@(Model.HeadDisplayName is null ? T["Appoint a head…"] : T["Change the head…"])</a>
                         }
+                        @if (Model.CanViewEmployees)
+                        {
+                            @* The same destination the employee count links to, for anybody who
+                               looks for actions in the menu rather than on the card. The controller
+                               is in another module and is resolved by name: on a tenant without it
+                               the URL comes back empty and the script drops the entry, which is the
+                               same rule every other action follows. *@
+                            <a class="designer-action" data-designer-action="viewemployees"
+                               asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-recordId="@Model.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@T["View employees"]</a>
+                        }
                         <a class="designer-action" data-designer-action="retire"
                            asp-action="Retire"
                            asp-route-structureId="@Model.StructureId"
@@ -141,8 +154,28 @@
                    remember to overwrite, and did not. See DesignerNodeViewModel.HeadLabel. *@
                 <div class="designer-card-head">@Model.HeadLabel</div>
                 @* One expression rather than an @if block, so a unit with nobody at it renders an
-                   element with no whitespace in it at all — which is what :empty needs to hide it. *@
-                <div class="designer-card-employees">@(Model.EmployeeCountLabel ?? string.Empty)</div>
+                   element with no whitespace in it at all — which is what :empty needs to hide it.
+
+                   The count is a link for anybody who may open the employee list: "14 employees" is
+                   a number somebody immediately wants the names behind, and the ⋯ menu's "View
+                   employees" is the same destination for anybody who looks for actions in menus.
+                   Which branch is rendered is decided on the template too, so a fetched card and a
+                   server-rendered one agree — the same rule the menu follows. *@
+                @if (Model.CanViewEmployees)
+                {
+                    <a class="designer-card-employees-link" data-designer-employees-link
+                       asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+                       asp-route-structureId="@Model.StructureId"
+                       asp-route-recordId="@Model.RecordId"
+                       asp-route-asAt="@Model.AsAtIso"
+                       title="@T["See who is in this unit"]">
+                        <span class="designer-card-employees">@(Model.EmployeeCountLabel ?? string.Empty)</span>
+                    </a>
+                }
+                else
+                {
+                    <span class="designer-card-employees">@(Model.EmployeeCountLabel ?? string.Empty)</span>
+                }
             }
             @if (Model.IsUnplaced)
             {

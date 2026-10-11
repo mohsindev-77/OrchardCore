@@ -31,8 +31,15 @@ else
     <input type="hidden" asp-for="UnitNameEn" />
 
     @* No "nobody" option: clearing a head is its own dated operation, because a post with nothing
-       selected cannot say which day the unit became vacant. *@
-    <workmate-employee-picker for="EmployeeId" label="@T["Head of this unit"]" allow-none="false" />
+       selected cannot say which day the unit became vacant.
+
+       Everybody in the tenant, regardless of where they are placed or whether they are placed at
+       all — ADR-0012: a head need not be a member of the unit they head, so narrowing this to the
+       unit's own staff would hide exactly the case the decision exists for. Leavers are the one
+       exclusion, because the service refuses an appointment starting after somebody's last day and
+       offering a choice that cannot be made is worse than not offering it. *@
+    <workmate-employee-picker for="EmployeeId" label="@T["Head of this unit"]"
+                              allow-none="false" include-exited="false" />
 
     <div class="mb-3">
         <label class="form-label" asp-for="EffectiveFrom">@T["From"]</label>
@@ -79,3 +86,7 @@ else
         </tbody>
     </table>
 }
+
+@* The picker's search. Without it the control is still a working <select> of the first
+   page; with it, everybody in the tenant is reachable by typing. *@
+<script asp-name="workmate-employee-picker" at="Foot"></script>

@@ -1,0 +1,25 @@
+@model EmployeeListItemViewModel
+@*
+    What somebody is at the unit the list is filtered to. A partial with a switch expression, like
+    _EmploymentStatusName, for the same two reasons: the names stay literals the localiser and
+    LocalisationResourceTests can both see, and a switch statement in the middle of markup reads to
+    UserVisibleStringTests as rendered text.
+
+    "Head (not a member)" is ADR-0012's case said plainly. Without it a head borrowed from another
+    department reads as somebody who works here, and the headcount beside them — which does not
+    count them — looks wrong instead of right.
+*@
+@(Model.RoleHere switch
+{
+    UnitRole.Primary => T["Primary"],
+    UnitRole.Secondary => T["Secondary"],
+    UnitRole.HeadOnly => T["Head (not a member)"],
+
+    // Null on the unfiltered list, where there is no unit for a role to be relative to.
+    _ => null,
+})
+@if (Model.RoleHere == UnitRole.Secondary && !string.IsNullOrEmpty(Model.PrimaryUnitName))
+{
+    @* The matrix in one line: lent to this unit, belongs to that one. *@
+    <div class="text-muted small">@T["home: {0}", Model.PrimaryUnitName]</div>
+}

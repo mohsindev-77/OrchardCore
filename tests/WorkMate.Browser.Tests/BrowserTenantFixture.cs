@@ -379,6 +379,19 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
         [("organisation-designer-demo.recipe.json", "WorkMate Demo Organisation")];
 
     /// <summary>
+    /// The screen that would show what a recipe added, for the check that it actually ran.
+    /// </summary>
+    /// <remarks>
+    /// By the recipe's own name rather than by a third tuple element, because there are two kinds
+    /// and they are told apart by what they are called. A recipe that seeds people is proved by the
+    /// employee list; everything else by the designer.
+    /// </remarks>
+    private static string EvidencePathFor(string fileName) =>
+        fileName.Contains("-employees", StringComparison.Ordinal)
+            ? "/Admin/Employees/Index?search="
+            : "/Admin/Dimensions/Designer/Index";
+
+    /// <summary>
     /// Seeds the organisation the way an operator would: by running the shipped recipes from the
     /// admin screen, not by calling services. What the browser then sees is what someone following
     /// the module README would see.
@@ -397,15 +410,20 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
                 }));
 
             // The recipe screen redirects whether or not a step failed, so the status code proves
-            // nothing. The designer itself is the evidence: either the organisation is on it — on
-            // the chart or in the structure picker — or every test in this suite is about to fail
-            // for a reason that has nothing to do with the browser.
-            var designer = await GetAsync(client, "/Admin/Dimensions/Designer/Index");
+            // nothing. A screen that would show what the recipe added is the evidence: either it is
+            // there or every test in this suite is about to fail for a reason that has nothing to
+            // do with the browser.
+            //
+            // Which screen depends on what the recipe carries. An organisation shows up on the
+            // designer; people do not, and a recipe of 158 employees that silently did nothing
+            // would otherwise be found by a browser test timing out on an empty picker.
+            var path = EvidencePathFor(fileName);
+            var screen = await GetAsync(client, path);
 
-            if (!designer.Contains(evidence, StringComparison.Ordinal))
+            if (!screen.Contains(evidence, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    $"'{fileName}' ran but the organisation designer does not mention '{evidence}'.");
+                    $"'{fileName}' ran but {path} does not mention '{evidence}'.");
             }
         }
     }

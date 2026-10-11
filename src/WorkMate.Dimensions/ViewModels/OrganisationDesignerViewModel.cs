@@ -66,6 +66,13 @@ public sealed class OrganisationDesignerViewModel
     /// <summary>Whether this viewer may appoint or clear a unit's head. <c>AssignEmployees</c>.</summary>
     public bool CanAssignEmployees { get; set; }
 
+    /// <summary>Whether this viewer may open the employee list a card now links to.</summary>
+    /// <remarks>
+    /// Answered by the module that owns employees, through <c>IEmployeeLookup</c>, because the
+    /// permission is theirs. A card does not offer a link that would land on a refusal.
+    /// </remarks>
+    public bool CanViewEmployees { get; set; }
+
     /// <summary>
     /// Every action a card's menu can carry, with this viewer's permission for each.
     /// </summary>
@@ -156,5 +163,6 @@ public sealed class OrganisationDesignerViewModel
         // defect: CanAssignEmployees defaulted to false, so the template carried no "sethead" link
         // for the script to point anywhere — and the roots, rendered with the real value, had one.
         CanAssignEmployees = CanAssignEmployees,
+        CanViewEmployees = CanViewEmployees,
     };
 }

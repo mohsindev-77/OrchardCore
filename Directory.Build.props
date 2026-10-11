@@ -10,6 +10,19 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <Authors>Aramis Enterprise Solutions</Authors>
     <Product>WorkMate 2.0</Product>
+
+    <!--
+      Stated rather than inherited. All three of these have SDK defaults that would mostly do the
+      right thing today, and a security control that depends on an SDK default is a control that
+      changes when somebody upgrades the SDK — silently, and in the direction of auditing less.
+      NuGetAuditMode is the one that actually matters here: the ImageSharp advisories are against a
+      transitive dependency of OrchardCore.Media, and under "direct" they would not be reported at
+      all. NuGetAuditPolicyTests asserts these are set, so deleting one fails a test rather than
+      quietly turning the audit down.
+    -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
   </PropertyGroup>
 
   <!--

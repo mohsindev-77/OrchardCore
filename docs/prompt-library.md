@@ -1103,3 +1103,41 @@ recipes apply cleanly, before writing its scenario tests.
 ### Keeping them current
 
 When a module gains a capability, one or both reference tenants gain configuration for it in the same pull request. A capability neither tenant exercises has no scenario test, and a capability with no scenario test is one the pipeline cannot protect.
+
+**Backlog note, 8 October 2026 — a feature a module needs is a manifest
+dependency, not a base-recipe line.** Raised by a defect on a real tenant: the
+employee record's sections are `BagPart`s, `OrchardCore.Flows` was added to
+`recipes/base.recipe.json` in prompt 4 session A1, and on a tenant created before
+that edit the sections did not work. Nothing failed — an unregistered part is not
+a broken part, it is a part Orchard has never heard of — so the editor simply had
+no sections in it.
+
+*The rule.* A recipe is applied once, at setup. Editing it changes what new
+tenants get and reaches no existing one, ever; there is no mechanism by which it
+could. A manifest dependency is resolved every time a shell is built, so it
+reaches a tenant set up last year as surely as one set up this morning. The
+recipe line is still worth keeping, because it makes a fresh tenant's feature
+list readable in one place — it is simply not a substitute.
+
+*What the audit found.* Six more of the same shape. `WorkMate.Records` declared
+none of Flows, Title, ContentFields, AuditTrail, Deployment or Media;
+`WorkMate.Dimensions` had no Deployment, so its export step would not render;
+`WorkMate.Platform` had no Contents or ContentTypes. And one that was not ours:
+`OrchardCore.Contents` registers a data-localization provider depending on
+`OrchardCore.AdminMenu`, which nothing enabled, so every request to the
+deployment plan screen threw.
+
+*Held by* `ModuleFeatureDependencyTests` (source-level: every Orchard package a
+module references implies a feature its manifest must declare, and a package the
+table does not classify fails the test) and
+`ModuleFeatureDependencyTenantTests` (a tenant built with those features struck
+out of the base recipe still has them, and `BagPart` still resolves).
+
+**Backlog note, 8 October 2026 — a control that is correct below its limit.**
+The employee picker was a `<select>` of the first hundred employees, which is
+correct on every tenant with fewer than a hundred people and silently wrong on
+every tenant with more. Every test of it had been written on a tenant with a
+handful. The lesson for the screens still to be built — the approval designer's
+role pickers, the entitlement control panel's tenant list, every report filter —
+is that a test of a paged or capped control has to be written on data that is
+over the cap, and that the demo organisations exist partly to be that data.

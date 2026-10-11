@@ -12,6 +12,9 @@ using OrchardCore.Modules.Manifest;
     // field types an attribute schema may declare. OrchardCore.AuditTrail is where every
     // structure and content-definition change is recorded, which specification section 4 requires
     // rather than merely suggests, so it is a dependency and not an optional extra.
+    // OrchardCore.Deployment renders the export step ADR-0011 decided on: without the feature the
+    // step is registered and never appears on a plan, which is the same silent failure the missing
+    // OrchardCore.Flows dependency caused in WorkMate.Records.
     Dependencies = new[]
     {
         "WorkMate.Platform",
@@ -20,5 +23,6 @@ using OrchardCore.Modules.Manifest;
         "OrchardCore.Title",
         "OrchardCore.ContentFields",
         "OrchardCore.AuditTrail",
+        "OrchardCore.Deployment",
     }
 )]

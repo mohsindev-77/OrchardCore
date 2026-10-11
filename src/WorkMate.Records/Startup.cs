@@ -52,6 +52,7 @@ public sealed class Startup : StartupBase
 
         // The other two seams another module declared and this one answers: the shared component
         // set's employee picker, and the candidate set behind an employee picker field.
+        services.AddScoped<EmployeeUnitNames>();
         services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
         services.AddScoped<IContentPickerResultProvider, EmployeePickerResultProvider>();
 

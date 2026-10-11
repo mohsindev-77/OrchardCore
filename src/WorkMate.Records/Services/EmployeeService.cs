@@ -9,6 +9,7 @@ using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
 using WorkMate.Records.Models;
 using YesSql;
+using YesSql.Services;
 
 namespace WorkMate.Records.Services;
 
@@ -455,10 +456,97 @@ internal sealed class EmployeeService : IEmployeeService
         EmploymentStatus? status = null,
         int skip = 0,
         int take = 50,
+        IReadOnlyCollection<string>? restrictedTo = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _session.QueryIndex<EmployeeIndex>(index => index.Latest);
+        if (restrictedTo is not null)
+        {
+            return await ListRestrictedAsync(search, status, skip, take, restrictedTo, cancellationToken);
+        }
 
+        var query = Filtered(_session.QueryIndex<EmployeeIndex>(index => index.Latest), search, status);
+        var total = await query.CountAsync(cancellationToken);
+
+        var rows = await query
+            .OrderBy(index => index.NameEn)
+            .ThenBy(index => index.Code)
+            .Skip(skip)
+            .Take(take)
+            .ListAsync(cancellationToken);
+
+        return new Page<EmployeeRecord>([.. rows.Select(ToRecord)], total, skip, take);
+    }
+
+    /// <summary>How many employees in this set match, without listing them.</summary>
+    private static int ChunkSize => 400;
+
+    /// <summary>
+    /// The same list, narrowed to a set of people somebody else worked out.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is a separate path.</b> The caller is the organisation designer asking "who is in
+    /// this unit", and unit membership lives in the dimension engine's assignment index, not here —
+    /// there is no column on <c>EmployeeIndex</c> to filter on, and there must not be, because the
+    /// employee record holds no department field. So the engine resolves who, and this narrows the
+    /// list to them.
+    ///
+    /// <b>Why it is chunked.</b> The set is an <c>IN</c> list, and a Division with sub-units
+    /// included can be the whole company: at five thousand ids a single <c>IN</c> exceeds SQL
+    /// Server's 2,100-parameter limit and the query stops working on a customer's database while
+    /// continuing to pass on SQLite — the failure mode <c>GetEmployeesUnderAsync</c>'s correlated
+    /// sub-select was written to avoid. Chunking keeps every statement small.
+    ///
+    /// <b>Why the paging is then done here.</b> Because the chunks have to be merged before
+    /// anything can be skipped: the first page of the whole is not the first page of any one chunk.
+    /// The cost is bounded by the unit's own headcount rather than by the tenant's, which is the
+    /// number the screen is about.
+    /// </remarks>
+    private async Task<Page<EmployeeRecord>> ListRestrictedAsync(
+        string? search,
+        EmploymentStatus? status,
+        int skip,
+        int take,
+        IReadOnlyCollection<string> restrictedTo,
+        CancellationToken cancellationToken)
+    {
+        var ids = restrictedTo.Distinct(StringComparer.Ordinal).ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Page<EmployeeRecord>([], 0, skip, take);
+        }
+
+        var matched = new Dictionary<string, EmployeeIndex>(StringComparer.Ordinal);
+
+        for (var start = 0; start < ids.Length; start += ChunkSize)
+        {
+            var chunk = ids.Skip(start).Take(ChunkSize).ToArray();
+
+            var rows = await Filtered(
+                    _session.QueryIndex<EmployeeIndex>(index => index.Latest && index.ContentItemId.IsIn(chunk)),
+                    search,
+                    status)
+                .ListAsync(cancellationToken);
+
+            foreach (var row in rows)
+            {
+                matched[row.ContentItemId] = row;
+            }
+        }
+
+        var ordered = matched.Values
+            .OrderBy(row => row.NameEn, StringComparer.CurrentCulture)
+            .ThenBy(row => row.Code, StringComparer.Ordinal)
+            .ToList();
+
+        return new Page<EmployeeRecord>(
+            [.. ordered.Skip(skip).Take(take).Select(ToRecord)], ordered.Count, skip, take);
+    }
+
+    /// <summary>The status and search narrowing, shared by both paths so they cannot disagree.</summary>
+    private static YesSql.IQueryIndex<EmployeeIndex> Filtered(
+        YesSql.IQueryIndex<EmployeeIndex> query, string? search, EmploymentStatus? status)
+    {
         if (status is not null)
         {
             var name = status.Value.ToString();
@@ -479,16 +567,7 @@ internal sealed class EmployeeService : IEmployeeService
                 index.NameAr.Contains(term));
         }
 
-        var total = await query.CountAsync(cancellationToken);
-
-        var rows = await query
-            .OrderBy(index => index.NameEn)
-            .ThenBy(index => index.Code)
-            .Skip(skip)
-            .Take(take)
-            .ListAsync(cancellationToken);
-
-        return new Page<EmployeeRecord>([.. rows.Select(ToRecord)], total, skip, take);
+        return query;
     }
 
     // ---- the shared transition --------------------------------------------------------

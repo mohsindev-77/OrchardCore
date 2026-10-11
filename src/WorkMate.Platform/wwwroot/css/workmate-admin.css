@@ -73,3 +73,29 @@
         rgba(0, 0, 0, 0.03) 12px
     );
 }
+
+/* ---- the employee picker ----------------------------------------------------------------
+   The search box and its results. The list floats over what follows so that choosing somebody
+   does not push the rest of the form down and move the button somebody was about to press. */
+
+.workmate-picker-list {
+    position: absolute;
+    inset-inline: 0;
+    top: 100%;
+    z-index: 1056; /* Above a modal's backdrop: these forms open inside one. */
+    max-height: 18rem;
+    overflow-y: auto;
+    margin-block-start: 0.125rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+/* Keyboard highlight and pointer hover are the same state deliberately: the list is driven by
+   aria-activedescendant, so the browser's own :focus never lands on a row and could not be
+   styled instead. */
+.workmate-picker-list .list-group-item.active {
+    z-index: auto;
+}
+
+.workmate-picker-list .list-group-item {
+    cursor: pointer;
+}

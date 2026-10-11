@@ -239,12 +239,77 @@ screen holds a privileged path.
   department", not "what does this person run". The placement screen lists what
   somebody leads and says where to change it.
 
+### The employee list, filtered to a unit
+
+The same screen, with `structureId`, `recordId` and `asAt` on the query string — which is what a
+designer card's employee count and its ⋯ menu's **View employees** link to. One action rather than
+a second screen, because the search, the status filter, the paging and the row actions are all
+wanted either way and a second copy would drift.
+
+What the filter adds: a header naming the unit, the axis and the date; an **Include sub-units**
+checkbox, **off by default** because the card is the way in and the card's number counts the node
+itself — opening on a different number from the one just clicked would answer a question nobody
+asked; and three columns, **Role here** (primary, or secondary with the person's home unit named),
+**Allocation %**, and a ★ against the head.
+
+**The head is listed and not counted.** ADR-0012: a head need not work in the unit they head, so an
+acting head borrowed from another department appears, marked *Head (not a member)* and carrying no
+allocation — and is excluded from the figure, because the unit they do work in is already counting
+them. The screen says so rather than leaving a reader to work out why the list is one longer than
+the number above it.
+
+**The figure is the card's figure**, from the same `IEmployeeAssignmentService` call, never from the
+length of the list — which is a page and is narrowed by any search. Two numbers from two sources is
+how a chart and a list come to disagree about the size of a department.
+
+Who is in the unit comes from the dimension engine and narrows the list through
+`IEmployeeService.ListAsync`'s `restrictedTo`: membership is an assignment row and deliberately not
+a column here, so the engine answers *who* and this module answers *which of them match*.
+
 ### The employee picker, which is two things
 
 | | What it is | Where |
 | --- | --- | --- |
 | **The picker field** | An Orchard `ContentPickerField` restricted to `Employee`, with its candidate set served by `EmployeePickerResultProvider` and filtered through `IVisibilityService`. Searches rather than lists, so it scales. What session B's form designer generates. | `EmployeePickerResultProvider` |
-| **The picker control** | `<workmate-employee-picker>`, a server-rendered `<select>` for the plain admin forms that are not content items — setting a unit's head, naming a line manager. Works with no JavaScript. Says out loud when the list is capped, because a control showing the first hundred of four hundred in silence is one somebody will use to pick the wrong person. | `EmployeeDirectory`, behind `WorkMate.Platform`'s tag helper |
+| **The picker control** | `<workmate-employee-picker>`, for the plain admin forms that are not content items — setting a unit's head, naming a line manager. A server-rendered `<select>` that the browser upgrades in place into a searching combobox. | `EmployeeDirectory`, behind `WorkMate.Platform`'s tag helper |
+
+**The control searches the tenant, and that is the whole of it.** It was a `<select>` of the first
+hundred employees of any status. On the Zenith demo organisation that is a hundred of a hundred and
+fifty-eight: fifty-eight people could not be named as a head, as a line manager or as anything
+else, from any screen, and nothing said so. Filtering a list the browser already holds has the same
+hole — it can only narrow what was sent. So the filtering happens on the server, through
+`EmployeePickerAdminController.Search`, and the browser holds one page at a time.
+
+The `<select>` stays and is still the form control: the script hides it and sets its value, so the
+posted value, the model binding and the validation are identical whether or not the script ran, and
+what is lost without it is only the ability to reach somebody past the first page. The combobox
+follows the WAI-ARIA pattern — arrow keys, Enter, Escape, `aria-activedescendant` — because a
+picker that needs a mouse is a picker some people cannot use.
+
+Each option carries **name, code and where they sit**, because two of the three are routinely not
+enough to tell two people apart. Where they sit comes from `EmployeeUnitNames`, which is also what
+fills the list's "Where they sit" column — one answer to one question, after the two disagreed and
+the same person read "Mechanical" on the picker and "Not placed" on the list.
+
+**The selection is a fact the control holds, not something inferred from the text in the box.** That
+distinction is the whole of a defect worth remembering: the box shows a chosen person's *full label*
+— name, code and unit — and the code that re-read it as a search term found nobody and announced
+"No match" at a reader who had just chosen successfully. The posted value survived, which made it
+worse rather than better: the control said the selection had failed while quietly holding a correct
+one. Its mirror image had the same cause and is the dangerous one — typing over a selection left the
+old id in the `<select>`, so the form would post somebody the reader had visibly moved away from.
+
+So: choosing records the selection, editing the text abandons it, re-focusing searches for nothing
+rather than for the label, and submitting text that names nobody is refused on the field with a
+message of its own. The message is a `.invalid-feedback` element rather than the status line,
+because the status line is a running commentary on the search and a result already in flight will
+overwrite anything written there.
+
+Each form says which people it wants. Appointing a head asks for everybody in the tenant regardless
+of placement — ADR-0012, a head need not be a member — and excludes leavers, because the service
+refuses an appointment starting after somebody's last day and offering a choice that cannot be made
+is worse than not offering it. The form says so, since a picker that silently withholds a person
+reads as a missing record rather than as a rule.
 
 Both go through **`IVisibilityService`**, which allows everything until prompt 9
 builds visibility by node. It is wired now rather than retrofitted later

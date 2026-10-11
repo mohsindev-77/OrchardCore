@@ -142,6 +142,31 @@
                     : { structureId: structureId, recordId: node.recordId, asAt: asAt });
         });
 
+        // The employee count is a link to the same place the menu's "View employees" goes, so it is
+        // pointed from the same map — one description of where that screen is, not two. Absent when
+        // this viewer may not open it, because the template was rendered without it.
+        var employeesLink = li.querySelector("[data-designer-employees-link]");
+
+        if (employeesLink) {
+            var employees = actionUrls.viewemployees;
+
+            if (employees && employees.url) {
+                employeesLink.href = employees.url + "?" + query({
+                    structureId: structureId,
+                    recordId: node.recordId,
+                    asAt: asAt
+                });
+            } else {
+                // No URL means no such screen on this tenant. The count still shows; it just stops
+                // pretending to be a link.
+                employeesLink.removeAttribute("href");
+            }
+
+            // A unit with nobody at it has no count to link to, and :empty cannot hide an anchor
+            // that contains an empty span.
+            employeesLink.hidden = !node.employeeCountLabel;
+        }
+
         // A fetched card is draggable exactly as a server-rendered one is: the drag handler reads
         // the DOM rather than a list captured at load, so there is nothing per-card to wire up.
 

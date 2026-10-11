@@ -216,5 +216,37 @@ msgid "— nobody —"
 msgstr "— لا أحد —"
 
 #: WorkMate.Platform.Components.EmployeePickerTagHelper
-msgid "Showing {0} of {1} people. Narrow the list to see the rest."
-msgstr "يُعرض {0} من {1} شخصاً. ضيّق نطاق البحث لرؤية البقية."
+msgid "Search by name or employee code"
+msgstr "ابحث بالاسم أو برمز الموظف"
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "No match. Try part of a name or an employee code."
+msgstr "لا يوجد تطابق. جرّب جزءاً من الاسم أو رمز الموظف."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Showing {0} of about {1}. Keep typing to narrow it."
+msgstr "يُعرض {0} من نحو {1}. تابع الكتابة لتضييق النتائج."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Showing all {0}."
+msgstr "يُعرض الكل: {0}."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Showing {0} of about {1} people."
+msgstr "يُعرض {0} من نحو {1} شخصاً."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Chosen: {0}"
+msgstr "المختار: {0}"
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Clear"
+msgstr "مسح"
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "People who have left are not offered: an appointment cannot start after somebody's last day."
+msgstr "لا يُعرض من تركوا العمل: لا يمكن أن يبدأ التعيين بعد آخر يوم عمل للشخص."
+
+#: WorkMate.Platform.Components.EmployeePickerTagHelper
+msgid "Choose somebody from the list, or clear the box."
+msgstr "اختر شخصاً من القائمة، أو أفرغ الحقل."

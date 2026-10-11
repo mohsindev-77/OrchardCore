@@ -123,6 +123,7 @@ public sealed class OrganisationDesignerAdminController : Controller
             CanMove = await CanMoveAsync(),
             CanMerge = await CanMergeAsync(),
             CanAssignEmployees = await CanAssignEmployeesAsync(),
+            CanViewEmployees = await CanViewEmployeesAsync(),
             ViewMode = ResolveViewMode(view),
             ExpandRecordId = expand,
         };
@@ -1239,11 +1240,12 @@ public sealed class OrganisationDesignerAdminController : Controller
         var canMove = await CanMoveAsync();
         var canMerge = await CanMergeAsync();
         var canAssign = await CanAssignEmployeesAsync();
+        var canViewEmployees = await CanViewEmployeesAsync();
 
         var models = nodes.Select(node => DesignerNodeViewModel.Of(
                 node, typesById, employeeCounts, childCounts,
                 structureId, asAt.ToIso(), canEdit, canMove, canMerge,
-                heads.GetValueOrDefault(node.RecordId), canAssign))
+                heads.GetValueOrDefault(node.RecordId), canAssign, canViewEmployees))
             .ToList();
 
         foreach (var model in models)
@@ -1354,6 +1356,22 @@ public sealed class OrganisationDesignerAdminController : Controller
     /// </summary>
     private Task<bool> CanAssignEmployeesAsync() =>
         _authorizationService.AuthorizeAsync(User, Permissions.AssignEmployees);
+
+    /// <summary>
+    /// Who may follow a card into the list of the people at its unit.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the module that owns employees rather than answered here: the permission is theirs,
+    /// this module must not reference it, and naming it as a string would put it in two places. On
+    /// a tenant with no employee module there is nobody to ask and the answer is no, which is also
+    /// the right answer — there is no list to open.
+    /// </remarks>
+    private async Task<bool> CanViewEmployeesAsync()
+    {
+        var lookup = _employeeLookups.FirstOrDefault();
+
+        return lookup is not null && await lookup.CanViewEmployeeListAsync();
+    }
 
     /// <summary>
     /// Who may send a unit to a different parent. Moving the children of a unit being retired is

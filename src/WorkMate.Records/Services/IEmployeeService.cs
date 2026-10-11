@@ -154,11 +154,22 @@ public interface IEmployeeService
     /// </summary>
     /// <param name="search">Matched against the code and both halves of the name.</param>
     /// <param name="status">One status, or null for every status including leavers.</param>
+    /// <param name="restrictedTo">
+    /// When given, only these people are considered — everything else still applies on top.
+    /// </param>
+    /// <remarks>
+    /// <paramref name="restrictedTo"/> is how the organisation designer asks for a unit's staff.
+    /// Unit membership is an assignment row in the dimension engine and deliberately not a field
+    /// here — the employee record holds no department — so the engine answers "who is in this unit"
+    /// and this answers "and which of them match the search", rather than either one guessing at
+    /// the other's job.
+    /// </remarks>
     Task<Page<EmployeeRecord>> ListAsync(
         string? search = null,
         EmploymentStatus? status = null,
         int skip = 0,
         int take = 50,
+        IReadOnlyCollection<string>? restrictedTo = null,
         CancellationToken cancellationToken = default);
 }
 

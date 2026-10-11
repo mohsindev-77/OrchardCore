@@ -30,8 +30,25 @@ namespace WorkMate.Records.Services;
 internal sealed class EmployeeLookup : IEmployeeLookup
 {
     private readonly ISession _session;
+    private readonly IRecordsAuthorisation _authorisation;
 
-    public EmployeeLookup(ISession session) => _session = session;
+    public EmployeeLookup(ISession session, IRecordsAuthorisation authorisation)
+    {
+        _session = session;
+        _authorisation = authorisation;
+    }
+
+    /// <summary>
+    /// The one question on this interface that is about the caller rather than about an employee.
+    /// </summary>
+    /// <remarks>
+    /// Here, so the permission check and the screen it guards read the same constant. The designer
+    /// uses it to decide whether a card offers a way into the employee list; naming the permission
+    /// as a string over there instead would put it in two places, and a rename would then quietly
+    /// open the link to everybody.
+    /// </remarks>
+    public Task<bool> CanViewEmployeeListAsync(CancellationToken cancellationToken = default) =>
+        _authorisation.AuthoriseAsync(Permissions.ViewEmployees);
 
     public async Task<EmployeeRef?> GetByCodeAsync(
         string code,

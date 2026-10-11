@@ -1,5 +1,6 @@
 using System.Globalization;
 using WorkMate.Core;
+using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Services;
 using WorkMate.Records.Models;
 using WorkMate.Records.Services;
@@ -53,6 +54,31 @@ public sealed class EmployeeListItemViewModel
     /// people wants to know — and the one thing the employee record deliberately does not hold.
     /// </remarks>
     public string? PrimaryUnitName { get; set; }
+
+    /// <summary>
+    /// What this person is at the unit the list is filtered to: their primary placement, a
+    /// secondary one, or the headship alone.
+    /// </summary>
+    /// <remarks>
+    /// Null on the unfiltered list, where there is no unit for a role to be relative to. The
+    /// distinction is the matrix: a site engineer is primary at their home department and secondary
+    /// at the team, and a list that showed them the same way on both screens would be hiding the
+    /// arrangement the whole dimension engine exists to express.
+    /// </remarks>
+    public UnitRole? RoleHere { get; set; }
+
+    /// <summary>
+    /// How much of this person the unit accounts for, when the list is filtered to one.
+    /// </summary>
+    /// <remarks>
+    /// Null for a head who is not a member: an appointment carries no allocation — ADR-0012 — and
+    /// rendering a zero would say the unit accounts for none of them, which is a different and
+    /// false claim.
+    /// </remarks>
+    public decimal? AllocationPercent { get; set; }
+
+    /// <summary>Whether this person heads the unit the list is filtered to.</summary>
+    public bool IsHeadHere { get; set; }
 
     public static EmployeeListItemViewModel Of(EmployeeRecord employee)
     {
@@ -112,6 +138,50 @@ public sealed class EmployeeListViewModel
     public bool CanChangeStatus { get; set; }
 
     public bool CanAssign { get; set; }
+
+    /// <summary>The unit this list is filtered to, or null for the whole tenant.</summary>
+    public UnitFilterViewModel? Unit { get; set; }
+}
+
+/// <summary>
+/// What a unit-filtered employee list is filtered by, and what to say about it.
+/// </summary>
+/// <param name="IncludeSubUnits">
+/// Whether people beneath the unit are counted and listed as well.
+/// </param>
+/// <param name="MemberTotal">
+/// How many people are <em>at</em> the unit, which is the number the designer card shows.
+/// </param>
+/// <remarks>
+/// <b>Sub-units default to off.</b> The card is the way in, the card's number counts the node
+/// itself, and a screen that opened showing a different number from the one just clicked would be
+/// answering a question nobody asked. Turning it on is one click and the header says what changed.
+///
+/// <see cref="MemberTotal"/> comes from <c>IEmployeeAssignmentService</c> — the same call that
+/// draws the card — rather than from the length of the list, which is a page and is narrowed by any
+/// search. Two numbers from two sources is how a chart and a list come to disagree.
+/// </remarks>
+public sealed record UnitFilterViewModel(
+    string StructureId,
+    string RecordId,
+    string StructureName,
+    string UnitName,
+    string AsAtIso,
+    bool IncludeSubUnits,
+    int MemberTotal);
+
+/// <summary>What somebody is at the unit a list is filtered to.</summary>
+/// <remarks>
+/// <see cref="HeadOnly"/> is the case ADR-0012 exists for: a head who is not a member of the unit
+/// they head. They are listed, because "who runs this department" is the first thing anybody asks
+/// of a department, and not counted, because they work somewhere else and that somewhere else is
+/// already counting them.
+/// </remarks>
+public enum UnitRole
+{
+    Primary,
+    Secondary,
+    HeadOnly,
 }
 
 /// <summary>Creating an employee. The only screen that does: see the Records README.</summary>
@@ -532,4 +602,22 @@ public static class EmployeeDisplay
 
     /// <inheritdoc cref="Date(DateOnly)"/>
     public static string Date(DateOnly? value) => value is null ? "—" : Date(value.Value);
+
+    /// <summary>A wire date in the reader's own format, for a date that arrived as a string.</summary>
+    public static string DateFromIso(string? value) =>
+        IsoDate.TryParse(value, out var date) ? Date(date) : value ?? string.Empty;
+
+    /// <summary>
+    /// An allocation, in the reader's own numerals, without trailing zeros nobody needs.
+    /// </summary>
+    /// <remarks>
+    /// Whole percentages are the overwhelming case — 100, or a 60/40 split — and "100.00%" on every
+    /// row of a list is noise that makes the one row reading "33.33%" harder to notice rather than
+    /// easier. The current culture, so an Arabic reader sees Arabic-Indic digits like every other
+    /// number on the screen.
+    /// </remarks>
+    public static string Percent(decimal value) =>
+        value == decimal.Truncate(value)
+            ? value.ToString("0'%'", CultureInfo.CurrentCulture)
+            : value.ToString("0.##'%'", CultureInfo.CurrentCulture);
 }

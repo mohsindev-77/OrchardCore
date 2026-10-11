@@ -32,6 +32,12 @@ public sealed class WorkMateResourceManifest : IConfigureOptions<ResourceManagem
             .SetUrl("~/WorkMate.Platform/css/workmate-admin.css")
             .SetVersion("1.0.0");
 
+        // The employee picker's search. Named here so a form asks for it by name rather than by
+        // path, and so the one form that does not use the picker does not pay for it.
+        manifest.DefineScript("workmate-employee-picker")
+            .SetUrl("~/WorkMate.Platform/js/employee-picker.js")
+            .SetVersion("1.0.0");
+
         return manifest;
     }
 }

@@ -99,6 +99,50 @@ public interface IEmployeeAssignmentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Everybody at a unit on a date, with the rows that put them there.
+    /// </summary>
+    /// <param name="includeDescendants">
+    /// When false, only people placed at the node itself — which is what the designer card counts.
+    /// When true, the whole subtree as at that date.
+    /// </param>
+    /// <remarks>
+    /// Unpaged, and one of the few reads here that is. Its caller is the employee list filtered to a
+    /// unit, which needs the whole membership before it can search within it: a page of the
+    /// members is not something a search can be applied to without giving the wrong total. The set
+    /// is bounded by the unit's own headcount rather than by the tenant's, which is the number the
+    /// screen is about.
+    ///
+    /// Rows rather than ids, because the screen says what each row <em>is</em> — primary or
+    /// secondary, and for how much — and a caller given only ids would have to ask again per
+    /// person to find out.
+    /// </remarks>
+    Task<IReadOnlyList<EmployeeAssignment>> GetAssignmentsAtAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        bool includeDescendants = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Where each of these employees primarily sits on one axis, as at a date.
+    /// </summary>
+    /// <remarks>
+    /// One query for a set of people rather than one per person, for the reason
+    /// <see cref="CountEmployeesAtAsync"/> is batched: the caller is a list of candidates on a
+    /// picker, and a lookup per row would be a query per row on every keystroke.
+    ///
+    /// Primary only, because the question is "where does this person work" and that is what the
+    /// primary flag answers — a split allocation or a matrix secondary would give two answers to a
+    /// question with one. Somebody not placed on the axis is absent rather than present with null,
+    /// so the common case of a picker on a tenant with no structure costs nothing to carry.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, EmployeeAssignment>> GetPrimaryPlacementsAsync(
+        string structureId,
+        IReadOnlyList<string> employeeIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every node the employee touches, across every axis, as at a date. Used by visibility and
     /// by the employee's own profile.
     /// </summary>

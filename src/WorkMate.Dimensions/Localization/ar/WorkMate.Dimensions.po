@@ -1528,3 +1528,15 @@ msgstr "من يرأس كل وحدة، مع كل فترة مسجَّلة"
 #: WorkMate.Dimensions.Views.DimensionsDeploymentStep.Fields.Edit
 msgid "Separate from placements: a head need not work in the unit they lead."
 msgstr "منفصل عن مواضع العمل: ليس بالضرورة أن يعمل الرئيس في الوحدة التي يرأسها."
+
+#: WorkMate.Dimensions.Views.OrganisationDesignerAdmin._DesignerNode
+msgid "View employees"
+msgstr "عرض الموظفين"
+
+#: WorkMate.Dimensions.Views.OrganisationDesignerAdmin._DesignerNode
+msgid "See who is in this unit"
+msgstr "اطّلع على من في هذه الوحدة"
+
+#: WorkMate.Dimensions.Views.UnitHeadAdmin.Set
+msgid "Head of this unit"
+msgstr "رئيس هذه الوحدة"

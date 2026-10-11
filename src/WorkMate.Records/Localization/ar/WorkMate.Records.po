@@ -688,3 +688,51 @@ msgstr "سجلات الموظفين"
 #: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Thumbnail
 msgid "Exports the tenant's employees as the recipe step the importer reads. Apply it before the organisation's placements and head appointments, which name people by code."
 msgstr "يصدّر موظفي المستأجر كخطوة الوصفة التي يقرأها المستورد. طبّقها قبل مواضع العمل وتعيينات الرؤساء، فهي تسمّي الأشخاص بالرمز."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Employees in {0} ({1}) as at {2}"
+msgstr "الموظفون في {0} ({1}) بتاريخ {2}"
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "{0} at this unit."
+msgstr "{0} في هذه الوحدة."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "{0} at this unit and below it."
+msgstr "{0} في هذه الوحدة وما تحتها."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "A head who is not a member of the unit is listed but not counted."
+msgstr "الرئيس الذي ليس عضواً في الوحدة يُدرج ولا يُحتسب."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Back to the chart"
+msgstr "العودة إلى المخطط"
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Include sub-units"
+msgstr "تضمين الوحدات الفرعية"
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Everybody below this unit on this axis as well, not only those placed at it."
+msgstr "جميع من هم أسفل هذه الوحدة على هذا المحور أيضاً، لا المعيَّنون فيها فقط."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Role here"
+msgstr "الدور هنا"
+
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "Heads this unit"
+msgstr "يرأس هذه الوحدة"
+
+#: WorkMate.Records.Views.Shared._UnitRole
+msgid "Secondary"
+msgstr "ثانوي"
+
+#: WorkMate.Records.Views.Shared._UnitRole
+msgid "Head (not a member)"
+msgstr "رئيس (ليس عضواً)"
+
+#: WorkMate.Records.Views.Shared._UnitRole
+msgid "home: {0}"
+msgstr "الموطن: {0}"

@@ -255,6 +255,79 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
         return [.. rows.Select(ToAssignment)];
     }
 
+    public async Task<IReadOnlyList<EmployeeAssignment>> GetAssignmentsAtAsync(
+        string structureId,
+        string recordId,
+        DateOnly? asAt = null,
+        bool includeDescendants = false,
+        CancellationToken cancellationToken = default)
+    {
+        var date = EffectiveDates.ToColumn(asAt ?? await _authorisation.TodayAsync());
+
+        // The same two queries GetEmployeesUnderAsync issues, and the same correlated sub-select
+        // for the subtree, for the same reason: a descendant id list would exceed SQL Server's
+        // parameter limit at the scale the acceptance criterion names. This differs only in being
+        // unpaged — see the interface for why its caller cannot work from a page.
+        var query = includeDescendants
+            ? _session.QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive &&
+                index.NodeId.IsIn<DimensionClosureIndex>(
+                    closure => closure.DescendantId,
+                    closure =>
+                        closure.StructureId == structureId &&
+                        closure.AncestorId == recordId &&
+                        closure.EffectiveFrom <= date &&
+                        date <= closure.EffectiveToInclusive))
+            : _session.QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.NodeId == recordId &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive);
+
+        var rows = await query.ListAsync(cancellationToken);
+
+        return [.. rows.Select(ToAssignment)];
+    }
+
+    public async Task<IReadOnlyDictionary<string, EmployeeAssignment>> GetPrimaryPlacementsAsync(
+        string structureId,
+        IReadOnlyList<string> employeeIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(employeeIds);
+
+        if (employeeIds.Count == 0 || string.IsNullOrEmpty(structureId))
+        {
+            return new Dictionary<string, EmployeeAssignment>(StringComparer.Ordinal);
+        }
+
+        var date = EffectiveDates.ToColumn(asAt ?? await _authorisation.TodayAsync());
+        var ids = employeeIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        var rows = await _session
+            .QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.EmployeeId.IsIn(ids) &&
+                index.IsPrimary &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        // Exactly one primary per employee per axis per date is the rule the validator enforces, so
+        // a second row is a defect rather than a case to merge — but this is a picker's caption,
+        // and refusing to draw it would be the wrong response to a data problem somebody else has
+        // to fix. First wins, deterministically by date so the same row wins every time.
+        return rows
+            .GroupBy(row => row.EmployeeId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => ToAssignment(group.OrderBy(row => row.EffectiveFrom).First()),
+                StringComparer.Ordinal);
+    }
+
     public async Task<IReadOnlyDictionary<string, int>> CountEmployeesAtAsync(
         string structureId,
         IReadOnlyList<string> recordIds,
