@@ -47,13 +47,47 @@ public sealed class EmployeeListItemViewModel
     /// </remarks>
     public IReadOnlyList<EmployeeTransition> Transitions => EmployeeLifecycle.ActionsFrom(Status);
 
-    /// <summary>Where the primary placement puts them today, or null when they are not placed.</summary>
+    /// <summary>Where the main placement puts them today, or null when they are not placed.</summary>
     /// <remarks>
     /// Read through <c>IEmployeeAssignmentService</c> like everything else about placement, and
     /// shown on the list because "which department" is the first thing anybody scanning a list of
     /// people wants to know — and the one thing the employee record deliberately does not hold.
+    ///
+    /// <b>The main one, never an arbitrary one.</b> Somebody split 60/40 has two placements, and
+    /// the list used to show whichever row the engine returned first — so the same person could
+    /// read differently on two screens for no reason anybody could explain.
     /// </remarks>
     public string? PrimaryUnitName { get; set; }
+
+    /// <summary>The main placement's full path, for the cell's title. See <see cref="OtherUnits"/>.</summary>
+    public string? PrimaryUnitPath { get; set; }
+
+    /// <summary>
+    /// The placements beyond the main one, each with its full path and share — the "+N more".
+    /// </summary>
+    /// <remarks>
+    /// Shown behind a disclosure rather than inline, because the overwhelming majority of rows have
+    /// none and a column that widened for all of them to accommodate the few would make the list
+    /// harder to scan. Full paths, because two of the units a person is split across routinely have
+    /// the same name.
+    /// </remarks>
+    public IReadOnlyList<EmployeePlacementLine> OtherUnits { get; set; } = [];
+
+    /// <summary>
+    /// The star's tooltip — "Heads Civil, Mechanical" — or null when this person heads nothing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every unit they head, not only the one the list is filtered to.</b> A head of three
+    /// departments told "Heads this unit" has been told the least useful true thing available.
+    /// ADR-0012: a headship is its own dated record, and one person holding several is an ordinary
+    /// shape the Zenith demo deliberately contains.
+    ///
+    /// Composed by the controller, where the localiser and the culture are, for the reason
+    /// <c>DesignerNodeViewModel.HeadLabel</c> is: a list separator is a property of the language,
+    /// and a view that joined the names with ", " would be writing English punctuation into an
+    /// Arabic sentence.
+    /// </remarks>
+    public string? HeadsLabel { get; set; }
 
     /// <summary>
     /// What this person is at the unit the list is filtered to: their primary placement, a
@@ -442,6 +476,13 @@ public sealed class PlacementRowViewModel
 
     public string? UnitNameAr { get; set; }
 
+    /// <summary>
+    /// The unit's full path — "Crescent › Retail Banking › Credit" — where the screen has room for
+    /// it and the reader needs it to tell two units of the same name apart. Null where it was not
+    /// resolved.
+    /// </summary>
+    public string? UnitPath { get; set; }
+
     public decimal AllocationPercent { get; set; }
 
     public bool IsPrimary { get; set; }
@@ -475,9 +516,18 @@ public sealed class HeadshipViewModel
     public string UnitName => BilingualText.Display(UnitNameEn, UnitNameAr);
 }
 
-/// <summary>Placing an employee at a unit, or changing where they sit, from a stated date.</summary>
+/// <summary>Placing an employee at a unit, from a stated date.</summary>
+/// <remarks>
+/// <b>Two ways in, one screen.</b> From an employee, where the person is known and the unit is the
+/// question; and from a unit's card on the organisation designer, where it is the other way round.
+/// The second is why <see cref="EmployeeId"/> can arrive empty and the form grows an employee
+/// picker: a reader looking at Credit who wants somebody in it should not have to go and find the
+/// employee list first, and an action that only worked from one direction would be an action half
+/// the readers never discover.
+/// </remarks>
 public sealed class PlaceEmployeeViewModel
 {
+    /// <summary>Empty when the screen was opened from a unit rather than from a person.</summary>
     public string EmployeeId { get; set; } = string.Empty;
 
     public string? Code { get; set; }
@@ -509,13 +559,107 @@ public sealed class PlaceEmployeeViewModel
 
     public IReadOnlyList<StructureOptionViewModel> Structures { get; set; } = [];
 
-    /// <summary>The units the chosen axis says may hold employees, on the chosen date.</summary>
-    public IReadOnlyList<UnitOptionViewModel> Units { get; set; } = [];
+    /// <summary>
+    /// The unit's full path, when the screen was opened from a card and already knows it.
+    /// </summary>
+    /// <remarks>
+    /// Shown as a sentence above the picker so the reader can see what was prefilled without
+    /// opening the control, and so arriving from the wrong card is obvious immediately rather than
+    /// after the save.
+    /// </remarks>
+    public string? UnitPath { get; set; }
+
+    /// <summary>
+    /// Whether this screen was opened from a unit's card, which is what decides whether it asks for
+    /// a person or for a unit first.
+    /// </summary>
+    public bool FromUnit => !string.IsNullOrEmpty(RecordId);
 
     public string Name => BilingualText.Display(NameEn, NameAr);
 }
 
-/// <summary>Ending an employee's placements on one axis.</summary>
+/// <summary>
+/// Changing where one employee sits on one structure: the whole split, as editable rows, from one
+/// stated date.
+/// </summary>
+/// <remarks>
+/// <b>The set, not a row at a time.</b> The rules that matter — allocations totalling 100, exactly
+/// one main — are about the set as a whole, so applying a matrix one placement at a time would be
+/// invalid at every step but the last. That is why <c>IEmployeeAssignmentService</c> has
+/// <c>ReallocateAsync</c> at all, and this screen is the control surface for it: every save here is
+/// one call to that method with the same changes/split shape the <c>employee-assignments</c> recipe
+/// step builds. There is no second write path.
+///
+/// <b>One date for the whole change.</b> Everything running when it starts is closed the day
+/// before, so a transfer is two sets of rows rather than an overwrite, and nothing is deleted.
+/// </remarks>
+public sealed class ChangePlacementViewModel
+{
+    public string EmployeeId { get; set; } = string.Empty;
+
+    public string? Code { get; set; }
+
+    public string? NameEn { get; set; }
+
+    public string? NameAr { get; set; }
+
+    /// <summary>The structure being changed. One screen, one structure — see the class remark.</summary>
+    public string? StructureId { get; set; }
+
+    /// <summary>ISO-8601 on the wire, always. <c>IsoDate</c> in Dimensions says why.</summary>
+    public string? EffectiveFrom { get; set; }
+
+    /// <summary>
+    /// The split as it will be from <see cref="EffectiveFrom"/>. Prefilled from what is effective
+    /// today, so the common edit is changing one number.
+    /// </summary>
+    public List<PlacementEditRowViewModel> Rows { get; set; } = [];
+
+    public IReadOnlyList<StructureOptionViewModel> Structures { get; set; } = [];
+
+    /// <summary>
+    /// The date of the latest change already recorded on this structure, for the note that says
+    /// what the effective date may not be earlier than.
+    /// </summary>
+    public DateOnly? LatestChange { get; set; }
+
+    /// <summary>What they are placed at today, read-only, so the form says what it is replacing.</summary>
+    public IReadOnlyList<PlacementRowViewModel> Current { get; set; } = [];
+
+    public string Name => BilingualText.Display(NameEn, NameAr);
+
+    /// <summary>The index of the row marked main, for the radio group. Null when none is.</summary>
+    public int? MainRowIndex
+    {
+        get
+        {
+            var index = Rows.FindIndex(row => row.IsMain);
+
+            return index < 0 ? null : index;
+        }
+    }
+}
+
+/// <summary>One editable row of a split.</summary>
+/// <remarks>
+/// <see cref="IsMain"/> is posted as the index of the chosen radio rather than as a checkbox per
+/// row, because "exactly one" is what a radio group means and a set of checkboxes is a set of
+/// independent answers. The controller sets this from the posted index before anything is
+/// validated.
+/// </remarks>
+public sealed class PlacementEditRowViewModel
+{
+    public string? RecordId { get; set; }
+
+    /// <summary>The unit's path as it stood when the form was drawn, for the read-only echo.</summary>
+    public string? UnitPath { get; set; }
+
+    public decimal AllocationPercent { get; set; } = 100m;
+
+    public bool IsMain { get; set; }
+}
+
+/// <summary>Ending an employee's placements on one structure.</summary>
 public sealed class EndPlacementViewModel
 {
     public string EmployeeId { get; set; } = string.Empty;
@@ -536,7 +680,7 @@ public sealed class EndPlacementViewModel
     public string Name => BilingualText.Display(NameEn, NameAr);
 }
 
-/// <summary>One axis, for a picker.</summary>
+/// <summary>One structure, for a picker.</summary>
 public sealed class StructureOptionViewModel
 {
     public string StructureId { get; set; } = string.Empty;
@@ -548,44 +692,6 @@ public sealed class StructureOptionViewModel
     public string? NameAr { get; set; }
 
     public string Name => BilingualText.Display(NameEn, NameAr);
-}
-
-/// <summary>One unit, for a picker.</summary>
-public sealed class UnitOptionViewModel
-{
-    public string RecordId { get; set; } = string.Empty;
-
-    public string? Code { get; set; }
-
-    public string? NameEn { get; set; }
-
-    public string? NameAr { get; set; }
-
-    /// <summary>
-    /// Whether this axis says a unit of this type may hold employees.
-    /// </summary>
-    /// <remarks>
-    /// The picker offers only units that may, so this is normally true. It is carried so the view
-    /// can say why a list is short rather than leaving a reader wondering where their divisions
-    /// went.
-    /// </remarks>
-    public bool HoldsEmployees { get; set; } = true;
-
-    public string Name => BilingualText.Display(NameEn, NameAr);
-
-    public static UnitOptionViewModel Of(DimensionNodeRef node, bool holdsEmployees = true)
-    {
-        ArgumentNullException.ThrowIfNull(node);
-
-        return new UnitOptionViewModel
-        {
-            RecordId = node.RecordId,
-            Code = node.Code,
-            NameEn = node.NameEn,
-            NameAr = node.NameAr,
-            HoldsEmployees = holdsEmployees,
-        };
-    }
 }
 
 /// <summary>Formatting a date for a reader, as opposed to for the wire.</summary>

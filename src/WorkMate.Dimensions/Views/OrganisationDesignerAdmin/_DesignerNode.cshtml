@@ -92,6 +92,26 @@
                                asp-route-structureId="@Model.StructureId"
                                asp-route-recordId="@Model.RecordId"
                                asp-route-asAt="@Model.AsAtIso">@(Model.HeadDisplayName is null ? T["Appoint a head…"] : T["Change the head…"])</a>
+                            @* Placing somebody is the same act under the same permission as
+                               appointing a head, so it sits next to it and is written here rather
+                               than anywhere else — "the same single source" is this block.
+
+                               The one difference is that it is also about the unit: a Division is a
+                               container and the validator would refuse a placement at it. On a
+                               server-rendered card that is decided here; on a card the browser
+                               builds, the template carries the link and the script removes it when
+                               the node says the unit holds nobody. data-designer-action-requires is
+                               what ties the two together, so a container's menu is the same menu
+                               whichever drew it. *@
+                            @if (Model.HoldsEmployees)
+                            {
+                                <a class="designer-action" data-designer-action="placeemployee"
+                                   data-designer-action-requires="holdsEmployees"
+                                   asp-area="WorkMate.Records" asp-controller="EmployeePlacementAdmin" asp-action="Place"
+                                   asp-route-structureId="@Model.StructureId"
+                                   asp-route-recordId="@Model.RecordId"
+                                   asp-route-asAt="@Model.AsAtIso">@T["Place an employee here…"]</a>
+                            }
                         }
                         @if (Model.CanViewEmployees)
                         {

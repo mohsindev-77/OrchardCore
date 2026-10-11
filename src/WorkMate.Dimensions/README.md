@@ -909,6 +909,62 @@ not describing it", empty means "this axis constrains nothing". A caller that co
 only say the latter would silently clear a tenant's rule every time a screen that
 predates the setting posted a structure.
 
+**The rule is read forwards in three places, all from the same
+`PermitsEmployeesAt`**, which is ADR-0010's lesson applied again — one rule, two
+directions, one implementation:
+
+- `GetEmployeeAttachableUnitsAsync` — the whole set, for a control with no search.
+- `SearchEmployeeAttachableUnitsAsync` — a page of it, matching typed text and
+  optionally scoped to a container's subtree through the closure index. What the
+  unit picker asks on every keystroke.
+- `DesignerNodeViewModel.HoldsEmployees` — per card, so the designer's **Place an
+  employee here…** appears only where the write would be accepted.
+
+### The unit picker
+
+`workmate-unit-picker` (`Components/UnitPickerTagHelper.cs`) and its search endpoint
+`UnitPickerAdminController`, used by `WorkMate.Records`' placement screens. They
+live here rather than there because the units are this module's, and the module
+that owns employees must not read the structures itself.
+
+It is the employee picker's combobox — `workmate-picker.js` in `WorkMate.Platform`,
+which both pickers now drive — with two questions of its own: where it searches,
+and what an option reads as.
+
+**Every option carries its full path**, `Crescent › Retail Banking › Credit`,
+built from `GetAncestorPathsAsync` in two queries for the whole page rather than
+one per option. The Crescent reference tenant has two departments called Credit
+and two called Operations on one structure; a list of bare names offers a reader
+identical rows and no way to choose correctly.
+
+The optional **Within** filter narrows to a container's subtree. Which units count
+as containers is `GetEmployeeScopeUnitsAsync`: the types this structure does *not*
+place employees on, falling back to its root types on a structure that constrains
+nothing — because an unconstrained structure still has a top.
+
+The `<select>` remains the form control and is still posted, bound and validated
+without the script; the script hides it and sets its value. The **Within** control
+is rendered hidden and unhidden by the script, because without the script there is
+no round trip behind it and a control that visibly does nothing is worse than one
+that is not there.
+
+### "Place an employee here…" on a card
+
+Declared in `DesignerCardActions.All` immediately after `sethead` and gated on the
+same `AssignEmployees`: placing somebody and appointing a head are the same kind of
+act, and splitting them would leave a customer granting two permissions to achieve
+one thing. Its controller is in `WorkMate.Records`, so it is named by area and
+resolved by name at run time — on a tenant without that module `Url.Action` returns
+null and the existing "an action with no URL is one this viewer may not use" rule
+drops it.
+
+It is the first action whose availability depends on the **unit** as well as on the
+viewer, which a cloned template cannot branch on in Razor. So the link declares
+what it needs — `data-designer-action-requires="holdsEmployees"` — the node carries
+the answer, and the script removes the link on a card whose unit holds nobody. That
+keeps a fetched container's menu identical to a server-rendered container's, which
+is the property `OrganisationDesignerViewModel.PermittedActions` exists to protect.
+
 ## Known limitation: simultaneous creation of the same code
 
 Even once `IDimensionValidator` enforces code uniqueness, two requests creating

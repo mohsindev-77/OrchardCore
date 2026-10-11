@@ -93,7 +93,7 @@ public sealed class UnitEmployeeListTenantTests : IAsyncLifetime, IDisposable
     }
 
     /// <summary>
-    /// Site Team A shows forty-four, and the site engineer reads as secondary with their home named.
+    /// Site Team A shows forty-four, and the site engineer reads as additional with their home named.
     /// </summary>
     [Fact]
     public async Task SiteTeamAShowsItsFortyFourAndNamesTheEngineersHomeDepartment()
@@ -109,12 +109,109 @@ public sealed class UnitEmployeeListTenantTests : IAsyncLifetime, IDisposable
         // matrix in one line.
         var engineerRow = RowFor(page, "zenith-civil-01");
 
-        engineerRow.Should().Contain("Secondary", "they are lent to this team, not based on it");
+        engineerRow.Should().Contain("Additional", "they are lent to this team, not based on it");
         engineerRow.Should().Contain("Civil", "and their home department is named beside it");
         engineerRow.Should().Contain("40", "the allocation this team accounts for");
 
         // A labourer, by contrast, is wholly here.
-        RowFor(page, "zenith-labour-a-01").Should().Contain("Primary");
+        RowFor(page, "zenith-labour-a-01").Should().Contain("Main");
+    }
+
+    /// <summary>
+    /// The column is "Placement", and its values are "Main" and "Additional".
+    /// </summary>
+    /// <remarks>
+    /// "Role here" described a job title, which this column has never held: it says whether the
+    /// unit is where somebody mainly works or somewhere they are also counted. "Secondary" had the
+    /// same problem from the other end — it reads as a judgement about the person rather than a
+    /// statement about the unit's share of them.
+    /// </remarks>
+    [Fact]
+    public async Task ThePlacementColumnIsCalledPlacementAndReadsMainOrAdditional()
+    {
+        var (structureId, recordId) = await IdsAsync("zenith-org", "zenith-team-site-a");
+
+        var page = await GetAsync($"/Admin/Employees/Index?structureId={structureId}&recordId={recordId}&asAt={AsAt}&take=100");
+
+        page.Should().Contain(">Placement<");
+        page.Should().NotContain(">Role here<");
+        page.Should().NotContain(">Secondary<");
+        page.Should().NotContain(">Primary<");
+    }
+
+    /// <summary>
+    /// Ahmed Khan is split 60/40 between Civil and Site Team A, and no row ever says "home:" twice.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect.</b> His row on Site Team A read "Civil · Secondary · 40% · home: Civil". The
+    /// placement column beside the role is resolved on <em>the structure the list is filtered to</em>
+    /// — which is where his main placement is — so "home: {0}" was, by construction, always the
+    /// unit already named one cell to the left. It could not have been anything else: the only way
+    /// the two would have differed is if the main placement had been read off a different
+    /// structure, which would have made the pair meaningless rather than redundant.
+    ///
+    /// <b>The replacement.</b> Where else somebody sits is one question answered in one place: the
+    /// "+N more" disclosure in the placement column, which names the other units by their full path
+    /// and says what share each accounts for. Both ends of the 60/40 are asserted here, because the
+    /// disclosure has to be right from whichever end the reader opened the list.
+    /// </remarks>
+    [Fact]
+    public async Task AnEmployeeSplitSixtyFortyNamesBothUnitsAndNeverRepeatsTheOneAlreadyShown()
+    {
+        var (structureId, siteTeam) = await IdsAsync("zenith-org", "zenith-team-site-a");
+        var (_, civil) = await IdsAsync("zenith-org", "zenith-dept-civil");
+
+        // From the team he is lent to: the main placement is Civil, and the 40% he is here for is
+        // behind the disclosure.
+        var fromTheTeam = await GetAsync(
+            $"/Admin/Employees/Index?structureId={structureId}&recordId={siteTeam}&asAt={AsAt}&take=100");
+
+        var onTheTeam = RowFor(fromTheTeam, "zenith-civil-01");
+
+        onTheTeam.Should().NotContain(
+            "home:", "the unit already named in the placement column is not named again beside it");
+
+        onTheTeam.Should().Contain("Civil", "the main placement leads");
+        onTheTeam.Should().Contain("+1 more", "and the other placement is one click away");
+        onTheTeam.Should().Contain("Site Team A", "which is this team");
+        onTheTeam.Should().Contain("40%", "for the share it accounts for");
+
+        // And from his home department, the same two facts the other way round.
+        var fromCivil = await GetAsync(
+            $"/Admin/Employees/Index?structureId={structureId}&recordId={civil}&asAt={AsAt}&take=100");
+
+        var inCivil = RowFor(fromCivil, "zenith-civil-01");
+
+        inCivil.Should().NotContain("home:");
+        inCivil.Should().Contain("Main", "Civil is where he mainly works");
+        inCivil.Should().Contain("60%", "the share Civil accounts for");
+        inCivil.Should().Contain("+1 more");
+        inCivil.Should().Contain("Site Team A");
+
+        // Somebody with one placement has nothing to disclose, so the control is not drawn at all.
+        RowFor(fromCivil, "zenith-civil-04").Should().NotContain("more");
+    }
+
+    /// <summary>
+    /// The star names every unit this person heads, not "this unit".
+    /// </summary>
+    /// <remarks>
+    /// ADR-0012 lets one person head several, and the Zenith demo deliberately has one over two
+    /// departments and a site team. "Heads this unit" is the least useful true thing available to
+    /// say to the reader hovering that star.
+    /// </remarks>
+    [Fact]
+    public async Task TheStarsTooltipNamesTheUnitsThisPersonHeads()
+    {
+        var (structureId, recordId) = await IdsAsync("zenith-org", "zenith-dept-civil");
+
+        var page = await GetAsync($"/Admin/Employees/Index?structureId={structureId}&recordId={recordId}&asAt={AsAt}&take=100");
+
+        var row = RowFor(page, "zenith-civil-01");
+
+        row.Should().Contain("Heads ", "the tooltip names them rather than saying \"this unit\"");
+        row.Should().Contain("Mechanical", "he heads Mechanical as well as Civil");
+        row.Should().Contain("Site Team A", "and the site team");
     }
 
     /// <summary>

@@ -136,6 +136,18 @@
                 return;
             }
 
+            // Some actions depend on the unit as well as on the viewer: "Place an employee here…"
+            // is offered only where the structure says employees may attach. The link names the
+            // property it needs and the node carries it, so a fetched container's menu matches a
+            // server-rendered container's menu instead of offering a form that would be refused.
+            var requires = link.getAttribute("data-designer-action-requires");
+
+            if (requires && !node[requires]) {
+                link.remove();
+
+                return;
+            }
+
             link.href = action.url + "?" + query(
                 action.targetsParent
                     ? { structureId: structureId, parentId: node.recordId, asAt: asAt }

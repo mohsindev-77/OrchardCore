@@ -164,5 +164,12 @@ public sealed class OrganisationDesignerViewModel
         // for the script to point anywhere — and the roots, rendered with the real value, had one.
         CanAssignEmployees = CanAssignEmployees,
         CanViewEmployees = CanViewEmployees,
+
+        // True, unlike every flag above it, because this one is not about the viewer: the template
+        // has to carry the link for every card, and the script removes it on the cards whose unit
+        // may not hold employees. Rendering the template with false would leave no link for the
+        // script to remove or keep, and "Place an employee here…" would be missing from every
+        // fetched card — the exact defect the single action list was introduced to stop.
+        HoldsEmployees = true,
     };
 }

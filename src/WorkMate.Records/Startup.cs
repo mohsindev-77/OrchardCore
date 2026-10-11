@@ -53,6 +53,11 @@ public sealed class Startup : StartupBase
         // The other two seams another module declared and this one answers: the shared component
         // set's employee picker, and the candidate set behind an employee picker field.
         services.AddScoped<EmployeeUnitNames>();
+
+        // The words for a broken split rule. A service rather than a static helper so that the
+        // rules themselves — PlacementSplit — stay a pure function with no localiser in them and
+        // every case stays a unit test.
+        services.AddScoped<PlacementSplitMessages>();
         services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
         services.AddScoped<IContentPickerResultProvider, EmployeePickerResultProvider>();
 

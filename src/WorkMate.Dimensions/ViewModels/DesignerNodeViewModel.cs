@@ -142,6 +142,26 @@ public sealed class DesignerNodeViewModel
     /// <summary>Whether this card offers a way into the employee list for its unit.</summary>
     public bool CanViewEmployees { get; set; }
 
+    /// <summary>
+    /// Whether this structure says a unit of this type may hold employees — the structure's
+    /// <c>employeeAttachableTypeCodes</c>, read forwards.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a permission, which is why it is not one of the <c>Can…</c> flags.</b> Every other
+    /// branch on this card is about the viewer and is therefore the same on every card on the page;
+    /// this one is about the unit, and differs from card to card. "Place an employee here…" is
+    /// offered only where it would be accepted: a Division is a container, and a menu entry that
+    /// opens a form the validator will refuse is worse than no entry at all.
+    ///
+    /// It is carried in the JSON a fetched card is built from, and the card's link declares that it
+    /// needs it, so the script drops the entry on a container exactly as the server omits it.
+    /// Without that the roots would be right and every card below them wrong — the failure mode
+    /// <see cref="OrganisationDesignerViewModel.PermittedActions"/> was written about.
+    ///
+    /// True on the template, so the link exists for the script to keep or remove.
+    /// </remarks>
+    public bool HoldsEmployees { get; set; }
+
     /// <summary>The structure the card belongs to, which every action link needs.</summary>
     public string StructureId { get; set; } = string.Empty;
 
@@ -212,11 +232,13 @@ public sealed class DesignerNodeViewModel
         bool canMerge = false,
         string? headDisplayName = null,
         bool canAssignEmployees = false,
-        bool canViewEmployees = false) => new()
+        bool canViewEmployees = false,
+        bool holdsEmployees = false) => new()
     {
         HeadDisplayName = headDisplayName,
         CanAssignEmployees = canAssignEmployees,
         CanViewEmployees = canViewEmployees,
+        HoldsEmployees = holdsEmployees,
         StructureId = structureId,
         AsAtIso = asAtIso,
         CanEdit = canEdit,

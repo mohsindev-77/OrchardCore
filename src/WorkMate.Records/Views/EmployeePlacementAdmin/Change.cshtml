@@ -1,0 +1,138 @@
+@model ChangePlacementViewModel
+
+<h1 id="change-placement-heading">@T["Change where {0} sits", Model.Name]</h1>
+
+<p class="text-muted">
+    @T["Every row below is one placement. The allocations must total 100%, and exactly one row is the main placement — the one that answers \"where does this person work\". Saving closes what is running the day before the date given and opens these from it; nothing is deleted."]
+</p>
+
+@* Which structure, as its own GET form. A structure's rows, the units it offers and the latest
+   change recorded on it are all different questions, so choosing one is navigation rather than an
+   edit — and a POST that re-asked it would have to decide what the half-typed rows beside it meant.
+   The same shape the placement screen's "as at" control already has. *@
+@if (Model.Structures.Count > 1)
+{
+    <form method="get" class="row g-2 align-items-end mb-3" id="change-structure-form">
+        <input type="hidden" name="id" value="@Model.EmployeeId" />
+        <div class="col-sm-6">
+            <label class="form-label" for="change-structure">@T["Structure"]</label>
+            <select class="form-select" id="change-structure" name="structureId" onchange="this.form.submit()">
+                @foreach (var structure in Model.Structures)
+                {
+                    <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                        @structure.Name (@structure.Code)
+                    </option>
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-secondary">@T["Show"]</button>
+        </div>
+    </form>
+}
+
+<form method="post" asp-action="Change" id="change-placement">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <input type="hidden" asp-for="EmployeeId" />
+    <input type="hidden" asp-for="StructureId" />
+
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-sm-6">
+            <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+            <input class="form-control" asp-for="EffectiveFrom" type="date" id="change-effective-from" required />
+            <span asp-validation-for="EffectiveFrom" class="text-danger small"></span>
+            @if (Model.LatestChange is { } latest)
+            {
+                @* ADR-0005 decided split for a backdated *move*, where one parent at a time makes
+                   the arithmetic unambiguous. A split is a set that must total 100 on every date,
+                   so there is no honest way to slot one in behind a later change; the screen says
+                   so before the reader types a date rather than after they press Save. *@
+                <div class="form-text" id="change-latest">
+                    @T["The latest change recorded on this structure is {0}. A new one cannot be dated before it.",
+                        BilingualDisplay.Date(latest)]
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Model.Current.Count > 0)
+    {
+        <div class="mb-3" id="change-current">
+            <h2 class="h6">@T["Placed now"]</h2>
+            <ul class="list-unstyled text-muted small mb-0">
+                @foreach (var row in Model.Current)
+                {
+                    <li class="change-current-row" data-unit-code="@row.UnitCode">
+                        @(row.UnitPath ?? row.UnitName) — @EmployeeDisplay.Percent(row.AllocationPercent)
+                        @if (row.IsPrimary)
+                        {
+                            <span>@T["(main)"]</span>
+                        }
+                        <span>@T["since {0}", EmployeeDisplay.Date(row.From)]</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+
+    <table class="table align-middle" id="change-rows">
+        <thead>
+            <tr>
+                <th>@T["Unit"]</th>
+                <th class="text-end" style="width: 10rem;">@T["Allocation (%)"]</th>
+                <th style="width: 7rem;">@T["Main"]</th>
+                <th style="width: 7rem;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (var index = 0; index < Model.Rows.Count; index++)
+            {
+                var row = Model.Rows[index];
+
+                <tr class="change-row" data-row-index="@index">
+                    <td>
+                        <workmate-unit-picker for="Rows[index].RecordId"
+                                              structure-id="@Model.StructureId"
+                                              as-at="@Model.EffectiveFrom"
+                                              date-field="change-effective-from" />
+                        <span asp-validation-for="Rows[index].RecordId" class="text-danger small"></span>
+                    </td>
+                    <td class="text-end">
+                        <input class="form-control text-end" asp-for="Rows[index].AllocationPercent"
+                               type="number" min="1" max="100" step="1" />
+                        <span asp-validation-for="Rows[index].AllocationPercent" class="text-danger small"></span>
+                    </td>
+                    <td>
+                        @* A radio group, not a checkbox per row: "exactly one" is what a radio
+                           group means, and a set of checkboxes is a set of independent answers
+                           that lets a reader build a split the engine must then refuse. *@
+                        <div class="form-check">
+                            <input class="form-check-input change-main" type="radio" name="mainRow"
+                                   id="change-main-@index" value="@index" checked="@row.IsMain" />
+                            <label class="form-check-label visually-hidden" for="change-main-@index">
+                                @T["Main placement"]
+                            </label>
+                        </div>
+                    </td>
+                    <td>
+                        @* Removing a row is a round trip rather than script, like adding one: this
+                           form commits a dated decision and must work with no script at all. *@
+                        <button type="submit" class="btn btn-sm btn-outline-secondary change-remove"
+                                name="command" value="remove:@index"
+                                formnovalidate>@T["Remove"]</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="d-flex gap-2 mb-3">
+        <button type="submit" class="btn btn-outline-secondary" name="command" value="add"
+                id="change-add" formnovalidate>@T["Add a unit"]</button>
+    </div>
+
+    <button type="submit" class="btn btn-primary" id="change-save">@T["Save"]</button>
+    <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+</form>
+
+<script asp-name="workmate-unit-picker" at="Foot"></script>

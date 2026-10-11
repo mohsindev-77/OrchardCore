@@ -1540,3 +1540,73 @@ msgstr "اطّلع على من في هذه الوحدة"
 #: WorkMate.Dimensions.Views.UnitHeadAdmin.Set
 msgid "Head of this unit"
 msgstr "رئيس هذه الوحدة"
+
+#. ---- the card's placement action --------------------------------------------------------
+#.
+#. Beside "Appoint a head…" in the menu and in the same block of the card partial, because the two
+#. are the same act under the same permission. It is offered only on a unit the structure says may
+#. hold employees.
+#: WorkMate.Dimensions.Views.OrganisationDesignerAdmin._DesignerNode
+msgid "Place an employee here…"
+msgstr "تعيين موظف هنا…"
+
+#. ---- the unit picker --------------------------------------------------------------------
+#.
+#. The combobox that chooses a unit by its full path. Its options are built here rather than in the
+#. script, which has no localiser: everything below is read off the wrapper as a data attribute.
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Choose a unit…"
+msgstr "اختر وحدة…"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Choose a structure first, and this will offer the units on it."
+msgstr "اختر هيكلاً أولاً، وعندها ستُعرض وحداته هنا."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "A unit that is not on this structure on that date"
+msgstr "وحدة ليست على هذا الهيكل في ذلك التاريخ"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "This structure has no units that may hold employees on that date."
+msgstr "لا توجد في هذا الهيكل وحدات يمكن أن تحتوي موظفين في ذلك التاريخ."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Showing {0} of {1} units."
+msgstr "عرض {0} من {1} وحدة."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Within"
+msgstr "ضمن"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Anywhere in this structure"
+msgstr "أي مكان في هذا الهيكل"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Narrows the units offered to those at or below the one chosen."
+msgstr "يحصر الوحدات المعروضة في الوحدة المختارة وما تحتها."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Search by unit name, path or code"
+msgstr "ابحث باسم الوحدة أو مسارها أو رمزها"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "No unit matches. Try part of a name, a parent's name, or a code."
+msgstr "لا توجد وحدة مطابقة. جرّب جزءاً من الاسم، أو اسم وحدة أعلى، أو رمزاً."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Showing {0} of {1}. Keep typing to narrow it."
+msgstr "عرض {0} من {1}. تابع الكتابة لتضييق النتائج."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Showing all {0}."
+msgstr "عرض الكل: {0}."
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Chosen: {0}"
+msgstr "المختار: {0}"
+
+#: Components/UnitPickerTagHelper.cs
+msgid "Choose a unit from the list, or clear the box."
+msgstr "اختر وحدة من القائمة، أو أفرغ الحقل."

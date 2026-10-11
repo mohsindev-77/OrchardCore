@@ -32,10 +32,18 @@ public sealed class WorkMateResourceManifest : IConfigureOptions<ResourceManagem
             .SetUrl("~/WorkMate.Platform/css/workmate-admin.css")
             .SetVersion("1.0.0");
 
+        // The combobox every WorkMate picker is built on. Named so that a picker's own script can
+        // declare it as a dependency and Orchard orders the two on the page, rather than each
+        // picker shipping its own copy of three hundred lines of keyboard handling.
+        manifest.DefineScript("workmate-picker")
+            .SetUrl("~/WorkMate.Platform/js/workmate-picker.js")
+            .SetVersion("1.0.0");
+
         // The employee picker's search. Named here so a form asks for it by name rather than by
         // path, and so the one form that does not use the picker does not pay for it.
         manifest.DefineScript("workmate-employee-picker")
             .SetUrl("~/WorkMate.Platform/js/employee-picker.js")
+            .SetDependencies("workmate-picker")
             .SetVersion("1.0.0");
 
         return manifest;

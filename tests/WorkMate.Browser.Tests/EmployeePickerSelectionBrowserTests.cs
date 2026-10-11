@@ -161,8 +161,11 @@ public sealed class EmployeePickerSelectionBrowserTests
         // another test asserts that division's exact headcount with sub-units included, and placing
         // somebody beneath it here would make that test's arithmetic depend on which of the two ran
         // first. A test that changes shared data owes the others a unit of its own.
-        await page.SelectOptionAsync(
-            "#place-unit", new SelectOptionValue { Label = "Finance (zenith-dept-finance)" });
+        //
+        // Chosen through the unit picker's own search, which is what replaced the flat <select>
+        // this used to call SelectOption on: the list could only ever hold the first page of a
+        // structure, and on a real one the rest was unreachable.
+        await Pickers.ChooseAsync(page, ".workmate-unit-picker", "Finance");
 
         await page.ClickAsync("#employee-place button[type='submit']");
 

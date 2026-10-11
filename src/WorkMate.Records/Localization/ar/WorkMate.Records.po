@@ -319,8 +319,8 @@ msgid "End {0}'s employment"
 msgstr "إنهاء خدمة {0}"
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
-msgid "Ending employment closes every placement and every unit this person heads, on every axis, on their last day of service. See what it would close before committing to it."
-msgstr "إنهاء الخدمة يُغلق كل تعيين تنظيمي وكل وحدة يرأسها هذا الشخص، على كل المحاور، في آخر يوم عمل له. اطّلع على ما سيُغلق قبل اعتماده."
+msgid "Ending employment closes every placement and every unit this person heads, on every structure, on their last day of service. See what it would close before committing to it."
+msgstr "إنهاء الخدمة يُغلق كل تعيين تنظيمي وكل وحدة يرأسها هذا الشخص، على كل الهياكل، في آخر يوم عمل له. اطّلع على ما سيُغلق قبل اعتماده."
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
 msgid "Last day of service"
@@ -347,8 +347,8 @@ msgid "None. This person is not placed anywhere on that date."
 msgstr "لا شيء. هذا الشخص غير معيَّن في أي مكان في ذلك التاريخ."
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
-msgid "Axis"
-msgstr "المحور"
+msgid "Structure"
+msgstr "الهيكل"
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
 msgid "Unit"
@@ -359,8 +359,8 @@ msgid "Allocation"
 msgstr "نسبة التوزيع"
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
-msgid "Primary"
-msgstr "الأساسي"
+msgid "Main"
+msgstr "الرئيسي"
 
 #: Views/EmployeeLifecycleAdmin/Exit.cshtml
 msgid "Yes"
@@ -397,8 +397,8 @@ msgid "Where {0} sits"
 msgstr "موقع {0} التنظيمي"
 
 #: Views/EmployeePlacementAdmin/Index.cshtml
-msgid "Place on an axis"
-msgstr "التعيين على محور"
+msgid "Place on a structure"
+msgstr "التعيين على هيكل"
 
 #: Views/EmployeePlacementAdmin/Index.cshtml
 msgid "The employee record holds no department and no cost centre. Every placement below is a dated row in the dimension engine, which is what makes a mid-month transfer two rows rather than an overwrite — and what lets this screen answer the question for any date."
@@ -417,8 +417,8 @@ msgid "End here"
 msgstr "إنهاء التعيين هنا"
 
 #: Views/EmployeePlacementAdmin/Index.cshtml
-msgid "Not placed on this axis on that date."
-msgstr "غير معيَّن على هذا المحور في ذلك التاريخ."
+msgid "Not placed on this structure on that date."
+msgstr "غير معيَّن على هذا الهيكل في ذلك التاريخ."
 
 #: Views/EmployeePlacementAdmin/Index.cshtml
 msgid "From"
@@ -449,40 +449,34 @@ msgid "Place {0}"
 msgstr "تعيين {0}"
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "Choose an axis…"
-msgstr "اختر محوراً…"
+msgid "Choose a structure…"
+msgstr "اختر هيكلاً…"
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
 msgid "Whatever this displaces is closed the day before, which is how a mid-month transfer becomes two rows rather than an overwrite."
 msgstr "يُغلق ما يحل هذا محله في اليوم السابق، وهكذا يصبح النقل في منتصف الشهر سجلين بدلاً من استبدال."
 
+#. "Choose a unit…" and the "no units may hold employees" warning moved to WorkMate.Dimensions
+#. with the unit picker, which is where the units are read from. They are not raised here any more.
 #: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "Choose a unit…"
-msgstr "اختر وحدة…"
-
-#: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "Only units this axis says may hold employees. An axis that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."
-msgstr "الوحدات التي يسمح هذا المحور باحتوائها موظفين فقط. المحور الذي لا يحدد أياً منها غير مقيَّد ويعرضها كلها؛ والذي يحدد بعضها يعرض تلك، لأن الموظف المعيَّن في وحدة حاوية يُحتسب عليها ومرة أخرى في كل تجميع تحتها."
-
-#: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "This axis has no units that may hold employees on that date."
-msgstr "لا توجد في هذا المحور وحدات يمكن أن تحتوي موظفين في ذلك التاريخ."
+msgid "Only units this structure says may hold employees. A structure that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."
+msgstr "الوحدات التي يسمح هذا الهيكل باحتوائها موظفين فقط. الهيكل الذي لا يحدد أياً منها غير مقيَّد ويعرضها كلها؛ والذي يحدد بعضها يعرض تلك، لأن الموظف المعيَّن في وحدة حاوية يُحتسب عليها ومرة أخرى في كل تجميع تحتها."
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
 msgid "Allocation (%)"
 msgstr "نسبة التوزيع (%)"
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "100 unless the cost is split. Concurrent placements on one axis must total 100."
-msgstr "100 ما لم تكن التكلفة موزعة. يجب أن يكون مجموع التعيينات المتزامنة على محور واحد 100."
+msgid "100 unless the cost is split. Concurrent placements on one structure must total 100."
+msgstr "100 ما لم تكن التكلفة موزعة. يجب أن يكون مجموع التعيينات المتزامنة على هيكل واحد 100."
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "This is where they work"
-msgstr "هذا هو مكان عمله"
+msgid "This is the main placement"
+msgstr "هذا هو التعيين الرئيسي"
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
-msgid "Exactly one concurrent placement on an axis is primary. Untick it for the second half of a matrix — a home department and a site team."
-msgstr "تعيين واحد فقط من التعيينات المتزامنة على المحور يكون أساسياً. أزل التحديد للنصف الثاني من المصفوفة — إدارة أصلية وفريق موقع."
+msgid "Exactly one concurrent placement on a structure is the main one. Untick it for the second half of a matrix — a home department and a site team."
+msgstr "تعيين واحد فقط من التعيينات المتزامنة على الهيكل يكون الرئيسي. أزل التحديد للنصف الثاني من المصفوفة — إدارة أصلية وفريق موقع."
 
 #: Views/EmployeePlacementAdmin/Place.cshtml
 msgid "Place"
@@ -493,8 +487,8 @@ msgid "End {0}'s placement on {1}"
 msgstr "إنهاء تعيين {0} على {1}"
 
 #: Views/EmployeePlacementAdmin/End.cshtml
-msgid "This closes every placement they hold on this axis, on the day given, inclusive. It changes nothing on any other axis and does not end their employment."
-msgstr "يُغلق هذا كل تعيين له على هذا المحور، في اليوم المحدد وشاملاً إياه. لا يغيّر شيئاً على أي محور آخر ولا ينهي خدمته."
+msgid "This closes every placement they hold on this structure, on the day given, inclusive. It changes nothing on any other structure and does not end their employment."
+msgstr "يُغلق هذا كل تعيين له على هذا الهيكل، في اليوم المحدد وشاملاً إياه. لا يغيّر شيئاً على أي هيكل آخر ولا ينهي خدمته."
 
 #: Views/EmployeePlacementAdmin/End.cshtml
 msgid "Last day"
@@ -547,8 +541,8 @@ msgid "A date is needed."
 msgstr "التاريخ مطلوب."
 
 #: WorkMate.Records.Controllers.EmployeePlacementAdminController
-msgid "Choose an axis and a unit."
-msgstr "اختر محوراً ووحدة."
+msgid "Choose a structure and a unit."
+msgstr "اختر هيكلاً ووحدة."
 
 #: WorkMate.Records.Controllers.EmployeePlacementAdminController
 msgid "{0} was placed from {1}."
@@ -714,25 +708,166 @@ msgid "Include sub-units"
 msgstr "تضمين الوحدات الفرعية"
 
 #: WorkMate.Records.Views.EmployeesAdmin.Index
-msgid "Everybody below this unit on this axis as well, not only those placed at it."
-msgstr "جميع من هم أسفل هذه الوحدة على هذا المحور أيضاً، لا المعيَّنون فيها فقط."
+msgid "Everybody below this unit on this structure as well, not only those placed at it."
+msgstr "جميع من هم أسفل هذه الوحدة على هذا الهيكل أيضاً، لا المعيَّنون فيها فقط."
 
+#. "Role here" became "Placement": a role is a job title, which this column never held. The values
+#. became "Main" and "Additional" for the same reason — "Secondary" reads as a judgement about the
+#. person rather than a statement about the unit's share of them.
 #: WorkMate.Records.Views.EmployeesAdmin.Index
-msgid "Role here"
-msgstr "الدور هنا"
+msgid "Placement"
+msgstr "التعيين"
 
 #: WorkMate.Records.Views.EmployeesAdmin.Index
 msgid "Heads this unit"
 msgstr "يرأس هذه الوحدة"
 
+#. The star's tooltip, listing every unit this person heads. ADR-0012 lets one person head several.
+#: Controllers/EmployeesAdminController.cs
+msgid "Heads {0}"
+msgstr "يرأس {0}"
+
+#. The separator between names in a list. Arabic uses the Arabic comma, which is a different
+#. character from the Latin one, so even this is a resource rather than a literal in the view.
+#: Controllers/EmployeesAdminController.cs
+msgid ", "
+msgstr "، "
+
+#. The "+N more" disclosure beside the main placement, for somebody split across several units.
+#: WorkMate.Records.Views.EmployeesAdmin.Index
+msgid "+{0} more"
+msgstr "+{0} أخرى"
+
 #: WorkMate.Records.Views.Shared._UnitRole
-msgid "Secondary"
-msgstr "ثانوي"
+msgid "Additional"
+msgstr "إضافي"
 
 #: WorkMate.Records.Views.Shared._UnitRole
 msgid "Head (not a member)"
 msgstr "رئيس (ليس عضواً)"
 
-#: WorkMate.Records.Views.Shared._UnitRole
-msgid "home: {0}"
-msgstr "الموطن: {0}"
+#. ---- the change-placement screen --------------------------------------------------------
+#.
+#. "home: {0}" was removed rather than translated again. It repeated the unit the row already
+#. named: the placement column beside it shows the main placement on the same structure the list is
+#. filtered to, which is the home department by definition.
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Change where {0} sits"
+msgstr "تغيير مكان عمل {0}"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml, Views/EmployeesAdmin/Index.cshtml
+msgid "Change placement"
+msgstr "تغيير التعيين"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Every row below is one placement. The allocations must total 100%, and exactly one row is the main placement — the one that answers \"where does this person work\". Saving closes what is running the day before the date given and opens these from it; nothing is deleted."
+msgstr "كل سطر أدناه تعيين واحد. يجب أن يكون مجموع النسب 100%، وسطر واحد فقط هو التعيين الرئيسي — الذي يجيب عن سؤال \"أين يعمل هذا الشخص\". الحفظ يُغلق ما هو قائم في اليوم السابق للتاريخ المحدد ويفتح هذه منه؛ ولا يُحذف شيء."
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "The latest change recorded on this structure is {0}. A new one cannot be dated before it."
+msgstr "آخر تغيير مسجَّل على هذا الهيكل هو {0}. لا يمكن تأريخ تغيير جديد قبله."
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Placed now"
+msgstr "التعيين الحالي"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "(main)"
+msgstr "(رئيسي)"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Main placement"
+msgstr "التعيين الرئيسي"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Add a unit"
+msgstr "إضافة وحدة"
+
+#: Views/EmployeePlacementAdmin/Change.cshtml
+msgid "Remove"
+msgstr "إزالة"
+
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "Choose a structure."
+msgstr "اختر هيكلاً."
+
+#. Pluralised through H.Plural, so Arabic gets all six forms its rule selects between rather than
+#. one that reads wrong for most counts.
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "{0} is placed at {1} unit from {2}."
+msgid_plural "{0} is placed at {1} units from {2}."
+msgstr[0] "{0} غير معيَّن في أي وحدة اعتباراً من {2}."
+msgstr[1] "{0} معيَّن في وحدة واحدة اعتباراً من {2}."
+msgstr[2] "{0} معيَّن في وحدتين اعتباراً من {2}."
+msgstr[3] "{0} معيَّن في {1} وحدات اعتباراً من {2}."
+msgstr[4] "{0} معيَّن في {1} وحدة اعتباراً من {2}."
+msgstr[5] "{0} معيَّن في {1} وحدة اعتباراً من {2}."
+
+#. ---- the rules a split has to satisfy ---------------------------------------------------
+
+#: Services/PlacementSplitMessages.cs
+msgid "Choose a unit for this row, or remove it."
+msgstr "اختر وحدة لهذا السطر، أو أزله."
+
+#: Services/PlacementSplitMessages.cs
+msgid "This unit is already on another row. One unit, one row: add the two shares together instead."
+msgstr "هذه الوحدة موجودة في سطر آخر. وحدة واحدة في سطر واحد: اجمع النسبتين معاً بدلاً من ذلك."
+
+#: Services/PlacementSplitMessages.cs
+msgid "An allocation must be greater than zero. Remove the row instead."
+msgstr "يجب أن تكون النسبة أكبر من صفر. أزل السطر بدلاً من ذلك."
+
+#: Services/PlacementSplitMessages.cs
+msgid "The allocations must total 100%. These total {0}%."
+msgstr "يجب أن يكون مجموع النسب 100%. مجموع هذه {0}%."
+
+#: Services/PlacementSplitMessages.cs
+msgid "Exactly one row must be the main placement, so that \"where do they work\" has one answer. {0} are marked main."
+msgstr "سطر واحد فقط يجب أن يكون التعيين الرئيسي، حتى يكون لسؤال \"أين يعمل\" إجابة واحدة. المحدَّد كرئيسي: {0}."
+
+#: Services/PlacementSplitMessages.cs
+msgid "A placement needs at least one unit. To take this person off the structure entirely, use \"End here\" instead, which asks for a last day."
+msgstr "التعيين يحتاج وحدة واحدة على الأقل. لإخراج هذا الشخص من الهيكل كلياً، استخدم \"إنهاء هنا\" بدلاً من ذلك، فهو يطلب آخر يوم."
+
+#: Services/PlacementSplitMessages.cs
+msgid "An effective date is needed. Nothing here is written without one."
+msgstr "تاريخ السريان مطلوب. لا يُكتب شيء هنا بدونه."
+
+#: Services/PlacementSplitMessages.cs
+msgid "This structure already has a placement change recorded from {0}. Saving a change dated before it would replace that one rather than slot in behind it, so it is refused. Use a date on or after {0}."
+msgstr "هذا الهيكل يحتوي بالفعل على تغيير تعيين مسجَّل اعتباراً من {0}. حفظ تغيير مؤرَّخ قبله سيستبدل ذلك التغيير بدلاً من أن يسبقه، لذلك فهو مرفوض. استخدم تاريخاً في {0} أو بعده."
+
+#: Services/PlacementSplitMessages.cs
+msgid "This placement cannot be saved."
+msgstr "لا يمكن حفظ هذا التعيين."
+
+#. ---- placing one person at one unit -----------------------------------------------------
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Place an employee"
+msgstr "تعيين موظف"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Place an employee in {0}"
+msgstr "تعيين موظف في {0}"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Employee"
+msgstr "الموظف"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Placing {0} ({1})."
+msgstr "تعيين {0} ({1})."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "The unit is already chosen from the chart. Change it below if that is not the one."
+msgstr "الوحدة مختارة مسبقاً من المخطط. غيّرها أدناه إن لم تكن هي المقصودة."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Change the whole split instead…"
+msgstr "تغيير التوزيع بالكامل بدلاً من ذلك…"
+
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "Choose an employee."
+msgstr "اختر موظفاً."

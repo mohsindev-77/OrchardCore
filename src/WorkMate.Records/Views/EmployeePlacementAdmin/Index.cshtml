@@ -4,7 +4,7 @@
     <h1>@T["Where {0} sits", Model.Name]</h1>
     @if (Model.CanAssign)
     {
-        <a class="btn btn-primary" asp-action="Place" asp-route-id="@Model.EmployeeId">@T["Place on an axis"]</a>
+        <a class="btn btn-primary" asp-action="Place" asp-route-id="@Model.EmployeeId">@T["Place on a structure"]</a>
     }
 </div>
 
@@ -32,17 +32,28 @@
     <div class="card mb-3 placement-axis" data-structure-code="@axis.StructureCode">
         <div class="card-header d-flex justify-content-between align-items-center">
             <span>@axis.StructureName <code class="small">@axis.StructureCode</code></span>
-            @if (Model.CanAssign && axis.IsPlaced)
+            @if (Model.CanAssign)
             {
-                <a class="btn btn-sm btn-outline-secondary"
-                   asp-action="End" asp-route-id="@Model.EmployeeId"
-                   asp-route-structureId="@axis.StructureId">@T["End here"]</a>
+                <span class="btn-group btn-group-sm">
+                    @* The split screen, which is where a matrix is actually built: the rules are
+                       about the set of placements, so stating the whole set at once is the only
+                       shape in which it is valid at every step. *@
+                    <a class="btn btn-outline-primary"
+                       asp-action="Change" asp-route-id="@Model.EmployeeId"
+                       asp-route-structureId="@axis.StructureId">@T["Change placement"]</a>
+                    @if (axis.IsPlaced)
+                    {
+                        <a class="btn btn-outline-secondary"
+                           asp-action="End" asp-route-id="@Model.EmployeeId"
+                           asp-route-structureId="@axis.StructureId">@T["End here"]</a>
+                    }
+                </span>
             }
         </div>
         <div class="card-body">
             @if (!axis.IsPlaced)
             {
-                <p class="text-muted mb-0 placement-none">@T["Not placed on this axis on that date."]</p>
+                <p class="text-muted mb-0 placement-none">@T["Not placed on this structure on that date."]</p>
             }
             else
             {
@@ -51,7 +62,7 @@
                         <tr>
                             <th>@T["Unit"]</th>
                             <th>@T["Allocation"]</th>
-                            <th>@T["Primary"]</th>
+                            <th>@T["Main"]</th>
                             <th>@T["From"]</th>
                             <th>@T["To"]</th>
                         </tr>
@@ -61,11 +72,11 @@
                         {
                             <tr class="placement-row" data-unit-code="@row.UnitCode">
                                 <td>@row.UnitName <code class="small">@row.UnitCode</code></td>
-                                <td>@row.AllocationPercent%</td>
+                                <td>@EmployeeDisplay.Percent(row.AllocationPercent)</td>
                                 <td>
-                                    @* Exactly one of an employee's concurrent placements on an axis
-                                       is primary — that is what resolves the matrix case without
-                                       ambiguity. *@
+                                    @* Exactly one of an employee's concurrent placements on a
+                                       structure is the main one — that is what resolves the matrix
+                                       case without ambiguity. *@
                                     @(row.IsPrimary ? T["Yes"] : T["No"])
                                 </td>
                                 <td>@EmployeeDisplay.Date(row.From)</td>
@@ -93,7 +104,7 @@ else
         <thead>
             <tr>
                 <th>@T["Unit"]</th>
-                <th>@T["Axis"]</th>
+                <th>@T["Structure"]</th>
                 <th>@T["From"]</th>
                 <th>@T["To"]</th>
             </tr>

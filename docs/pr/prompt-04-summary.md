@@ -238,17 +238,113 @@ The picker fell back across axes to answer "where they sit"; the employee list d
 
 ---
 
+## Session C: placing more than one row, and the words on the screens
+
+Placement worked for exactly one row and could be reached from exactly one direction. This session
+closes both, and renames the concept the screens had been calling an *axis*.
+
+### Change placement — the split, as editable rows
+
+`EmployeePlacementAdminController.Change`, reachable from the employee list, from the placement
+overview and from the Place screen. One structure at a time, because the rules — allocations total
+100, exactly one row is main — are statements about one employee on one structure. Rows are added
+and removed by round trip rather than by script, like every other form in this module, and the
+round trip also redraws each row's unit picker against the current structure and date.
+
+**One write path.** Save is one call to `IEmployeeAssignmentService.ReallocateAsync`, with the same
+changes/split shape the `employee-assignments` recipe step builds. `PlaceAsync` is already a
+one-row reallocation, so there is no second mechanism and nothing new in the engine. Old rows end
+the day before the effective date; nothing is deleted.
+
+**`PlacementSplit`** holds what the screen checks first, as a pure function with no session, no
+localiser and no clock — so every case is a unit test. It is not a second copy of the engine's
+rules: `ValidateAssignmentAsync` remains the authority and runs again on the write. It adds the two
+things a validator working on a resolved split cannot do (say *which row* is wrong, and catch an
+empty row before it reaches a service that would call it an unknown record id) and one rule of its
+own.
+
+**That rule is the backdating refusal, and it is an ADR-0005 question answered differently.**
+`ReallocateAsync` states the whole picture from its effective date onwards, so a split dated behind
+a change already recorded would replace that change rather than slot in behind it — the "overwrite"
+behaviour ADR-0005's addendum examined and rejected for moves, reached through a different door.
+ADR-0005 chose *split* for a move because a link carries one parent at a time and the arithmetic is
+unambiguous; a set of rows that must total 100 on every date has no honest equivalent, so this
+screen takes ADR-0005's third option — refuse — and names the date it will accept. No ADR change:
+the addendum's reasoning is about moves, and this records why the same answer does not carry.
+
+### The unit picker
+
+`workmate-unit-picker` in `WorkMate.Dimensions`, with `UnitPickerAdminController` behind it, on
+Place and on every row of Change. Every option carries its full path —
+`Crescent › Retail Banking › Credit` — because the Crescent reference tenant has two departments
+called Credit and two called Operations on one structure, and a list of bare names offers identical
+rows with no way to choose correctly. An optional **Within** filter narrows to a container's subtree
+through the closure index.
+
+The employee picker's combobox became `workmate-picker.js` in `WorkMate.Platform` and both pickers
+now drive it, rather than the second picker being a second three hundred lines of the same keyboard
+handling, race guard and submit refusal — four of which were defects fixed once in the original.
+
+### "Place an employee here…" on the designer card
+
+Declared in `DesignerCardActions.All` immediately after `sethead` and gated on the same
+`AssignEmployees`, because placing somebody and appointing a head are the same act. It is the first
+card action whose availability depends on the **unit** as well as on the viewer, which a cloned
+template cannot branch on in Razor — so the link declares what it needs
+(`data-designer-action-requires="holdsEmployees"`), the node carries the answer, and the script
+removes it on a container. A fetched container's menu is therefore identical to a server-rendered
+container's, which is the property `PermittedActions` exists to protect.
+
+### "Axis" is "Structure" everywhere a user can see it
+
+Views, labels, help text, validation messages, PO files and test assertions. Internal C# names are
+unchanged: the type is still `AxisPlacementViewModel`, the concept on screen is a structure.
+
+### The employee list
+
+**Role here → Placement, primary/secondary → Main/Additional.** A role is a job title, which that
+column never held; "Secondary" reads as a judgement about the person rather than a statement about
+the unit's share of them.
+
+**The main placement, with the rest behind "+N more"** — full path and share for each. Somebody
+split 60/40 has two true answers to "where do they sit", and the column used to show whichever row
+the engine returned first.
+
+**The ★ tooltip names every unit that person heads**, not "this unit". ADR-0012 lets one person head
+several, and the Zenith demo deliberately has one over two departments and a site team.
+
+### The Ahmed Khan row
+
+Reported as `Civil · Secondary · 40% · home: Civil`. The `home: {0}` caption under the role rendered
+`PrimaryUnitName`, and on a unit-filtered list `PrimaryUnitName` is resolved on *the structure the
+list is filtered to* — which is where the main placement is. So the caption was, by construction,
+the cell immediately to its left; the only way the two could ever have differed is if the main
+placement had been read off a different structure, which would have made the pair meaningless
+rather than merely redundant. It is removed, not reworded: where else somebody sits is now one
+question answered in one place, the "+N more" disclosure.
+
+### A race in the picker, found by running the browser suite under load
+
+A reader focuses the box (which searches at once), types (which searches again), picks from the
+second list and moves on — and the first response lands afterwards and re-opens a dropdown over
+whatever they were about to click. The sequence guard stopped a slower earlier response overwriting
+a faster later one; it could not stop one overwriting a *closed* list, because closing was not
+something any response knew about. `close()` now abandons what is in flight.
+
+---
+
 ## Test counts
 
 Full `dotnet build -warnaserror` with **NuGet audit ON**: 0 warnings, 0 errors.
 
-| Assembly | Passed | Skipped |
-| --- | ---: | ---: |
-| `WorkMate.Dimensions.Tests` | 181 | 0 |
-| `WorkMate.Platform.Tests` | 199 | 0 |
-| `WorkMate.Records.Tests` | 75 | 0 |
-| `WorkMate.Integration.Tests` | 317 | 0 |
-| `WorkMate.Browser.Tests` | 92 | 3 |
-| **Total** | **864** | **3** |
+| Assembly | Passed | Skipped | Added this session |
+| --- | ---: | ---: | ---: |
+| `WorkMate.Dimensions.Tests` | 181 | 0 | 0 |
+| `WorkMate.Platform.Tests` | 199 | 0 | 0 |
+| `WorkMate.Records.Tests` | 101 | 0 | +26 |
+| `WorkMate.Integration.Tests` | 349 | 0 | +32 |
+| `WorkMate.Browser.Tests` | 100 | 3 | +8 |
+| **Total** | **930** | **3** | **+66** |
 
-The three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` and skipped with a reason when nobody has offered any — unchanged from prompt 3.
+The three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` and skipped with a
+reason when nobody has offered any — unchanged from prompt 3.

@@ -330,6 +330,160 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. units.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
     }
 
+    public async Task<Page<DimensionNodeRef>> SearchEmployeeAttachableUnitsAsync(
+        string structureId,
+        string? searchText,
+        string? withinRecordId,
+        DateOnly? asAt = null,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var date = await ResolveDateAsync(asAt);
+        var units = await GetEmployeeAttachableUnitsAsync(structureId, date, cancellationToken);
+
+        if (!string.IsNullOrEmpty(withinRecordId))
+        {
+            // One closure query for the whole subtree, rather than IsUnderAsync per candidate.
+            // Depth zero is included deliberately: a unit is within itself, and a reader who picks
+            // "within Credit" and is then refused Credit would be being told the opposite.
+            var within = EffectiveDates.ToColumn(date);
+
+            var subtree = (await _session
+                    .QueryIndex<DimensionClosureIndex>(index =>
+                        index.StructureId == structureId &&
+                        index.AncestorId == withinRecordId &&
+                        index.EffectiveFrom <= within &&
+                        within <= index.EffectiveToInclusive)
+                    .ListAsync(cancellationToken))
+                .Select(row => row.DescendantId)
+                .ToHashSet(StringComparer.Ordinal);
+
+            units = [.. units.Where(unit => subtree.Contains(unit.RecordId))];
+        }
+
+        var trimmed = searchText?.Trim();
+
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            units =
+            [
+                .. units.Where(unit =>
+                    unit.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    unit.NameEn.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
+                    unit.NameAr.Contains(trimmed, StringComparison.OrdinalIgnoreCase)),
+            ];
+        }
+
+        // Already ordered by GetEmployeeAttachableUnitsAsync, and the filters above preserve it.
+        return new Page<DimensionNodeRef>([.. units.Take(Math.Max(take, 0))], units.Count, 0, take);
+    }
+
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetEmployeeScopeUnitsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var date = await ResolveDateAsync(asAt);
+
+        var containers = structure.Levels
+            .Where(level => !structure.PermitsEmployeesAt(level.DimensionTypeId))
+            .Select(level => level.DimensionTypeId)
+            .ToList();
+
+        // An axis that constrains nothing has no containers by that reading, and yet it still has a
+        // top. Offering its roots keeps the filter useful instead of empty.
+        if (containers.Count == 0)
+        {
+            containers = [.. structure.RootDimensionTypeIds];
+        }
+
+        var scopes = new List<DimensionNodeRef>();
+
+        foreach (var dimensionTypeId in containers)
+        {
+            foreach (var record in await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+            {
+                if (record.EffectiveRange.Contains(date))
+                {
+                    scopes.Add(record);
+                }
+            }
+        }
+
+        return [.. scopes.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetAncestorPathsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var paths = new Dictionary<string, IReadOnlyList<DimensionNodeRef>>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return paths;
+        }
+
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        // Two queries for the whole page: the closure rows for every node at once, then the
+        // records behind the distinct ancestors they name. The ids go in as an IN list because the
+        // caller is a picker's page — twenty of them — never a subtree.
+        var rows = (await _session
+                .QueryIndex<DimensionClosureIndex>(index =>
+                    index.StructureId == structureId &&
+                    index.DescendantId.IsIn(ids) &&
+                    index.Depth > 0 &&
+                    index.EffectiveFrom <= date &&
+                    date <= index.EffectiveToInclusive)
+                .ListAsync(cancellationToken))
+            .ToList();
+
+        if (rows.Count == 0)
+        {
+            foreach (var recordId in ids)
+            {
+                paths[recordId] = [];
+            }
+
+            return paths;
+        }
+
+        var ancestorIds = rows.Select(row => row.AncestorId).Distinct(StringComparer.Ordinal).ToArray();
+
+        var ancestors = (await _session
+                .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId.IsIn(ancestorIds) && index.Latest)
+                .ListAsync(cancellationToken))
+            .ToDictionary(row => row.ContentItemId, ToNodeRef, StringComparer.Ordinal);
+
+        foreach (var recordId in ids)
+        {
+            paths[recordId] =
+            [
+                .. rows
+                    .Where(row => string.Equals(row.DescendantId, recordId, StringComparison.Ordinal))
+                    // Root first: the deepest number is the furthest ancestor, which is what a
+                    // reader reads first in "Crescent › Retail Banking › Credit".
+                    .OrderByDescending(row => row.Depth)
+                    .Select(row => ancestors.TryGetValue(row.AncestorId, out var ancestor)
+                        ? ancestor with { Depth = row.Depth }
+                        : null)
+                    .Where(ancestor => ancestor is not null)
+                    .Select(ancestor => ancestor!),
+            ];
+        }
+
+        return paths;
+    }
+
     public async Task<bool> IsUnderAsync(
         string structureId,
         string recordId,

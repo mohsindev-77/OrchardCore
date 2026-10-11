@@ -291,6 +291,65 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
         return [.. rows.Select(ToAssignment)];
     }
 
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<EmployeeAssignment>>> GetPlacementsAsync(
+        string structureId,
+        IReadOnlyList<string> employeeIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(employeeIds);
+
+        if (employeeIds.Count == 0 || string.IsNullOrEmpty(structureId))
+        {
+            return new Dictionary<string, IReadOnlyList<EmployeeAssignment>>(StringComparer.Ordinal);
+        }
+
+        var date = EffectiveDates.ToColumn(asAt ?? await _authorisation.TodayAsync());
+        var ids = employeeIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        // The same query GetPrimaryPlacementsAsync issues without the IsPrimary predicate: one
+        // round trip for the whole page, where a per-person read would be one per row.
+        var rows = await _session
+            .QueryIndex<EmployeeAssignmentIndex>(index =>
+                index.StructureId == structureId &&
+                index.EmployeeId.IsIn(ids) &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        // Primary first, then by allocation descending: the row that answers "where do they work"
+        // leads, and the rest read largest share first, which is the order somebody scanning a
+        // split expects.
+        return rows
+            .GroupBy(row => row.EmployeeId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<EmployeeAssignment>)
+                [
+                    .. group
+                        .OrderByDescending(row => row.IsPrimary)
+                        .ThenByDescending(row => row.AllocationPercent)
+                        .ThenBy(row => row.NodeId, StringComparer.Ordinal)
+                        .Select(ToAssignment),
+                ],
+                StringComparer.Ordinal);
+    }
+
+    public async Task<IReadOnlyList<EmployeeAssignment>> GetHistoryAsync(
+        string employeeId,
+        string structureId,
+        CancellationToken cancellationToken = default)
+    {
+        var document = await LoadAsync(employeeId, structureId, cancellationToken);
+
+        return document is null
+            ? []
+            : [.. document.Rows
+                .OrderBy(row => row.Range.From)
+                .ThenBy(row => row.RecordId, StringComparer.Ordinal)
+                .Select(row => ToAssignment(employeeId, structureId, row))];
+    }
+
     public async Task<IReadOnlyDictionary<string, EmployeeAssignment>> GetPrimaryPlacementsAsync(
         string structureId,
         IReadOnlyList<string> employeeIds,

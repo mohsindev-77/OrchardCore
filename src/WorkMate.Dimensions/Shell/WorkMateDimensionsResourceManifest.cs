@@ -55,6 +55,14 @@ public sealed class WorkMateDimensionsResourceManifest : IConfigureOptions<Resou
             .SetUrl("~/WorkMate.Dimensions/js/structures.js")
             .SetVersion("1.0.0");
 
+        // The unit picker's search. It depends on WorkMate.Platform's combobox, which is the same
+        // control the employee picker drives: naming the dependency is what makes Orchard put the
+        // two on the page in the order they have to be in.
+        manifest.DefineScript("workmate-unit-picker")
+            .SetUrl("~/WorkMate.Dimensions/js/unit-picker.js")
+            .SetDependencies("workmate-picker")
+            .SetVersion("1.0.0");
+
         return manifest;
     }
 }

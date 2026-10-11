@@ -3,7 +3,12 @@
 @addTagHelper *, OrchardCore.DisplayManagement
 @addTagHelper *, OrchardCore.ResourceManagement
 @addTagHelper *, WorkMate.Platform
+@* workmate-unit-picker lives in WorkMate.Dimensions, beside the structures it reads. This module
+   already references that one — placement is a dimension-engine write — so the tag helper comes
+   with it rather than being reimplemented here. *@
+@addTagHelper *, WorkMate.Dimensions
 @using WorkMate.Dimensions.Internal
+@using WorkMate.Dimensions.ViewModels
 @using WorkMate.Records.Models
 @using WorkMate.Records.Services
 @using WorkMate.Records.ViewModels

@@ -1,25 +1,35 @@
 @model EmployeeListItemViewModel
 @*
-    What somebody is at the unit the list is filtered to. A partial with a switch expression, like
+    What this unit is to this person: where they mainly work, somewhere they are also counted, or
+    a unit they head without being a member of. A partial with a switch expression, like
     _EmploymentStatusName, for the same two reasons: the names stay literals the localiser and
     LocalisationResourceTests can both see, and a switch statement in the middle of markup reads to
     UserVisibleStringTests as rendered text.
 
+    "Main" and "Additional", not "Primary" and "Secondary". Secondary reads as a judgement about
+    the person — a junior posting — when it is a statement about the unit's share of them. The
+    internal names are unchanged; this is the word a reader sees.
+
     "Head (not a member)" is ADR-0012's case said plainly. Without it a head borrowed from another
     department reads as somebody who works here, and the headcount beside them — which does not
     count them — looks wrong instead of right.
+
+    There is no "home: …" line under an Additional row, and there must not be one.
+
+    It was here, and it repeated the unit the row already names. The placement column beside it
+    shows the *main* placement, resolved on the same structure this list is filtered to — which is
+    the home department, by definition — so "home: Civil" sat next to a cell already reading
+    "Civil" on every Additional row the demo tenant has. Ahmed Khan's row on Site Team A read
+    "Civil · Additional · 40% · home: Civil". Where the person's other placements are is now one
+    question answered in one place: the "+N more" disclosure in the placement column, with the full
+    path and the share of each.
 *@
 @(Model.RoleHere switch
 {
-    UnitRole.Primary => T["Primary"],
-    UnitRole.Secondary => T["Secondary"],
+    UnitRole.Primary => T["Main"],
+    UnitRole.Secondary => T["Additional"],
     UnitRole.HeadOnly => T["Head (not a member)"],
 
-    // Null on the unfiltered list, where there is no unit for a role to be relative to.
+    // Null on the unfiltered list, where there is no unit for a placement to be relative to.
     _ => null,
 })
-@if (Model.RoleHere == UnitRole.Secondary && !string.IsNullOrEmpty(Model.PrimaryUnitName))
-{
-    @* The matrix in one line: lent to this unit, belongs to that one. *@
-    <div class="text-muted small">@T["home: {0}", Model.PrimaryUnitName]</div>
-}

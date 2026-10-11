@@ -1,17 +1,42 @@
 @model PlaceEmployeeViewModel
 
-<h1>@T["Place {0}", Model.Name]</h1>
+<h1 id="place-heading">
+    @if (Model.FromUnit && !string.IsNullOrEmpty(Model.UnitPath))
+    {
+        @T["Place an employee in {0}", Model.UnitPath]
+    }
+    else if (!string.IsNullOrEmpty(Model.EmployeeId))
+    {
+        @T["Place {0}", Model.Name]
+    }
+    else
+    {
+        @T["Place an employee"]
+    }
+</h1>
 
 <form method="post" asp-action="Place" id="employee-place">
     <div asp-validation-summary="All" class="text-danger"></div>
-    <input type="hidden" asp-for="EmployeeId" />
+
+    @* Whoever is being placed. Known when the screen was opened from a person and asked for when
+       it was opened from a unit's card, which is the whole reason this is a picker rather than a
+       hidden field. *@
+    @if (string.IsNullOrEmpty(Model.EmployeeId))
+    {
+        <workmate-employee-picker for="EmployeeId" label="@T["Employee"]" allow-none="false" />
+    }
+    else
+    {
+        <input type="hidden" asp-for="EmployeeId" />
+        <p class="text-muted" id="place-employee">@T["Placing {0} ({1}).", Model.Name, Model.Code ?? string.Empty]</p>
+    }
 
     <div class="mb-3">
-        <label class="form-label" asp-for="StructureId">@T["Axis"]</label>
-        @* A GET round trip when the axis changes, because the units offered depend on it and this
-           screen works with no script at all. *@
+        <label class="form-label" asp-for="StructureId">@T["Structure"]</label>
+        @* A GET round trip when the structure changes, because the units offered depend on it and
+           this screen works with no script at all. *@
         <select class="form-select" asp-for="StructureId" onchange="this.form.submit()">
-            <option value="">@T["Choose an axis…"]</option>
+            <option value="">@T["Choose a structure…"]</option>
             @foreach (var structure in Model.Structures)
             {
                 <option value="@structure.StructureId">@structure.Name (@structure.Code)</option>
@@ -21,7 +46,7 @@
 
     <div class="mb-3">
         <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
-        <input class="form-control" asp-for="EffectiveFrom" type="date" required />
+        <input class="form-control" asp-for="EffectiveFrom" type="date" id="place-effective-from" required />
         <div class="form-text">
             @T["Whatever this displaces is closed the day before, which is how a mid-month transfer becomes two rows rather than an overwrite."]
         </div>
@@ -29,26 +54,23 @@
 
     @if (!string.IsNullOrEmpty(Model.StructureId))
     {
-        <div class="mb-3">
-            <label class="form-label" asp-for="RecordId">@T["Unit"]</label>
-            <select class="form-select" asp-for="RecordId" id="place-unit">
-                <option value="">@T["Choose a unit…"]</option>
-                @foreach (var unit in Model.Units)
-                {
-                    <option value="@unit.RecordId">@unit.Name (@unit.Code)</option>
-                }
-            </select>
-            <div class="form-text">
-                @* The picker offers what the validator would accept, from the same rule read
-                   forwards — which is the ADR-0010 lesson applied to employee attachment. *@
-                @T["Only units this axis says may hold employees. An axis that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."]
-            </div>
-            @if (Model.Units.Count == 0)
-            {
-                <p class="text-warning" id="place-no-units">
-                    @T["This axis has no units that may hold employees on that date."]
-                </p>
-            }
+        @if (Model.FromUnit && !string.IsNullOrEmpty(Model.UnitPath))
+        {
+            @* Arrived from a card, so the unit is known. Said as a sentence as well as held in the
+               picker, so landing here from the wrong card is obvious before the save rather than
+               after it. *@
+            <p class="text-muted" id="place-unit-prefilled">@T["The unit is already chosen from the chart. Change it below if that is not the one."]</p>
+        }
+
+        <workmate-unit-picker for="RecordId" label="@T["Unit"]"
+                              structure-id="@Model.StructureId"
+                              as-at="@Model.EffectiveFrom"
+                              date-field="place-effective-from" />
+
+        <div class="form-text mb-3">
+            @* The picker offers what the validator would accept, from the same rule read
+               forwards — which is the ADR-0010 lesson applied to employee attachment. *@
+            @T["Only units this structure says may hold employees. A structure that names none is unconstrained and offers everything; one that names some offers those, because an employee placed at a container is counted by it and again by every roll-up beneath it."]
         </div>
 
         <div class="row">
@@ -56,22 +78,41 @@
                 <label class="form-label" asp-for="AllocationPercent">@T["Allocation (%)"]</label>
                 <input class="form-control" asp-for="AllocationPercent" type="number" min="1" max="100" step="1" />
                 <div class="form-text">
-                    @T["100 unless the cost is split. Concurrent placements on one axis must total 100."]
+                    @T["100 unless the cost is split. Concurrent placements on one structure must total 100."]
                 </div>
             </div>
             <div class="col-sm-6 mb-3">
                 <div class="form-check mt-4">
                     <input class="form-check-input" asp-for="IsPrimary" type="checkbox" />
-                    <label class="form-check-label" asp-for="IsPrimary">@T["This is where they work"]</label>
+                    <label class="form-check-label" asp-for="IsPrimary">@T["This is the main placement"]</label>
                 </div>
                 <div class="form-text">
-                    @T["Exactly one concurrent placement on an axis is primary. Untick it for the second half of a matrix — a home department and a site team."]
+                    @T["Exactly one concurrent placement on a structure is the main one. Untick it for the second half of a matrix — a home department and a site team."]
                 </div>
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary">@T["Place"]</button>
+        <button type="submit" class="btn btn-primary" id="place-submit">@T["Place"]</button>
+
+        @* A split is several rows at once and the rules are about the set, so it is its own
+           screen rather than this one repeated. Offered here because somebody who arrives to place
+           a second unit will look for it here first. *@
+        @if (!string.IsNullOrEmpty(Model.EmployeeId))
+        {
+            <a class="btn btn-link" asp-action="Change" asp-route-id="@Model.EmployeeId"
+               asp-route-structureId="@Model.StructureId" id="place-change-instead">@T["Change the whole split instead…"]</a>
+        }
     }
 
-    <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+    @if (string.IsNullOrEmpty(Model.EmployeeId))
+    {
+        <a class="btn btn-link" asp-controller="EmployeesAdmin" asp-action="Index">@T["Cancel"]</a>
+    }
+    else
+    {
+        <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+    }
 </form>
+
+<script asp-name="workmate-employee-picker" at="Foot"></script>
+<script asp-name="workmate-unit-picker" at="Foot"></script>

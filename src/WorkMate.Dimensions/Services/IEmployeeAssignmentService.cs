@@ -124,6 +124,47 @@ public interface IEmployeeAssignmentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every placement each of these employees holds on one structure, as at a date.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="GetPrimaryPlacementsAsync"/> answers "where does this person work" and is
+    /// deliberately one row per person. This answers the other question a list of people asks —
+    /// "and what else" — because a split allocation is several rows and a screen that showed one of
+    /// them would be picking arbitrarily between facts that are all true.
+    ///
+    /// Batched for the reason every other read here is: the caller is a page of fifty people, and
+    /// <see cref="GetAllEffectiveAsync"/> per row would be fifty queries to draw one column.
+    ///
+    /// An employee with no placement on the date is absent rather than present with an empty list,
+    /// so the common case on a tenant with no structure costs nothing to carry.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<EmployeeAssignment>>> GetPlacementsAsync(
+        string structureId,
+        IReadOnlyList<string> employeeIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every placement row on record for one employee on one structure, earliest first — the
+    /// closed ones as well as the open one.
+    /// </summary>
+    /// <remarks>
+    /// The placement counterpart of <see cref="GetHeadHistoryAsync"/>, and it exists for one
+    /// caller: the screen that changes a split has to know the date of the latest change already
+    /// recorded before it accepts a new one.
+    ///
+    /// <see cref="ReallocateAsync"/> states the whole picture from its effective date onwards, so a
+    /// reallocation backdated before a change already on record would replace that change rather
+    /// than slot in behind it — which is the "overwrite" behaviour ADR-0005's addendum rejected for
+    /// moves, reached by a different door. The screen refuses it instead, and this is what it reads
+    /// to know.
+    /// </remarks>
+    Task<IReadOnlyList<EmployeeAssignment>> GetHistoryAsync(
+        string employeeId,
+        string structureId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Where each of these employees primarily sits on one axis, as at a date.
     /// </summary>
     /// <remarks>

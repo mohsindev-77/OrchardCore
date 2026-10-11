@@ -57,7 +57,15 @@ public static class DesignerCardActions
         new("merge", "Merge", Controller: null, TargetsParent: false, model => model.CanMerge),
         new("sethead", "Set", "UnitHeadAdmin", TargetsParent: false, model => model.CanAssignEmployees),
 
-        // The only action whose controller is in another module. Resolved by name at run time, so
+        // Placing somebody and appointing a head are the same kind of act under the same
+        // permission, so they are declared next to each other and gated by the same predicate. The
+        // card decides separately whether this particular unit may hold employees — see
+        // DesignerNodeViewModel.HoldsEmployees — because that is a property of the unit's type on
+        // this structure rather than of the viewer.
+        new("placeemployee", "Place", "EmployeePlacementAdmin", TargetsParent: false,
+            model => model.CanAssignEmployees, Area: "WorkMate.Records"),
+
+        // Three actions whose controllers are in another module. Resolved by name at run time, so
         // this module still does not reference WorkMate.Records — and on a tenant without it the
         // route does not resolve, Url.Action returns null, and the existing "an action with no URL
         // is one this viewer may not use" rule drops it from the menu.

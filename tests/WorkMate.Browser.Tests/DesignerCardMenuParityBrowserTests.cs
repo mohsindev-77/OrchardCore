@@ -197,9 +197,9 @@ public sealed class DesignerCardMenuParityBrowserTests
             "#employee-place select[name='StructureId']",
             new SelectOptionValue { Label = "Zenith Engineering & Construction (zenith-org)" });
 
-        await page.SelectOptionAsync(
-            "#place-unit",
-            new SelectOptionValue { Label = "Mechanical (zenith-dept-mechanical)" });
+        // Chosen through the unit picker's own search, which is what replaced the flat <select>
+        // this used to call SelectOption on.
+        await Pickers.ChooseAsync(page, ".workmate-unit-picker", "Mechanical");
 
         await page.ClickAsync("#employee-place button[type='submit']");
 

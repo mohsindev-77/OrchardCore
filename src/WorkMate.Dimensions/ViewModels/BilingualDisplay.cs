@@ -88,4 +88,41 @@ public static class BilingualDisplay
     public static string DateFromIso(string? iso) =>
         Internal.IsoDate.TryParse(iso, out var parsed) ? Date(parsed) : iso ?? string.Empty;
 
+    /// <summary>
+    /// The separator between the steps of a unit's path — "Crescent › Retail Banking › Credit".
+    /// </summary>
+    /// <remarks>
+    /// Not localised, and not meant to be. It is a glyph rather than a word, it reads the same in
+    /// both languages, and the admin shell already mirrors the whole line for an Arabic reader so
+    /// the chevron ends up pointing the way the text runs.
+    /// </remarks>
+    public const string PathSeparator = " › ";
+
+    /// <summary>
+    /// A unit's full path, root first, in the reader's language.
+    /// </summary>
+    /// <remarks>
+    /// <b>The path is what makes a picker usable on a real organisation.</b> Crescent has a
+    /// "Credit" under Retail Banking and another under Corporate Banking, and an "Operations" under
+    /// three different divisions. A flat list of names offers the reader several identical rows and
+    /// no way to tell which is which; it is not a cosmetic improvement but the difference between a
+    /// control that can be used correctly and one that cannot.
+    /// </remarks>
+    /// <param name="ancestors">The unit's ancestors, root first. Empty for a root.</param>
+    public static string Path(IEnumerable<Services.DimensionNodeRef>? ancestors, string? nameEn, string? nameAr)
+    {
+        var steps = (ancestors ?? [])
+            .Select(ancestor => Name(ancestor.NameEn, ancestor.NameAr))
+            .Append(Name(nameEn, nameAr));
+
+        return string.Join(PathSeparator, steps);
+    }
+
+    /// <inheritdoc cref="Path(IEnumerable{Services.DimensionNodeRef}, string, string)"/>
+    public static string Path(IEnumerable<Services.DimensionNodeRef>? ancestors, Services.DimensionNodeRef unit)
+    {
+        ArgumentNullException.ThrowIfNull(unit);
+
+        return Path(ancestors, unit.NameEn, unit.NameAr);
+    }
 }

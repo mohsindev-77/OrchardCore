@@ -8,8 +8,9 @@
         }
         else
         {
-            @* Which unit, on which axis, on which date — all three, because all three were chosen
-               on the designer and any one of them being different makes this a different list. *@
+            @* Which unit, on which structure, on which date — all three, because all three were
+               chosen on the designer and any one of them being different makes this a different
+               list. *@
             <span id="employee-unit-heading">@T["Employees in {0} ({1}) as at {2}",
                 Model.Unit.UnitName, Model.Unit.StructureName, EmployeeDisplay.DateFromIso(Model.Unit.AsAtIso)]</span>
         }
@@ -84,7 +85,7 @@
                 <label class="form-check-label" for="employee-include-sub-units">
                     @T["Include sub-units"]
                 </label>
-                <div class="form-text">@T["Everybody below this unit on this axis as well, not only those placed at it."]</div>
+                <div class="form-text">@T["Everybody below this unit on this structure as well, not only those placed at it."]</div>
             </div>
         </div>
     }
@@ -115,7 +116,10 @@ else
                 <th>@T["Where they sit"]</th>
                 @if (Model.Unit is not null)
                 {
-                    <th>@T["Role here"]</th>
+                    @* "Placement", not "Role here". A role is a job title, which this is not: it
+                       is whether the unit is where this person mainly works or somewhere they are
+                       also counted. *@
+                    <th>@T["Placement"]</th>
                     <th class="text-end">@T["Allocation"]</th>
                 }
                 <th class="text-end">@T["Actions"]</th>
@@ -135,8 +139,13 @@ else
                         @if (employee.IsHeadHere)
                         {
                             @* A star rather than a column of its own: there is one head, so a
-                               column would be blank on every row but one. *@
-                            <span class="employee-head-marker" title="@T["Heads this unit"]">★</span>
+                               column would be blank on every row but one.
+
+                               The tooltip names the units rather than saying "this one". One
+                               person heading several is an ordinary shape — ADR-0012, and the
+                               Zenith demo has somebody over two departments and a site team — and
+                               a reader hovering a star wants to know how far that goes. *@
+                            <span class="employee-head-marker" title="@employee.HeadsLabel">★</span>
                         }
                         <div dir="ltr" lang="en" class="employee-name d-inline">@employee.NameEn</div>
                         @* Only when there is Arabic to show: it is optional since ADR-0003's
@@ -161,7 +170,35 @@ else
                         }
                         else
                         {
-                            @employee.PrimaryUnitName
+                            @* The main placement, never an arbitrary one. Somebody split 60/40 has
+                               two true answers to "where do they sit", and this column used to show
+                               whichever row the engine returned first — so the same person could
+                               read differently on two screens for no reason anybody could explain.
+
+                               The full path is the cell's title rather than its text: it is what
+                               tells Crescent's two "Credit" departments apart, and it is too long
+                               to put on every row of a list somebody is scanning. *@
+                            <span class="employee-unit-main" title="@employee.PrimaryUnitPath">@employee.PrimaryUnitName</span>
+
+                            @if (employee.OtherUnits.Count > 0)
+                            {
+                                @* The rest behind a disclosure. Almost every row has none, so a
+                                   column wide enough for the few would make the list harder to
+                                   scan for the many — and <details> opens, closes and is
+                                   keyboard-reachable with no script at all, which is the same
+                                   choice the designer's action menu makes. *@
+                                <details class="employee-unit-more d-inline-block ms-1">
+                                    <summary class="employee-unit-more-toggle">@T["+{0} more", employee.OtherUnits.Count]</summary>
+                                    <ul class="list-unstyled small text-muted mb-0">
+                                        @foreach (var other in employee.OtherUnits)
+                                        {
+                                            <li class="employee-unit-other" data-record-id="@other.RecordId">
+                                                @other.Path — @EmployeeDisplay.Percent(other.AllocationPercent)
+                                            </li>
+                                        }
+                                    </ul>
+                                </details>
+                            }
                         }
                     </td>
                     @if (Model.Unit is not null)
@@ -190,9 +227,18 @@ else
                                    asp-action="Edit" asp-route-id="@employee.EmployeeId">@T["Edit"]</a>
                                 @if (Model.CanAssign)
                                 {
-                                    <a class="btn btn-outline-secondary"
+                                    <a class="btn btn-outline-secondary employee-placement"
                                        asp-controller="EmployeePlacementAdmin" asp-action="Index"
                                        asp-route-id="@employee.EmployeeId">@T["Placement"]</a>
+                                    @* Straight to the editable split, for the move somebody came
+                                       to the list to make. The overview above it answers "where is
+                                       this person"; this answers "put them somewhere else", and
+                                       making the second reachable only through the first is what
+                                       left splitting an allocation two clicks and a guess away. *@
+                                    <a class="btn btn-outline-secondary employee-change-placement"
+                                       asp-controller="EmployeePlacementAdmin" asp-action="Change"
+                                       asp-route-id="@employee.EmployeeId"
+                                       asp-route-structureId="@Model.Unit?.StructureId">@T["Change placement"]</a>
                                 }
                             </div>
                             @* Every transition valid for this person's current status, and only

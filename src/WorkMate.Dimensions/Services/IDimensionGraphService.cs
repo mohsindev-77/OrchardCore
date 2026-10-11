@@ -297,6 +297,67 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The page of employee-attachable units a picker should offer: those matching
+    /// <paramref name="searchText"/>, optionally only those at or below
+    /// <paramref name="withinRecordId"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Server-side, for the reason the employee picker is.</b> A control that filters a list it
+    /// already holds can only narrow what was sent, and what was sent is the first page — so on a
+    /// tenant with four hundred units the rest are unreachable and nothing says so.
+    ///
+    /// <paramref name="withinRecordId"/> is applied through the closure index, which is what makes
+    /// "within Retail Banking" mean the whole subtree on the date rather than the immediate
+    /// children. The same date resolves the subtree and the units, because a unit that was under a
+    /// division last year and is not now must not be offered as though it still were.
+    ///
+    /// <see cref="GetEmployeeAttachableUnitsAsync"/> remains the no-script fallback the picker's
+    /// <c>&lt;select&gt;</c> is rendered from; this is the same rule with a search and a scope on
+    /// it, read from the same <c>PermitsEmployeesAt</c>.
+    /// </remarks>
+    /// <param name="searchText">Null or empty offers the first page unfiltered.</param>
+    /// <param name="withinRecordId">Null does not narrow. A unit is within itself.</param>
+    Task<Page<DimensionNodeRef>> SearchEmployeeAttachableUnitsAsync(
+        string structureId,
+        string? searchText,
+        string? withinRecordId,
+        DateOnly? asAt = null,
+        int take = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The units that can usefully scope a "within" filter: the containers on this axis.
+    /// </summary>
+    /// <remarks>
+    /// A structure's employee-attachable types are the ones people sit at; everything else on the
+    /// axis is a container, and a container is what somebody means by "within Retail Banking". On
+    /// an axis that constrains nothing — where everything may hold employees — the root types are
+    /// offered, because an unconstrained axis still has a top.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> GetEmployeeScopeUnitsAsync(
+        string structureId,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Each of <paramref name="recordIds"/>' ancestors on this axis, root first, keyed by record
+    /// id.
+    /// </summary>
+    /// <remarks>
+    /// Batched, and that is the whole reason it exists rather than a loop over
+    /// <see cref="GetAncestorsAsync"/>: its caller is a picker drawing twenty options with the full
+    /// path on each, and a call per option would be twenty queries on every keystroke.
+    ///
+    /// The node itself is not in its own list, so a root's entry is empty rather than absent — a
+    /// caller builds the displayed path by appending the node to what it is given.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetAncestorPathsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every unit <paramref name="recordId"/> could be merged into: the units that could stand
     /// where it does, which is to say ones of its own dimension type.
     /// </summary>

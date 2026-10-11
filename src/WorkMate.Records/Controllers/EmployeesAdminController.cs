@@ -117,16 +117,18 @@ public sealed class EmployeesAdminController : Controller
                 WorkMate.Dimensions.Permissions.AssignEmployees),
         };
 
-        // On the axis being looked at when there is one, and on the primary organisation otherwise.
-        // "home: Civil" beside a secondary row only means anything if the home is read off the same
-        // axis the secondary is on — and a tenant whose organisation chart is not the axis nominated
-        // as primary (every tenant until somebody populates that one) would otherwise show "Not
-        // placed" against people who are plainly placed.
-        await FillPrimaryUnitsAsync(model.Employees, unit?.StructureId, cancellationToken);
+        // On the structure being looked at when there is one, and on the primary organisation
+        // otherwise. An "Additional" row only means anything if the main placement beside it is
+        // read off the same structure — and a tenant whose organisation chart is not the structure
+        // nominated as primary (every tenant until somebody populates that one) would otherwise
+        // show "Not placed" against people who are plainly placed.
+        await FillPlacementsAsync(model.Employees, unit?.StructureId, cancellationToken);
 
-        if (membership is not null)
+        if (unit is not null && membership is not null)
         {
             FillRoles(model.Employees, membership);
+
+            await FillHeadshipsAsync(model.Employees, unit.AsAtIso, cancellationToken);
         }
 
         return View(model);
@@ -251,12 +253,15 @@ public sealed class EmployeesAdminController : Controller
     /// </summary>
     /// <remarks>
     /// <see cref="EmployeeUnitNames"/> rather than a second copy here. This screen and the employee
-    /// picker both show "where they sit" and used to disagree: the picker fell back to another axis
-    /// when the primary organisation had nothing on it and this did not, so the same person read
-    /// "Mechanical" on one and "Not placed" on the other. There is one answer to the question now
-    /// and one place it is worked out.
+    /// picker both show "where they sit" and used to disagree: the picker fell back to another
+    /// structure when the primary organisation had nothing on it and this did not, so the same
+    /// person read "Mechanical" on one and "Not placed" on the other. There is one answer to the
+    /// question now and one place it is worked out.
+    ///
+    /// <b>The main placement and the others, not one row of several.</b> Somebody split 60/40 has
+    /// two true answers, and this column used to show whichever the engine returned first.
     /// </remarks>
-    private async Task FillPrimaryUnitsAsync(
+    private async Task FillPlacementsAsync(
         IReadOnlyList<EmployeeListItemViewModel> employees,
         string? onStructureId,
         CancellationToken cancellationToken)
@@ -266,7 +271,7 @@ public sealed class EmployeesAdminController : Controller
             return;
         }
 
-        var units = await _units.ForAsync(
+        var summaries = await _units.SummariesAsync(
             [.. employees.Select(employee => employee.EmployeeId)],
             onStructureId,
             await _authorisation.TodayAsync(),
@@ -274,7 +279,57 @@ public sealed class EmployeesAdminController : Controller
 
         foreach (var employee in employees)
         {
-            employee.PrimaryUnitName = units.GetValueOrDefault(employee.EmployeeId);
+            if (!summaries.TryGetValue(employee.EmployeeId, out var summary))
+            {
+                continue;
+            }
+
+            employee.PrimaryUnitName = summary.Main?.Name;
+            employee.PrimaryUnitPath = summary.Main?.Path;
+            employee.OtherUnits = summary.Others;
+        }
+    }
+
+    /// <summary>
+    /// Names the units each starred person heads, for the star's tooltip.
+    /// </summary>
+    /// <remarks>
+    /// Only for the people who are starred, which on a unit-filtered list is at most one: the star
+    /// marks the head of <em>this</em> unit. A query per listed person would be fifty to label one.
+    ///
+    /// Every unit they head, though, not only this one — ADR-0012 allows somebody to head several,
+    /// and the Zenith demo has a person over two departments and a site team. "Heads this unit" is
+    /// the least useful true thing available to say to that reader.
+    /// </remarks>
+    private async Task FillHeadshipsAsync(
+        IReadOnlyList<EmployeeListItemViewModel> employees,
+        string asAtIso,
+        CancellationToken cancellationToken)
+    {
+        var date = IsoDate.TryParse(asAtIso, out var parsed) ? parsed : await _authorisation.TodayAsync();
+
+        foreach (var employee in employees.Where(employee => employee.IsHeadHere))
+        {
+            var names = new List<string>();
+
+            foreach (var headship in await _assignments.GetHeadshipsOfAsync(
+                employee.EmployeeId, date, cancellationToken))
+            {
+                var unit = await _dimensions.GetAsync(headship.RecordId, date, cancellationToken);
+
+                if (unit is not null)
+                {
+                    names.Add(BilingualText.Display(unit.NameEn, unit.NameAr));
+                }
+            }
+
+            // Composed here, where the localiser and the culture are. A view joining the names
+            // with ", " would be writing English punctuation into an Arabic sentence — Arabic uses
+            // "، ", which is a different character — so even the separator is a resource. The same
+            // reason DesignerNodeViewModel.HeadLabel is built on the server.
+            employee.HeadsLabel = names.Count > 0
+                ? S["Heads {0}", string.Join(S[", "].Value, names)].Value
+                : S["Heads this unit"].Value;
         }
     }
 

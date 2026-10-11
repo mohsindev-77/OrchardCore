@@ -1242,10 +1242,17 @@ public sealed class OrganisationDesignerAdminController : Controller
         var canAssign = await CanAssignEmployeesAsync();
         var canViewEmployees = await CanViewEmployeesAsync();
 
+        // Whether each card's unit may hold employees, read off the structure's own rule — the
+        // same PermitsEmployeesAt the validator reads backwards. One structure read for the whole
+        // row of cards, and the answer travels on the node so a fetched card decides it the same
+        // way a server-rendered one does.
+        var structure = await _structureService.GetAsync(structureId, cancellationToken);
+
         var models = nodes.Select(node => DesignerNodeViewModel.Of(
                 node, typesById, employeeCounts, childCounts,
                 structureId, asAt.ToIso(), canEdit, canMove, canMerge,
-                heads.GetValueOrDefault(node.RecordId), canAssign, canViewEmployees))
+                heads.GetValueOrDefault(node.RecordId), canAssign, canViewEmployees,
+                structure?.PermitsEmployeesAt(node.DimensionTypeId) ?? false))
             .ToList();
 
         foreach (var model in models)

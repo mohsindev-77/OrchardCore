@@ -19,7 +19,7 @@ form designer is session B and nothing of it exists yet.
   **It holds no organisational placement**, deliberately. No department, no cost
   centre, no structure, no parent. Every placement is a dated
   `EmployeeAssignment` row in `WorkMate.Dimensions` — architecture section 2's
-  one rule that follows from the model — because an employee sits on several axes
+  one rule that follows from the model — because an employee sits on several structures
   at once and a single department field would collapse them into one, and because
   a field has no dates, so a mid-month transfer would overwrite where somebody sat
   rather than record that they moved. `EmployeePartTests` reflects over the type
@@ -124,7 +124,7 @@ date the current state began — which is the date leave accrual, probation and
 suspension are counted from — on a request that said nothing about changing it.
 
 **The exit is the transition worth reading.** It closes every placement *and*
-every headship the person holds, on every axis, on the last day of service
+every headship the person holds, on every structure, on the last day of service
 inclusive. Closing the headships is the half that is easiest to forget and worst
 to get wrong: a leaver who stays recorded as a head is somebody prompt 5's routing
 still routes approvals to, and nothing about that failure is visible, because the
@@ -201,9 +201,16 @@ screen holds a privileged path.
 
 - **`EmployeesAdminController`** — the list and the editor. The list searches a
   code and both halves of a name, filters by status, and shows where each person
-  sits today on the primary organisation axis. That last column comes from the
-  dimension engine and is not on the record at all, which is why this module
+  sits today on the primary organisation structure. That last column comes from
+  the dimension engine and is not on the record at all, which is why this module
   ships a list rather than relying on Orchard's generic one.
+
+  **It shows the main placement, and the rest behind a disclosure.** Somebody
+  split 60/40 has two true answers to "where do they sit", and the column used
+  to show whichever row the engine returned first. Now it names the main one and
+  offers **+N more**, which lists the others by their full path and share — the
+  full path because two of the units a person is split across routinely have the
+  same name.
 
   **The list resolves placement in two queries per page, not two per row.** A
   screen is the easiest place in a product to grow an N+1, and this one would
@@ -215,24 +222,85 @@ screen holds a privileged path.
   consequences.
 
   **The exit is a dry run first.** `GET` computes what ending employment would
-  close — every placement on every axis, and every unit the person heads — and
+  close — every placement on every structure, and every unit the person heads — and
   only `POST` commits. The units losing their head are the half worth reading:
   a department losing its approver on Friday is something somebody has to act
   on, and finding out from a stuck approval the following week is too late.
 
-- **`EmployeePlacementAdminController`** — where one person sits on every axis on
-  a date, what they lead, and the dated operations that change it.
+- **`EmployeePlacementAdminController`** — where one person sits on every
+  structure on a date, what they lead, and the dated operations that change it.
 
   **A screen rather than a driver on the employee editor.** A display driver's
   `UpdateAsync` has nowhere to put a required effective date: it is handed a
   posted model and asked to write it. Every write here is dated and nothing is
   defaulted, so the editor shows placement read-only and links here.
 
-  The unit picker offers only units the axis says may hold employees, from
-  `IDimensionGraphService.GetEmployeeAttachableUnitsAsync` — the same rule
-  `ValidateAssignmentAsync` enforces, read forwards. That is ADR-0010's lesson
-  applied to a second rule: two readings of one rule, implemented separately,
-  disagree on exactly the case the rule exists for.
+  Three operations, one write path each. **Place** adds one placement,
+  **Change placement** states the whole split, **End here** closes everything on
+  a structure. The first two both go through
+  `IEmployeeAssignmentService.ReallocateAsync` — `PlaceAsync` is a one-row
+  reallocation, not a second mechanism — with the same changes/split shape the
+  `employee-assignments` recipe step builds. A second write path is how a screen
+  and an import come to disagree about what a split means.
+
+  The unit picker offers only units the structure says may hold employees, from
+  `IDimensionGraphService` — the same rule `ValidateAssignmentAsync` enforces,
+  read forwards. That is ADR-0010's lesson applied to a second rule: two
+  readings of one rule, implemented separately, disagree on exactly the case the
+  rule exists for.
+
+### Change placement: the split, as rows
+
+One structure at a time, because the rules — the allocations total 100, exactly one row is main —
+are statements about one employee on one structure. A screen showing every structure at once would
+be several independent forms wearing one Save button.
+
+Each row is a unit, a share and a radio. **A radio group, not a checkbox per row**: "exactly one"
+is what a radio group means, and a set of checkboxes is a set of independent answers that lets a
+reader build a split the engine must then refuse. Adding and removing a row are round trips rather
+than script, like every other form here, and the round trip also redraws each row's unit picker
+against the current structure and date — which a cloned row could not do.
+
+`PlacementSplit` holds the rules the screen applies before anything is written, as a pure function
+with no session, no localiser and no clock in it, so every case is a unit test. It is not a second
+copy of the engine's rules: `ValidateAssignmentAsync` remains the authority and runs again on the
+write. What it adds is the two things a validator working on a resolved split cannot do — say
+*which row* is wrong, so the message lands under the control, and catch an empty row before it
+reaches a service that would report it as an unknown record id.
+
+**It refuses a date earlier than a change already on record, and that is its own rule.**
+`ReallocateAsync` states the whole picture from its effective date onwards, so a split backdated
+behind a later change would replace that change rather than slot in behind it — the "overwrite"
+behaviour ADR-0005's addendum examined and rejected for moves, reached through a different door.
+ADR-0005 chose *split* for a move because a link carries one parent at a time and the arithmetic is
+unambiguous; a set of rows that must total 100 on every date has no honest equivalent, so this
+screen takes ADR-0005's third option and refuses, naming the date it will accept.
+
+### The unit picker
+
+`workmate-unit-picker`, in `WorkMate.Dimensions` beside the structures it reads, used by **Place**
+and by every row of **Change placement**. It is the employee picker's combobox —
+`workmate-picker.js` in `WorkMate.Platform`, shared by both — with this module's two questions on
+it: where it searches, and what an option reads as.
+
+**Every option carries its full path**, "Crescent › Retail Banking › Credit". The Crescent reference
+tenant has two departments called Credit and two called Operations on one structure; a list of bare
+names offers a reader identical rows and no way to choose correctly, and choosing wrong puts
+somebody in the wrong branch of the bank — a mistake nothing downstream would flag, because both
+answers are valid units.
+
+An optional **Within** filter narrows the search to a container's subtree through the closure index.
+It is rendered hidden and unhidden by the script, because without the script the `<select>` already
+holds its units and there is no round trip behind it: a control that visibly does nothing is worse
+than one that is not there.
+
+- **Placing somebody from a unit's card.** The designer's ⋯ menu carries **Place an employee
+  here…** beside **Appoint a head…**, declared in the same `DesignerCardActions` entry list and
+  gated on the same `AssignEmployees`. It opens this screen with the structure and unit already
+  chosen and asks *who* instead. It appears only on a unit the structure places employees on — which
+  is a property of the unit rather than of the viewer, so the node carries the answer and the link
+  declares that it needs it (`data-designer-action-requires`), which is what keeps a card the
+  browser builds from offering what a card the server renders does not.
 
 - **Appointing a unit head** is on the designer's own card, in
   `WorkMate.Dimensions` — the question a person is asking is "who runs this
@@ -246,11 +314,18 @@ designer card's employee count and its ⋯ menu's **View employees** link to. On
 a second screen, because the search, the status filter, the paging and the row actions are all
 wanted either way and a second copy would drift.
 
-What the filter adds: a header naming the unit, the axis and the date; an **Include sub-units**
+What the filter adds: a header naming the unit, the structure and the date; an **Include sub-units**
 checkbox, **off by default** because the card is the way in and the card's number counts the node
 itself — opening on a different number from the one just clicked would answer a question nobody
-asked; and three columns, **Role here** (primary, or secondary with the person's home unit named),
-**Allocation %**, and a ★ against the head.
+asked; and three columns, **Placement** (*Main* or *Additional*), **Allocation %**, and a ★ against
+the head, whose tooltip names every unit that person heads rather than saying "this unit".
+
+**Nothing on a row says "home: …", and nothing should.** It used to, under the role, and it
+repeated the unit the row already named: the placement column beside it is resolved on *the
+structure the list is filtered to*, which is where the main placement is, so the caption was by
+construction the cell one to its left. Ahmed Khan's row on Site Team A read
+"Civil · Secondary · 40% · home: Civil". Where else somebody sits is now one question answered in
+one place — the **+N more** disclosure in the placement column, with full paths and shares.
 
 **The head is listed and not counted.** ADR-0012: a head need not work in the unit they head, so an
 acting head borrowed from another department appears, marked *Head (not a member)* and carrying no
