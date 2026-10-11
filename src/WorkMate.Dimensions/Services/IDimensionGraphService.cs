@@ -525,7 +525,20 @@ public interface IDimensionGraphService
         DateOnly effectiveFrom,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Removes a node's links and closure rows on every structure. Used by deletion.</summary>
+    /// <summary>Removes a node's links and closure rows on every structure. Half of a deletion.</summary>
+    /// <remarks>
+    /// The other half is the record itself, and a caller that does only this leaves the closure
+    /// legitimately inconsistent: a record whose type is on a structure's levels is expected to have
+    /// a self pair there whether or not it is placed, so <see cref="VerifyAsync"/> will report one
+    /// missing until the content item is gone too.
+    ///
+    /// It has no caller today. It had one — <c>IDimensionService.AddUnitAsync</c>, undoing a record
+    /// whose placement had been refused after it was created — and that is gone, because the
+    /// placement is now judged before anything is written. It is kept because it is the only
+    /// sanctioned way to take those rows out and the first real "delete a unit" feature will need
+    /// it, and it is covered by <c>DimensionRemovalTenantTests</c> on a tenant with more than one
+    /// structure, which is the shape it used to crash on.
+    /// </remarks>
     Task RemoveAsync(string recordId, CancellationToken cancellationToken = default);
 
     /// <summary>

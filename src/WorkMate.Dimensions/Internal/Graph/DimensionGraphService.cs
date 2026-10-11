@@ -1572,25 +1572,7 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             // The children first, while the node's own rows still describe where they were.
             var children = await ChildIdsAsync(structure.StructureId, recordId, cancellationToken);
 
-            // KNOWN DEFECT, not fixed here. On a tenant with several structures this method throws
-            // YesSql's "The object to update was not found in identity map" before reaching the
-            // deletes below — see
-            // DimensionRecordsAdminTenantTests.AForbiddenParentIsRefusedWithTheValidatorsOwnWords,
-            // which is skipped and carries the reproduction and the stack.
-            //
-            // It has one caller: IDimensionService.AddUnitAsync, undoing a record whose placement
-            // was refused after it had been created. Nothing exercised that path until the per-type
-            // create screen made a refusable parent reachable, and a speculative fix to the
-            // removal path is a worse answer than a recorded one.
-            if (link is not null)
-            {
-                _session.Delete(link);
-            }
-
-            if (closure is not null)
-            {
-                _session.Delete(closure);
-            }
+            await DeleteAndForgetAsync([link, closure], cancellationToken);
 
             foreach (var child in children)
             {
@@ -2111,6 +2093,50 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             index => index.StructureId == structureId && index.DescendantId == recordId,
             document => document.StructureId == structureId && document.DescendantId == recordId,
             cancellationToken);
+
+    /// <summary>
+    /// Deletes documents and stops the session watching them.
+    /// </summary>
+    /// <remarks>
+    /// Three steps in this order, and each one is load-bearing.
+    ///
+    /// <c>Delete</c> is deferred: it notes the object and resolves its document id from the
+    /// session's identity map when the batch is written. <c>FlushAsync</c> writes that batch, while
+    /// the id is still there to resolve. <c>Detach</c> then takes the object out of the session,
+    /// because a session goes on watching every object it has handed out so it can write later
+    /// changes to it — and the next flush that reaches a watched object whose document has been
+    /// deleted throws YesSql's "The object to update was not found in identity map".
+    ///
+    /// Both of the other orders fail quietly. Detaching before the flush cancels the delete outright
+    /// — the id is gone before the batch resolves it, and the rows survive with no error anywhere.
+    /// Not detaching at all is the crash this method used to carry, and it does not land here: it
+    /// lands on the next query anybody makes, which on a tenant with several structures is the next
+    /// structure's and on a tenant with one is somewhere after this method has returned. That is why
+    /// it read as a flaky test rather than as a bug in a removal.
+    /// </remarks>
+    private async Task DeleteAndForgetAsync(
+        IEnumerable<object?> documents,
+        CancellationToken cancellationToken)
+    {
+        var present = documents.Where(document => document is not null).ToList();
+
+        if (present.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var document in present)
+        {
+            _session.Delete(document!);
+        }
+
+        await _session.FlushAsync(cancellationToken);
+
+        foreach (var document in present)
+        {
+            _session.Detach(document!);
+        }
+    }
 
     /// <summary>
     /// Loads the one document behind a set of index rows.

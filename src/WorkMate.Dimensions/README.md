@@ -152,6 +152,30 @@ not yet effective** — advisory because pre-building next year's structure is
 legitimate and refusing it would make the engine unusable for a case it was
 designed for.
 
+**A placement can be judged before the unit exists.**
+`ValidatePlacementAsync` needs a record id, so a caller creating a unit and
+placing it in one go could only ask after it had created something — which is
+what `AddUnitAsync` did, deleting the record again when the placement came back
+refused. A compensating delete on the failure path of the one method whose job
+is to avoid half-finished units is the wrong shape, and it was also the thing
+that crashed: on a tenant with more than one structure it threw YesSql's "The
+object to update was not found in identity map", so typing a parent the
+structure forbids produced a 500 rather than a sentence.
+`ValidateNewPlacementAsync` asks the question first, taking the child's
+dimension type and code in place of an id. The parent-side rules — the parent
+exists, containment, parent retired, the not-yet-effective advisory — are one
+implementation shared with `ValidatePlacementAsync`, so a create and a move are
+refused in the same words; `DimensionsRecipeStepsTenantTests` compares the two
+sentences directly. Cycles are the one rule that differs, and only because a
+unit with no id is nobody's ancestor.
+
+`AddUnitAsync` therefore writes nothing at all when a placement is refused, and
+has no undo. `PlaceAsync` still re-checks on write, as section 6 requires; if
+that re-check ever fails it means the world changed underneath the request, and
+what it leaves is a unit on no tree — a state the engine already models and the
+unplaced panel already reports, which is better than a second write racing the
+same change.
+
 ### Containment: what may sit under what (ADR-0010)
 
 A structure's `Containment` is a set of permitted `(parent type → child type)`

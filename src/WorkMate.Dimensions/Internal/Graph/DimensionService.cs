@@ -218,12 +218,20 @@ internal sealed class DimensionService : IDimensionService
         // Everything is checked before anything is written. A unit that exists but never reached
         // its parent is precisely the half-finished state the unplaced panel reports, and the
         // caller of one method should not be the one responsible for avoiding it.
+        //
+        // The placement is checked here, before the record exists, rather than being left to
+        // PlaceAsync below. It used to be left there, and the cost was a compensating delete on the
+        // failure path — which is how a forbidden parent, an ordinary thing for a user to type,
+        // came out of this method as a YesSql exception instead of a sentence.
         var range = new EffectiveRange(effectiveFrom, null);
 
         var errors = new List<DimensionError>(await _validator.ValidateRecordAsync(
             recordId: null, dimensionTypeId, code, name, range, batch: null, cancellationToken));
 
         errors.AddRange(ValidateAttributes(type, attributes));
+
+        errors.AddRange(await _validator.ValidateNewPlacementAsync(
+            structureId, dimensionTypeId, code, parentRecordId, effectiveFrom, cancellationToken));
 
         if (errors.Any(error => !error.IsAdvisory))
         {
@@ -248,14 +256,18 @@ internal sealed class DimensionService : IDimensionService
 
         if (!placed.Succeeded)
         {
-            // The record was written and its placement was refused. Rather than leave a unit
-            // nobody asked for, it is taken back out: the graph rows first, then the content item.
-            // The validator ran over both before either was written, so arriving here means
-            // something changed underneath us, and reporting the placement's own errors is more
-            // use than a generic failure.
-            await _graph.RemoveAsync(recordId, cancellationToken);
-            await _contentManager.RemoveAsync((await _contentManager.GetAsync(recordId))!);
-
+            // Unreachable from a refused placement: the same rules, over the same session, said yes
+            // a few lines above. Reaching it means something changed underneath this request — the
+            // parent retired by another user between the two checks — and the placement's own
+            // errors say what, which is more use than a generic failure.
+            //
+            // Nothing is undone here, and that is deliberate. This branch used to delete the record
+            // again, which is a second write racing the same change that caused the failure, and it
+            // is what turned an ordinary refusal into a YesSql exception. What it leaves instead is
+            // a unit that exists and is on no tree — a state the engine already models, the
+            // Designer's unplaced panel already reports, and the reader can place or retire. A
+            // refused placement, the case that actually happens, now writes nothing at all because
+            // it never gets this far.
             return placed.IsAuthorised
                 ? DimensionResult.Failed<DimensionNodeRef>(placed.Errors)
                 : DimensionResult.NotAuthorised<DimensionNodeRef>();
@@ -274,9 +286,14 @@ internal sealed class DimensionService : IDimensionService
 
         // Advisories from both halves ride along: a parent that is not yet effective on the day
         // the child starts is a warning, per the architecture's validation table, not a refusal.
+        // Deduplicated by rule and subject, because the placement is now checked twice — once here
+        // before the record exists and once by PlaceAsync on write, as section 6 requires — and the
+        // reader should not be told the same thing twice for that.
         return DimensionResult.Success(
             (await GetAsync(recordId, effectiveFrom, cancellationToken))!,
-            [.. errors.Concat(placed.Errors).Where(error => error.IsAdvisory)]);
+            [.. errors.Concat(placed.Errors)
+                .Where(error => error.IsAdvisory)
+                .DistinctBy(error => (error.Rule, error.Subject))]);
     }
 
     public async Task<DimensionResult<DimensionNodeRef>> UpdateAsync(

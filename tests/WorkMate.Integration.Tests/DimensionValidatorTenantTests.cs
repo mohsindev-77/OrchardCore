@@ -295,6 +295,109 @@ public sealed class DimensionValidatorTenantTests
             refused.Errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.ParentRetired);
         });
 
+    // ---- a placement for a unit that does not exist yet --------------------------------
+
+    /// <summary>
+    /// The new-placement entry point gives a unit that does not exist yet the same answers a move
+    /// gets, rule for rule and sentence for sentence.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why it is asserted against the move rather than against expected text.</b> The two exist
+    /// so that <c>AddUnitAsync</c> can refuse a placement before it writes a record, instead of
+    /// writing one and deleting it again. The only thing that makes that safe is that they cannot
+    /// disagree — so the test compares them to each other, and a sentence reworded in one place
+    /// fails here rather than in whichever screen happens to be read next.
+    ///
+    /// The real record standing in for the hypothetical one is of the same type and never placed,
+    /// so the move it is asked about is the same question with an id attached.
+    /// </remarks>
+    [Theory]
+    [InlineData("vnp-permitted")]
+    [InlineData("vnp-forbidden")]
+    [InlineData("vnp-retired")]
+    [InlineData("vnp-future")]
+    public async Task ANewPlacementIsJudgedExactlyAsTheSameMoveWouldBe(string which) =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var (structure, types) = await StrictAxisAsync(services, "val-new-" + which, allowSkipLevel: false);
+            var validator = services.GetRequiredService<IDimensionValidator>();
+            var records = services.GetRequiredService<IDimensionService>();
+
+            var division = await DimensionGraphScenario.RecordAsync(
+                services, types.Division, which + "-div", Opened);
+
+            var effectiveFrom = Opened;
+            var parent = division;
+            var childType = types.Department;
+
+            switch (which)
+            {
+                case "vnp-forbidden":
+                    // A Division under a Department: the pairing runs the wrong way.
+                    parent = await DimensionGraphScenario.RecordAsync(
+                        services, types.Department, which + "-dept", Opened);
+                    childType = types.Division;
+                    break;
+
+                case "vnp-retired":
+                    (await records.RetireAsync(division, new DateOnly(2025, 1, 1)))
+                        .Succeeded.Should().BeTrue();
+                    effectiveFrom = new DateOnly(2025, 6, 1);
+                    break;
+
+                case "vnp-future":
+                    parent = await DimensionGraphScenario.RecordAsync(
+                        services, types.Division, which + "-later", new DateOnly(2030, 1, 1));
+                    break;
+
+                default:
+                    break;
+            }
+
+            // The stand-in: a real record of the child's type, on no tree, so that asking about a
+            // move of it is asking the same question with an id attached.
+            var standIn = await DimensionGraphScenario.RecordAsync(
+                services, childType, which + "-standin", Opened);
+
+            var asAMove = await validator.ValidatePlacementAsync(
+                structure, standIn, parent, effectiveFrom);
+
+            var asANewUnit = await validator.ValidateNewPlacementAsync(
+                structure, childType, which + "-standin", parent, effectiveFrom);
+
+            asANewUnit.Select(error => (error.Rule, error.Message.Value))
+                .Should().Equal(asAMove.Select(error => (error.Rule, error.Message.Value)));
+        });
+
+    /// <summary>
+    /// Creating a unit at the top of a structure asks nothing of a parent, because there is none.
+    /// </summary>
+    [Fact]
+    public async Task ANewUnitWithNoParentBreaksNoPlacementRule() =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var (structure, types) = await StrictAxisAsync(services, "val-new-root", allowSkipLevel: false);
+
+            (await services.GetRequiredService<IDimensionValidator>().ValidateNewPlacementAsync(
+                    structure, types.Department, "vnp-root", parentRecordId: null, Opened))
+                .Should().BeEmpty("a root breaks no placement rule, whatever type it is");
+        });
+
+    /// <summary>
+    /// A parent id that names nothing is an unknown reference, not a silent root.
+    /// </summary>
+    [Fact]
+    public async Task ANewUnitUnderAParentThatDoesNotExistIsRefused() =>
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var (structure, types) = await StrictAxisAsync(services, "val-new-missing", allowSkipLevel: false);
+
+            var errors = await services.GetRequiredService<IDimensionValidator>().ValidateNewPlacementAsync(
+                structure, types.Department, "vnp-missing", "no-such-record-id", Opened);
+
+            errors.Should().ContainSingle().Which.Rule.Should().Be(DimensionRule.UnknownReference);
+        });
+
     // ---- deletion ---------------------------------------------------------------------
 
     [Fact]

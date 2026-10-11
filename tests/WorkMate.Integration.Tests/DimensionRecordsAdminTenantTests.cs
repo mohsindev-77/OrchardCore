@@ -4,11 +4,13 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
+using OrchardCore.Entities;
 using WorkMate.Core;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
 using Xunit;
+using YesSql;
 
 namespace WorkMate.Integration.Tests;
 
@@ -345,51 +347,33 @@ public sealed class DimensionRecordsAdminTenantTests
     /// what the service being the authority is for. The screen shows what the validator says rather
     /// than restating the rule.
     ///
-    /// <b>Skipped: it fails on a defect in the dimension engine that predates this screen.</b>
-    /// <c>IDimensionService.AddUnitAsync</c> creates the record, then places it, and takes the
-    /// record back out when the placement is refused. That compensating path calls
-    /// <c>IDimensionGraphService.RemoveAsync</c>, which throws YesSql's "The object to update was
-    /// not found in identity map" from its second query, before it deletes anything:
-    ///
-    /// <code>
-    /// at YesSql.Session.UpdateEntityAsync(...)
-    /// at YesSql.Session.FlushInternalAsync(...)
-    /// at YesSql.Session.FlushInternalAsync(...)
-    /// at DimensionGraphService.LoadOneAsync(...)
-    /// at DimensionGraphService.RemoveAsync(...)
-    /// at DimensionService.AddUnitAsync(...)
-    /// </code>
-    ///
-    /// <b>It is reproducible and order-dependent on the number of structures the tenant has.</b> It
-    /// passes when this class runs alone and fails when the designer's classes have run first, which
-    /// is why it is written down rather than left to be rediscovered: the next person to see it will
-    /// see it as a flaky test.
-    ///
-    /// <b>Why it is not fixed here.</b> <c>RemoveAsync</c> has exactly one caller and nothing
-    /// exercised it until this screen made a refusable parent reachable — the designer's own add
-    /// form only ever offered parents the map allows. The real repair is almost certainly to make
-    /// <c>AddUnitAsync</c> do what its own doc comment claims, which is to validate the placement
-    /// <em>before</em> creating the record so there is nothing to compensate for; that needs a
-    /// validator entry point that can judge a placement for a record that does not exist yet, which
-    /// is a change to <c>IDimensionValidator</c> and belongs in its own slice with its own tests.
-    /// Guessing at the session's flush ordering instead would be a change to the engine's removal
-    /// path made without understanding it.
-    ///
-    /// <b>What is still covered meanwhile.</b>
-    /// <see cref="TheParentPickerOffersOnlyWhatTheContainmentMapAllows"/> asserts that the screen
-    /// never offers such a parent, so the refused post is reachable only by hand.
+    /// <b>This test was skipped, and what it was skipped for is the point of it.</b>
+    /// <c>AddUnitAsync</c> used to create the record first and validate the placement afterwards,
+    /// through <c>PlaceAsync</c>; a refusal then had to delete the record again, and that
+    /// compensating path threw YesSql's "The object to update was not found in identity map" on any
+    /// tenant with more than one structure. So the ordinary act of typing a parent the structure
+    /// forbids came back as a 500 rather than as a sentence. The placement is now validated before
+    /// anything is written, and the refusal is a refusal.
     /// </remarks>
-    [Fact(Skip = "Defect in IDimensionGraphService.RemoveAsync — see the remarks. Not introduced here.")]
+    [Fact]
     public async Task AForbiddenParentIsRefusedWithTheValidatorsOwnWords()
     {
         var world = await GivenAWorldAsync();
 
         string creditId = null!;
+        string refusal = null!;
 
         await InTenantAsSystemAsync(async services =>
         {
             creditId = (await services.GetRequiredService<IDimensionService>()
                 .GetByCodeAsync("rl-dept-credit"))!.RecordId;
+
+            // What the validator says, asked directly, so the assertion below is against the
+            // service's own words rather than against a sentence copied into a test.
+            refusal = (await services.GetRequiredService<IDimensionValidator>().ValidateNewPlacementAsync(
+                    world.StructureId, world.DepartmentTypeId, "rl-dept-refused", creditId, new DateOnly(2024, 2, 1)))
+                .Single(error => !error.IsAdvisory)
+                .Message.Value;
         });
 
         var page = await GetAsync(
@@ -406,10 +390,105 @@ public sealed class DimensionRecordsAdminTenantTests
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "a refusal is the form again, not an error page");
 
+        // Through the parser rather than against the markup: the sentence carries quotation marks
+        // around the codes, and which entity Razor encodes those to is not what this is about.
+        TextOf(await response.Content.ReadAsStringAsync())
+            .Should().Contain(refusal,
+                "the screen shows what the validator said rather than restating the rule");
+
         await InTenantAsSystemAsync(async services =>
         {
             (await services.GetRequiredService<IDimensionService>().GetByCodeAsync("rl-dept-refused"))
                 .Should().BeNull("nothing is written when the placement is refused");
+        });
+    }
+
+    /// <summary>
+    /// A refused placement on a tenant with several structures leaves no record, no link and no
+    /// audit entry.
+    /// </summary>
+    /// <remarks>
+    /// <b>Several structures on purpose.</b> Creating a record writes a closure self pair on every
+    /// structure whose levels include its type, so the number of structures is the number of
+    /// documents a half-finished create would leave lying about. It is also the condition the old
+    /// crash needed, so a tenant with one structure is the one shape that would have passed either
+    /// way.
+    ///
+    /// <b>All three, separately.</b> The record, the link and the audit entry are written by three
+    /// different calls in <c>AddUnitAsync</c>, so "nothing was written" is three assertions and not
+    /// one. The audit entry is the one most easily left behind, because it is recorded last and
+    /// reads like bookkeeping rather than like data.
+    /// </remarks>
+    [Fact]
+    public async Task ARefusedPlacementOnAMultiStructureTenantLeavesNothingBehind()
+    {
+        var world = await GivenAWorldAsync();
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var records = services.GetRequiredService<IDimensionService>();
+            var structures = services.GetRequiredService<IStructureService>();
+
+            // A second structure over the same two types, so the tenant has more than one and both
+            // would take a self pair for anything created here.
+            var secondary = await structures.GetByCodeAsync("rl-org-secondary");
+
+            if (secondary is null)
+            {
+                var created = await structures.CreateAsync(
+                    "rl-org-secondary",
+                    new BilingualText("RL Org Secondary", "آر إل ٢"),
+                    [world.DivisionTypeId, world.DepartmentTypeId],
+                    allowSkipLevel: false,
+                    isStrict: true,
+                    isPrimaryOrganisation: false,
+                    new StructureShape(
+                        [world.DivisionTypeId],
+                        [new StructureContainment(world.DivisionTypeId, world.DepartmentTypeId)]));
+
+                created.Succeeded.Should().BeTrue(
+                    string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+                secondary = created.Value!;
+            }
+
+            (await structures.ListAsync()).Should().HaveCountGreaterThan(1, "the shape under test");
+
+            var credit = (await records.GetByCodeAsync("rl-dept-credit"))!.RecordId;
+
+            var refused = await records.AddUnitAsync(
+                world.StructureId,
+                credit,
+                world.DepartmentTypeId,
+                "rl-dept-nothing-left",
+                new BilingualText("RL Nothing Left", "لا شيء"),
+                new DateOnly(2024, 2, 1));
+
+            refused.Succeeded.Should().BeFalse("a Department may not sit under a Department here");
+            refused.Errors.Should().Contain(error => !error.IsAdvisory);
+
+            // No record.
+            (await records.GetByCodeAsync("rl-dept-nothing-left")).Should().BeNull();
+
+            // No link, on either structure: nothing new is under the parent that was refused, and
+            // nothing new is a root on the structure that was never reached.
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            (await graph.GetChildrenAsync(world.StructureId, credit, new DateOnly(2024, 2, 1)))
+                .Should().BeEmpty();
+
+            foreach (var structureId in new[] { world.StructureId, secondary.StructureId })
+            {
+                (await graph.GetUnplacedAsync(structureId, new DateOnly(2024, 2, 1)))
+                    .Select(node => node.Code)
+                    .Should().NotContain("rl-dept-nothing-left");
+            }
+
+            // And no audit entry. Read by code rather than by record id, because the refusal means
+            // there is no record id to correlate on — which is exactly how an orphaned entry would
+            // survive unnoticed.
+            (await AuditedRecordCodesAsync(services))
+                .Should().NotContain("rl-dept-nothing-left");
         });
     }
 
@@ -539,6 +618,10 @@ public sealed class DimensionRecordsAdminTenantTests
             .Matches(html, "<tr class=\"record-row\" data-record-code=\"([^\"]+)\"")
             .Select(match => match.Groups[1].Value)];
 
+    /// <summary>A page's text, so an assertion is about words rather than about entities.</summary>
+    private static string TextOf(string html) =>
+        new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html).Body!.TextContent;
+
     /// <summary>The parent picker's options, read off the control rather than the page.</summary>
     private static IReadOnlyList<string> ParentOptionsIn(string html) =>
         [.. new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html)
@@ -609,4 +692,36 @@ public sealed class DimensionRecordsAdminTenantTests
                 await work(services);
             }
         });
+
+    /// <summary>
+    /// Every record code this module has recorded a change against, read the way the audit screen
+    /// reads them: the stored documents, through the audit trail's own index.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> AuditedRecordCodesAsync(IServiceProvider services)
+    {
+        var session = services.GetRequiredService<ISession>();
+
+        // Entries written in this scope are not queryable until the session has put them in front
+        // of the database — and an entry that was never written is the thing under test, so this
+        // has to be the real query rather than a look at what is pending.
+        await session.FlushAsync();
+
+        var entries = await session
+            .Query<OrchardCore.AuditTrail.Models.AuditTrailEvent, OrchardCore.AuditTrail.Indexes.AuditTrailEventIndex>(
+                index => index.Name == DimensionAuditTrail.DimensionRecordChanged,
+                collection: OrchardCore.AuditTrail.Models.AuditTrailEvent.Collection)
+            .ListAsync();
+
+        var codes = new List<string>();
+
+        foreach (var entry in entries)
+        {
+            if (entry.TryGet<DimensionRecordAuditEvent>(out var payload))
+            {
+                codes.Add(payload.Code);
+            }
+        }
+
+        return codes;
+    }
 }

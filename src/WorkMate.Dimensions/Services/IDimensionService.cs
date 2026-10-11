@@ -51,7 +51,11 @@ public interface IDimensionService
     /// left unplaced because the second call failed is exactly the half-finished state the
     /// unplaced panel exists to reveal, and asking every caller to handle it correctly is asking
     /// for it to be handled correctly nowhere. Both the record and the placement are validated
-    /// before either is written.
+    /// before either is written — the placement through
+    /// <see cref="IDimensionValidator.ValidateNewPlacementAsync"/>, which exists so that this
+    /// method can ask about a unit it has not created yet. It used to create first and ask
+    /// afterwards, and delete the record when the answer was no; a refused placement now writes
+    /// nothing and there is nothing to undo.
     ///
     /// The second is the permission. <see cref="Permissions.MoveDimensionRecords"/> exists because
     /// reparenting silently changes what every historical report resolves to — that is the whole

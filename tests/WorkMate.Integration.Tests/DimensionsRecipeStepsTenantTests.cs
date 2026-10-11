@@ -957,4 +957,168 @@ public sealed class DimensionsRecipeStepsTenantTests
                 .Should().BeNull("the step writes nothing when a row in it is refused");
         });
     }
+
+    /// <summary>
+    /// A recipe and the Designer refuse a forbidden parent in the same sentence.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is worth a test of its own.</b> The two arrive by different routes.
+    /// <c>IDimensionService.AddUnitAsync</c>, which the Designer's "Add unit" and the per-type
+    /// create screen both call, asks the validator about a placement for a unit that does not exist
+    /// yet; the recipe step creates the record and then places it, which asks the validator about a
+    /// placement for a unit that does. Those used to be different code — the second entry point was
+    /// added so that creating could stop writing a record it was about to have to delete — and the
+    /// cost of two entry points is two wordings that drift apart, so that an operator reading a
+    /// failed recipe and an administrator reading a refused form cannot tell they hit the same rule.
+    ///
+    /// Asserted on the exact sentence rather than on the rule code, because the rule code is the
+    /// half that cannot drift.
+    ///
+    /// <b>Order matters.</b> The service is asked first and refuses, which by construction writes
+    /// nothing, so the recipe below is free to use the same code for its record — and the same code
+    /// is what makes the two sentences comparable at all, since both name the unit being placed.
+    /// </remarks>
+    [Fact]
+    public async Task ARecipeAndTheDesignerRefuseAForbiddenParentInTheSameWords()
+    {
+        const string world = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-types",
+                    "types": [
+                        { "code": "same-division", "nameEn": "Same Division", "nameAr": "قسم", "allowsSelfNesting": false },
+                        { "code": "same-department", "nameEn": "Same Department", "nameAr": "إدارة", "allowsSelfNesting": false }
+                    ]
+                },
+                {
+                    "name": "structures",
+                    "structures": [
+                        {
+                            "code": "same-structure",
+                            "nameEn": "Same Structure",
+                            "nameAr": "هيكل",
+                            "levelTypeCodes": ["same-division", "same-department"],
+                            "rootTypeCodes": ["same-division"],
+                            "containment": { "same-division": ["same-department"] },
+                            "isStrict": true,
+                            "isPrimaryOrganisation": false
+                        }
+                    ]
+                },
+                {
+                    "name": "dimension-records",
+                    "records": [
+                        {
+                            "code": "same-div",
+                            "typeCode": "same-division",
+                            "nameEn": "Same Division One",
+                            "nameAr": "واحد",
+                            "effectiveFrom": "2024-01-01",
+                            "placements": [
+                                { "structureCode": "same-structure", "parentCode": null, "effectiveFrom": "2024-01-01" }
+                            ]
+                        },
+                        {
+                            "code": "same-dept",
+                            "typeCode": "same-department",
+                            "nameEn": "Same Department One",
+                            "nameAr": "واحد",
+                            "effectiveFrom": "2024-01-01",
+                            "placements": [
+                                { "structureCode": "same-structure", "parentCode": "same-div", "effectiveFrom": "2024-01-01" }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        // A Department under a Department: the containment map above declares only Division over
+        // Department, and the structure is strict, so it is a refusal on both routes.
+        //
+        // The two records from the world above are listed again, unchanged. The step resolves a
+        // parent code against the records in its own list — "parents must be listed before their
+        // children" — so without them the row would fail for not finding its parent at all, which
+        // is a different refusal from the one under test. Listed identically, they are recognised
+        // as already present and skipped.
+        const string forbidden = """
+        {
+            "steps": [
+                {
+                    "name": "dimension-records",
+                    "records": [
+                        {
+                            "code": "same-div",
+                            "typeCode": "same-division",
+                            "nameEn": "Same Division One",
+                            "nameAr": "واحد",
+                            "effectiveFrom": "2024-01-01",
+                            "placements": [
+                                { "structureCode": "same-structure", "parentCode": null, "effectiveFrom": "2024-01-01" }
+                            ]
+                        },
+                        {
+                            "code": "same-dept",
+                            "typeCode": "same-department",
+                            "nameEn": "Same Department One",
+                            "nameAr": "واحد",
+                            "effectiveFrom": "2024-01-01",
+                            "placements": [
+                                { "structureCode": "same-structure", "parentCode": "same-div", "effectiveFrom": "2024-01-01" }
+                            ]
+                        },
+                        {
+                            "code": "same-dept-under-dept",
+                            "typeCode": "same-department",
+                            "nameEn": "Same Department Two",
+                            "nameAr": "اثنان",
+                            "effectiveFrom": "2024-02-01",
+                            "placements": [
+                                { "structureCode": "same-structure", "parentCode": "same-dept", "effectiveFrom": "2024-02-01" }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            (await ExecuteRecipeAsync(services, world)).Succeeded.Should().BeTrue();
+
+            var records = services.GetRequiredService<IDimensionService>();
+            var structures = services.GetRequiredService<IStructureService>();
+            var types = services.GetRequiredService<IDimensionTypeService>();
+
+            var structure = (await structures.GetByCodeAsync("same-structure"))!;
+            var department = (await types.GetByCodeAsync("same-department"))!;
+            var parent = (await records.GetByCodeAsync("same-dept"))!;
+
+            var throughTheDesigner = await records.AddUnitAsync(
+                structure.StructureId,
+                parent.RecordId,
+                department.DimensionTypeId,
+                "same-dept-under-dept",
+                new WorkMate.Core.BilingualText("Same Department Two", "اثنان"),
+                new DateOnly(2024, 2, 1));
+
+            throughTheDesigner.Succeeded.Should().BeFalse();
+
+            var designerSaid = throughTheDesigner.Errors
+                .Single(error => !error.IsAdvisory)
+                .Message.Value;
+
+            var throughTheRecipe = await ExecuteRecipeAsync(services, forbidden);
+
+            throughTheRecipe.Succeeded.Should().BeFalse();
+
+            throughTheRecipe.Errors.Should().ContainSingle(error =>
+                error.Contains(designerSaid, StringComparison.Ordinal),
+                "both routes read the same rule out of the same validator. The service said: "
+                    + designerSaid + " The recipe said: " + string.Join(" ", throughTheRecipe.Errors));
+        });
+    }
 }

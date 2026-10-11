@@ -162,6 +162,7 @@ The export and the two new recipe steps needed **no migration** — they read an
 | 🟡 **Carried forward** | **The `employees` export carries a status, not a status history.** An employee's past statuses are in the audit trail rather than a dated table, so a round trip reproduces where somebody is and not the route they took. That is a limit of the model, not of the export — making it answerable is a model change. |
 | 🟡 **Carried forward** | **Two simultaneous creates can share an employee code.** YesSql 5.4.7 has no unique index API; the service checks then writes. Recorded in the module README. |
 | 🟡 **Carried forward** | **Audit display of an empty bilingual half** still has nowhere to appear — no WorkMate-authored audit display driver yet. From prompt 3. |
+| ✅ **Closed** | ~~`IDimensionGraphService.RemoveAsync` throws on a tenant with several structures.~~ Session E. The create path no longer calls it — a refused placement writes nothing — and the method itself is fixed and covered. |
 | ✅ **Closed** | ~~The deployment step drivers have no tests.~~ `DeploymentStepDriverTenantTests`. Finding the screen did not open at all is what the gap was hiding. |
 | ✅ **Closed** | ~~The "unsuppressed advisory still fails the build" proof is not in the repository.~~ `NuGetAuditPolicyTests` every build, `tools/verify-nuget-audit.sh` on demand. |
 | 🟡 **Second reviewer** | `OrchardCore.AdminMenu` added to `WorkMate.Platform`'s manifest and to `base.recipe.json` — needed because `OrchardCore.Contents` contributes a data-localization provider that depends on it. Without it the deployment plan screen throws. |
@@ -416,29 +417,108 @@ refusable parent reachable. The reproduction, the stack and the reasoning are on
 repair is to make `AddUnitAsync` validate the placement before creating the record — which needs a
 `IDimensionValidator` entry point for a record that does not exist yet, and belongs in its own slice.
 
+*Fixed in session E, below.*
+
+---
+
+## Session E: the create path stops writing what it has to take back
+
+### What the defect actually was
+
+Typing a parent the structure forbids on the per-type **New** form came back as a 500, not as a
+sentence. `AddUnitAsync` created the record, then asked `PlaceAsync` whether the placement was
+allowed, and when the answer was no it deleted the record again through
+`IDimensionGraphService.RemoveAsync` — which crashed on any tenant with more than one structure.
+
+Two separate faults, and the order matters. The validation ran too late, so an ordinary refusal took
+a path meant for an emergency; and that path was broken, so the emergency was a 500. Fixing only the
+second would have left the engine compensating for a write it never needed to make.
+
+### Validating the placement before the unit exists
+
+`IDimensionValidator.ValidateNewPlacementAsync` is the new entry point. It takes the child's
+dimension type and code where `ValidatePlacementAsync` takes a record id, and `AddUnitAsync` calls it
+alongside `ValidateRecordAsync` **before** `CreateAsync`. A refused placement now writes nothing: no
+content item, no `DimensionLink`, no closure self pairs, no audit entry.
+
+The parent-side rules are one private implementation that both entry points call — the parent exists,
+containment through `ContainmentRules.Decide`, the parent retired (blocking), the parent not yet
+effective (advisory). That is what makes it safe to have two entry points at all: a create and a move
+cannot drift into refusing the same thing in different words, and
+`DimensionsRecipeStepsTenantTests.ARecipeAndTheDesignerRefuseAForbiddenParentInTheSameWords` compares
+the two sentences directly rather than comparing rule codes, because the rule code is the half that
+cannot drift.
+
+Cycles are the one rule that differs, and the difference is real rather than a shortcut: a unit with
+no id is nobody's ancestor, so there is no cycle for a new unit to create. `AddUnitAsync` still
+double-reports nothing — the advisories that come back from both the pre-check and `PlaceAsync`'s
+re-check are deduplicated by rule and subject.
+
+### The undo is gone
+
+`AddUnitAsync` no longer deletes anything on the failure path. `PlaceAsync` still re-checks on write,
+as architecture section 6 requires, so the branch still exists; reaching it now means something
+changed underneath the request between the two checks. What that leaves is a unit on no tree, which
+the engine already models and the Designer's unplaced panel already reports. A compensating delete is
+a second write racing the same change that caused the failure, and it was the thing that turned a
+refusal into a crash.
+
+### `RemoveAsync` is fixed anyway
+
+It has no caller now, but it is a published method on the only sanctioned way into the link and
+closure tables, and the first real "delete a unit" feature will call it. Leaving a known-broken
+method behind a caller that no longer exists is worse than not having one.
+
+The cause, found by stepping the loop in a throwaway test rather than guessed at: YesSql's `Delete`
+is deferred and resolves the document id from the session's identity map when the batch is written,
+and a session goes on watching every object it has handed out so it can write later changes to it.
+Deleting left the object watched with no identity, and the **next** flush — not the delete — threw.
+That is why it looked like a flaky test: on a tenant with one structure the next flush is after the
+method returns, and on a tenant with several it is the next structure's query.
+
+`DeleteAndForgetAsync` does the three steps in the only order that works: `Delete`, then
+`FlushAsync` while the id is still resolvable, then `Detach`. Both other orders fail silently —
+detaching first cancels the delete outright and the rows survive with no error anywhere, which the
+throwaway test also showed before the real fix landed.
+
+### Tests
+
+`DimensionRecordsAdminTenantTests.AForbiddenParentIsRefusedWithTheValidatorsOwnWords` is un-skipped,
+and now also asserts the screen shows the validator's own sentence rather than a restatement of the
+rule. Five tests are new:
+
+- a refused parent through `AddUnitAsync` on a tenant with two structures leaves no record, no link
+  on either structure, and no audit entry — three assertions, because they are three different calls;
+- `ValidateNewPlacementAsync` gives the same rule **and the same sentence** as the equivalent move,
+  over four cases (permitted, forbidden, retired parent, parent not yet effective);
+- a new unit with no parent breaks no placement rule, and one under a parent id that names nothing is
+  an unknown reference rather than a silent root;
+- the recipe step and `AddUnitAsync` refuse a forbidden parent in the same words;
+- `DimensionRemovalTenantTests` covers `RemoveAsync` directly on a tenant with two structures, both
+  for an established unit and for one created in the same session, which is the exact shape that
+  crashed.
+
+The admin menu is untouched.
+
 ---
 
 ## Test counts
 
 Full `dotnet build -warnaserror` with **NuGet audit ON**: 0 warnings, 0 errors.
 
-| Assembly | Passed | Skipped | Added in session D |
+| Assembly | Passed | Skipped | Added in session E |
 | --- | ---: | ---: | ---: |
 | `WorkMate.Platform.Tests` | 199 | 0 | 0 |
-| `WorkMate.Dimensions.Tests` | 185 | 0 | +4 |
+| `WorkMate.Dimensions.Tests` | 185 | 0 | 0 |
 | `WorkMate.Records.Tests` | 101 | 0 | 0 |
-| `WorkMate.Integration.Tests` | 373 | 1 | +25 |
-| `WorkMate.Browser.Tests` | 106 | 3 | +6 |
-| **Total** | **964** | **4** | **+35** |
+| `WorkMate.Integration.Tests` | 384 | 0 | +10, and one un-skipped |
+| `WorkMate.Browser.Tests` | 106 | 3 | 0 |
+| **Total** | **975** | **3** | **+10** |
 
-The counts are after the menu withdrawal. Ten tests that only proved per-type menu entries were
-removed — `DimensionTypeMenuTests`, `DimensionTypeMenuTenantTests`, `DimensionTypeMenuBrowserTests`
-and the `UpdateFrom7Async` backfill test, whose subject is now three fields nothing reads (the
-migration chain's catch-up is still covered by the version-2 rollback test). Six replace them:
-`OrganisationMenuTenantTests` asserts the group has exactly those three entries, in order, on a
-tenant carrying base, Zenith and Crescent; `OrganisationMenuBrowserTests` asserts the same in
-English and Arabic in a real browser, where a culture actually switches; and
-`DimensionTypeUnitsBrowserTests` clicks Organisation → Dimension types → View units → + New.
+Session D's counts were 964 passed and 4 skipped. The ten new tests are listed above; the fourth skip
+was the recorded `RemoveAsync` defect, and it is now a passing test. The three that remain are the
+`RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` — unchanged since prompt 3.
 
-Three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` — unchanged from prompt 3.
-The fourth is the recorded `RemoveAsync` defect above.
+Session D's own additions, for the record: ten tests that only proved per-type menu entries were
+removed with the menu, and six replaced them — `OrganisationMenuTenantTests`,
+`OrganisationMenuBrowserTests` and `DimensionTypeUnitsBrowserTests`.

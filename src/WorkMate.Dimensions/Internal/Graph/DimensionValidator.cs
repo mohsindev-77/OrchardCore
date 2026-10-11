@@ -385,41 +385,91 @@ internal sealed class DimensionValidator : IDimensionValidator
         DateOnly effectiveFrom,
         CancellationToken cancellationToken = default)
     {
-        var errors = new List<DimensionError>();
-
         if (string.Equals(recordId, newParentId, StringComparison.Ordinal))
         {
-            errors.Add(new DimensionError(
-                DimensionRule.Cycle,
-                recordId,
-                S["A record cannot be its own parent."]));
-
-            return errors;
+            return
+            [
+                new DimensionError(
+                    DimensionRule.Cycle,
+                    recordId,
+                    S["A record cannot be its own parent."]),
+            ];
         }
 
         var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
 
         if (structure is null)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.UnknownReference,
-                structureId,
-                S["There is no structure with the id '{0}' in this tenant.", structureId]));
-
-            return errors;
+            return [UnknownStructure(structureId)];
         }
 
         var child = await RecordAsync(recordId, cancellationToken);
 
         if (child is null)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.UnknownReference,
-                recordId,
-                S["There is no dimension record with the id '{0}' in this tenant.", recordId]));
-
-            return errors;
+            return [UnknownRecord(recordId)];
         }
+
+        return await ValidateParentAsync(
+            structure,
+            child.Code,
+            child.DimensionTypeId,
+            recordId,
+            newParentId,
+            effectiveFrom,
+            cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<DimensionError>> ValidateNewPlacementAsync(
+        string structureId,
+        string dimensionTypeId,
+        string code,
+        string? parentRecordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken);
+
+        if (structure is null)
+        {
+            return [UnknownStructure(structureId)];
+        }
+
+        // No record id, and that is the whole difference: there is nothing to be its own parent and
+        // nothing below it, so the two identity rules a move needs are vacuous here rather than
+        // skipped. Everything that follows is the same code a move runs.
+        return await ValidateParentAsync(
+            structure,
+            code,
+            dimensionTypeId,
+            childRecordId: null,
+            parentRecordId,
+            effectiveFrom,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Everything a placement asks of the proposed parent, for a child that may or may not exist.
+    /// </summary>
+    /// <remarks>
+    /// One implementation so that moving a unit under a forbidden parent and creating one under it
+    /// are refused in the same sentence — which is what the designer, the per-type create screen and
+    /// the recipe step all show, and what their tests compare.
+    /// </remarks>
+    /// <param name="childRecordId">
+    /// Null when the child does not exist yet. The cycle check is the only rule that needs it: a
+    /// unit with no id is nobody's ancestor, so there is no cycle to find.
+    /// </param>
+    private async Task<IReadOnlyList<DimensionError>> ValidateParentAsync(
+        StructureDocument structure,
+        string childCode,
+        string childDimensionTypeId,
+        string? childRecordId,
+        string? newParentId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<DimensionError>();
 
         if (newParentId is null)
         {
@@ -431,37 +481,37 @@ internal sealed class DimensionValidator : IDimensionValidator
 
         if (parent is null)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.UnknownReference,
-                newParentId,
-                S["There is no dimension record with the id '{0}' in this tenant.", newParentId]));
+            errors.Add(UnknownRecord(newParentId));
 
             return errors;
         }
 
-        // Across every date, not only today. A cycle anywhere in the history makes ancestor
-        // resolution on that date non-terminating, and the date it breaks on is one nobody
-        // will be looking at when they make the change.
-        var wouldCycle = await _session
-            .QueryIndex<DimensionClosureIndex>(index =>
-                index.StructureId == structureId &&
-                index.AncestorId == recordId &&
-                index.DescendantId == newParentId)
-            .CountAsync(cancellationToken) > 0;
-
-        if (wouldCycle)
+        if (childRecordId is not null)
         {
-            errors.Add(new DimensionError(
-                DimensionRule.Cycle,
-                newParentId,
-                S["'{0}' is at or below '{1}' at some point in time, so moving '{1}' under it would create a cycle.",
-                    parent.Code,
-                    child.Code]));
+            // Across every date, not only today. A cycle anywhere in the history makes ancestor
+            // resolution on that date non-terminating, and the date it breaks on is one nobody
+            // will be looking at when they make the change.
+            var wouldCycle = await _session
+                .QueryIndex<DimensionClosureIndex>(index =>
+                    index.StructureId == structure.StructureId &&
+                    index.AncestorId == childRecordId &&
+                    index.DescendantId == newParentId)
+                .CountAsync(cancellationToken) > 0;
 
-            return errors;
+            if (wouldCycle)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.Cycle,
+                    newParentId,
+                    S["'{0}' is at or below '{1}' at some point in time, so moving '{1}' under it would create a cycle.",
+                        parent.Code,
+                        childCode]));
+
+                return errors;
+            }
         }
 
-        errors.AddRange(ValidateContainment(structure, child, parent));
+        errors.AddRange(ValidateContainment(structure, childCode, childDimensionTypeId, parent));
 
         // Not effective splits into two cases that look alike and are not. A parent that has not
         // started yet is usually a customer pre-building next year's structure, which is legitimate
@@ -491,6 +541,16 @@ internal sealed class DimensionValidator : IDimensionValidator
         return errors;
     }
 
+    private DimensionError UnknownStructure(string structureId) =>
+        new(DimensionRule.UnknownReference,
+            structureId,
+            S["There is no structure with the id '{0}' in this tenant.", structureId]);
+
+    private DimensionError UnknownRecord(string recordId) =>
+        new(DimensionRule.UnknownReference,
+            recordId,
+            S["There is no dimension record with the id '{0}' in this tenant.", recordId]);
+
     /// <summary>
     /// Containment: whether this axis permits a child of this type under a parent of that one.
     /// </summary>
@@ -507,10 +567,11 @@ internal sealed class DimensionValidator : IDimensionValidator
     /// </remarks>
     private IReadOnlyList<DimensionError> ValidateContainment(
         StructureDocument structure,
-        DimensionNodeRef child,
+        string childCode,
+        string childDimensionTypeId,
         DimensionNodeRef parent)
     {
-        var outcome = ContainmentRules.Decide(structure, parent.DimensionTypeId, child.DimensionTypeId);
+        var outcome = ContainmentRules.Decide(structure, parent.DimensionTypeId, childDimensionTypeId);
 
         if (outcome == ContainmentRules.Outcome.Permitted)
         {
@@ -530,9 +591,9 @@ internal sealed class DimensionValidator : IDimensionValidator
             [
                 new DimensionError(
                     rule,
-                    child.Code,
+                    childCode,
                     S["'{0}' and '{1}' are the same kind of unit, and the structure '{2}' does not allow that kind inside itself.",
-                        child.Code,
+                        childCode,
                         parent.Code,
                         structure.Code]),
             ];
@@ -545,7 +606,7 @@ internal sealed class DimensionValidator : IDimensionValidator
                 parent.Code,
                 S["The structure '{0}' does not allow a unit like '{1}' under one like '{2}'.",
                     structure.Code,
-                    child.Code,
+                    childCode,
                     parent.Code]),
         ];
     }

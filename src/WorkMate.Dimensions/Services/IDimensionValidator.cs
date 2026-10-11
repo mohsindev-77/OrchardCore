@@ -92,6 +92,38 @@ public interface IDimensionValidator
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same placement rules, asked about a unit that does not exist yet.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this exists.</b> <see cref="ValidatePlacementAsync"/> needs a record id, so a caller
+    /// creating a unit and placing it in one go could only ask after it had created something.
+    /// <c>IDimensionService.AddUnitAsync</c> did exactly that, and when the placement was refused it
+    /// had to delete the unit again — a compensating write on the failure path of a method whose
+    /// whole job is to avoid half-finished units. Asking the question first is the fix; this is the
+    /// question.
+    ///
+    /// <b>What it does not check.</b> Cycles. A unit with no id is below nothing and above nothing,
+    /// so no parent can be its descendant and the check is vacuous rather than skipped. Everything
+    /// else — the parent exists, the containment map permits this type under that one, the parent is
+    /// not retired by the effective date, the advisory when it is not effective yet — is the same
+    /// code and the same sentences as a move, so the designer, the per-type create screen and the
+    /// recipe step all refuse in the same words.
+    ///
+    /// The record's own rules (code format, uniqueness, names, dates) are
+    /// <see cref="ValidateRecordAsync"/>'s; a creating caller asks both.
+    /// </remarks>
+    /// <param name="dimensionTypeId">The type the unit is about to be created as.</param>
+    /// <param name="code">Its code, used only to name it in the messages.</param>
+    /// <param name="parentRecordId">The proposed parent, or null to create it as a root.</param>
+    Task<IReadOnlyList<DimensionError>> ValidateNewPlacementAsync(
+        string structureId,
+        string dimensionTypeId,
+        string code,
+        string? parentRecordId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Rules for an employee's concurrent placements on one axis: no overlap, allocations
     /// totalling 100 percent, exactly one primary, and that each unit is one this axis says may
     /// hold employees.
