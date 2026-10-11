@@ -95,7 +95,7 @@ public sealed class DimensionTypesAdminController : Controller
             model.ToAttributeSchema(),
             // A type created here carries no self-nesting flag. Nothing reads it when deciding a
             // placement any more, and the structure grid is where self-nesting is now said.
-            allowsSelfNesting: false,
+            allowsSelfNesting: false,
             cancellationToken: cancellationToken);
 
         if (!result.IsAuthorised)
@@ -174,7 +174,7 @@ public sealed class DimensionTypesAdminController : Controller
             document.DimensionTypeId,
             model.Name,
             model.ToAttributeSchema(),
-            model.AllowsSelfNesting,
+            model.AllowsSelfNesting,
             cancellationToken);
 
         if (!result.IsAuthorised)

@@ -65,6 +65,7 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             var levelIdsByStructure = new Dictionary<StructureStepEntry, List<string>>();
             var shapesByStructure = new Dictionary<StructureStepEntry, StructureShape>();
             var toCreate = new List<StructureStepEntry>();
+            var toFill = new List<StructureStepEntry>();
 
             foreach (var structure in model.Structures)
             {
@@ -119,8 +120,16 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     {
                         errors.Add(S["Structure '{0}' already exists with different content: {1}.", structure.Code, string.Join("; ", differences)].Value);
                     }
+                    else if (FillsTheEmployeeAttachmentGap(existing, shape))
+                    {
+                        // The one case where a row changes a structure it did not create. See
+                        // ADR-0008's 11 October addendum: for this field alone, empty in the tenant
+                        // is the absence of an answer rather than a different one, so a row that
+                        // states a set is filling a gap rather than overwriting a decision.
+                        toFill.Add(structure);
+                    }
 
-                    // Matches exactly: nothing to validate or create for this row.
+                    // Matches, or matches but for a gap to fill: nothing to validate or create.
                     continue;
                 }
 
@@ -141,6 +150,43 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             {
                 RecipeStepFailures.Throw(context, errors);
                 return;
+            }
+
+            // The gaps first. Each goes through IStructureService.UpdateAsync rather than a direct
+            // document write, so it is validated and audited exactly as an administrator's own edit
+            // on the structures screen would be, and it changes nothing except the one field: every
+            // other argument is read back from the structure as it stands.
+            foreach (var structure in toFill)
+            {
+                var existing = await _structureService.GetByCodeAsync(structure.Code);
+
+                if (existing is null)
+                {
+                    continue;
+                }
+
+                var filled = await _structureService.UpdateAsync(
+                    existing.StructureId,
+                    existing.Name,
+                    existing.DimensionTypeIds,
+                    existing.AllowSkipLevel,
+                    existing.IsStrict,
+                    existing.IsPrimaryOrganisation,
+                    new StructureShape(
+                        existing.RootDimensionTypeIds,
+                        existing.Containment,
+                        shapesByStructure[structure].EmployeeAttachableDimensionTypeIds));
+
+                if (!filled.Succeeded)
+                {
+                    RecipeStepFailures.Throw(
+                        context,
+                        filled.Errors.Count > 0
+                            ? filled.Errors.Select(error => error.Message.Value)
+                            : [S["'{0}' could not be updated.", structure.Code].Value]);
+
+                    return;
+                }
             }
 
             foreach (var structure in toCreate)
@@ -182,6 +228,8 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
         List<string> levelIds,
         List<string> errors)
     {
+        var attachable = await ResolveAttachableAsync(structure, errors);
+
         if (!structure.StatesContainment)
         {
             // The one place a dimension type's AllowsSelfNesting is still read. It is not a veto
@@ -198,7 +246,8 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                 }
             }
 
-            return StructureShape.FromChain(levelIds, structure.AllowSkipLevel == true, selfNesting);
+            return StructureShape.FromChain(levelIds, structure.AllowSkipLevel == true, selfNesting)
+                with { EmployeeAttachableDimensionTypeIds = attachable };
         }
 
         var before = errors.Count;
@@ -245,7 +294,43 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             }
         }
 
-        return errors.Count > before ? null : new StructureShape(roots, containment);
+        return errors.Count > before ? null : new StructureShape(roots, containment, attachable);
+    }
+
+    /// <summary>
+    /// The types this row says may hold employees, by id, or null when it says nothing.
+    /// </summary>
+    /// <remarks>
+    /// Null and empty are different answers all the way down: null means the row is not describing
+    /// employee attachment and the structure's own setting stands; an empty array means the row is
+    /// saying the axis constrains nothing, which is a statement a recipe is entitled to make.
+    /// </remarks>
+    private async Task<IReadOnlyList<string>?> ResolveAttachableAsync(
+        StructureStepEntry structure,
+        List<string> errors)
+    {
+        if (structure.EmployeeAttachableTypeCodes is null)
+        {
+            return null;
+        }
+
+        var ids = new List<string>();
+
+        foreach (var typeCode in structure.EmployeeAttachableTypeCodes)
+        {
+            var type = await _dimensionTypeService.GetByCodeAsync(typeCode);
+
+            if (type is null)
+            {
+                errors.Add(S["Structure '{0}' names type '{1}' as holding employees, which does not exist.", structure.Code, typeCode].Value);
+
+                continue;
+            }
+
+            ids.Add(type.DimensionTypeId);
+        }
+
+        return ids;
     }
 
     private static List<string> DifferencesFrom(
@@ -305,8 +390,39 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             differences.Add("the types allowed at the top of the structure differ from the tenant's existing structure");
         }
 
+        // Employee attachment, and the one place this step departs from "different means fail".
+        //
+        // ADR-0008's 11 October addendum: for this field, empty in the tenant is the absence of an
+        // answer rather than a different one — the model documents it as "this axis is not
+        // expressing the constraint", and it is the state every structure written before the field
+        // existed deserialises to. So a gap is filled (see FillsTheEmployeeAttachmentGap) and only
+        // a tenant that holds a real, different set is refused.
+        if (shape.EmployeeAttachableDimensionTypeIds is { } wantedAttachable &&
+            existing.EmployeeAttachableDimensionTypeIds.Count > 0 &&
+            !existing.EmployeeAttachableDimensionTypeIds
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .SequenceEqual(wantedAttachable.OrderBy(id => id, StringComparer.Ordinal), StringComparer.Ordinal))
+        {
+            differences.Add("the types that may hold employees differ from the tenant's existing structure");
+        }
+
         return differences;
     }
+
+    /// <summary>
+    /// Whether this row states employee attachment for a structure that declares none — the gap the
+    /// addendum permits filling.
+    /// </summary>
+    /// <remarks>
+    /// Narrow on purpose, and the narrowness is the argument. A structure holding a non-empty set
+    /// has an answer, and a recipe does not get to replace it; a structure holding none has not been
+    /// asked, because the model says empty and unset are the same state. A row stating an empty
+    /// array against an empty structure is also not a gap — it agrees with what is there, and
+    /// writing would be a change that changes nothing.
+    /// </remarks>
+    private static bool FillsTheEmployeeAttachmentGap(StructureDocument existing, StructureShape shape) =>
+        shape.EmployeeAttachableDimensionTypeIds is { Count: > 0 } &&
+        existing.EmployeeAttachableDimensionTypeIds.Count == 0;
 }
 
 internal sealed class StructuresStepModel
@@ -348,6 +464,18 @@ internal sealed class StructureStepEntry
     /// picking one would make the recipe mean something nobody wrote.
     /// </remarks>
     public Dictionary<string, List<string>> Containment { get; set; } = [];
+
+    /// <summary>
+    /// The types that may hold employees on this axis, by code.
+    /// </summary>
+    /// <remarks>
+    /// Nullable so that "absent" and "stated as empty" are different answers, the same reason
+    /// <see cref="AllowSkipLevel"/> is: a row with no key says nothing about employee attachment
+    /// and leaves whatever the structure declares, which is what every recipe written before this
+    /// field existed means. See <see cref="StructureShape.EmployeeAttachableDimensionTypeIds"/>,
+    /// where the same distinction is drawn for the same reason.
+    /// </remarks>
+    public List<string>? EmployeeAttachableTypeCodes { get; set; }
 
     public bool IsStrict { get; set; } = true;
 

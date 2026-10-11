@@ -3,6 +3,31 @@ using WorkMate.Dimensions.Indexes;
 
 namespace WorkMate.Dimensions.Services;
 
+/// <summary>Which records a list screen is asking for, judged on the date it is asking about.</summary>
+/// <remarks>
+/// <b>"Retired" means the record's own effective range does not cover the date</b> — it has ended,
+/// or it has not started yet. Both are "not one of the units this organisation currently has", and
+/// both are things a reader goes looking for deliberately rather than things a list should show by
+/// default. The screen prints the dates beside the state, so which of the two it is never has to be
+/// inferred from the word.
+///
+/// Deliberately not the <c>IsActive</c> flag on the record itself. That flag is a property a
+/// customer sets; existing on a date is a fact about the dated record, and the two answer different
+/// questions — a record can be flagged inactive and still be the unit last March's report resolves
+/// through.
+/// </remarks>
+public enum DimensionRecordStatus
+{
+    /// <summary>Effective on the date. The default, and what a list is normally about.</summary>
+    Active,
+
+    /// <summary>Not effective on the date: closed before it, or starting after it.</summary>
+    Retired,
+
+    /// <summary>Both, which is what somebody auditing a type's whole history wants.</summary>
+    All,
+}
+
 /// <summary>
 /// A record as the graph services hand it out: enough to show it, scope by it or link to it,
 /// without loading the content item.

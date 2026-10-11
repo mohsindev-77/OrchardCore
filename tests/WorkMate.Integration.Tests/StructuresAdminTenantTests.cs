@@ -72,8 +72,15 @@ public sealed class StructuresAdminTenantTests
 
         // The levels must render in the order they were submitted — Division before Department —
         // not alphabetically or by id.
-        var divisionPosition = html.IndexOf("Structure Test Division", StringComparison.Ordinal);
-        var departmentPosition = html.IndexOf("Structure Test Department", StringComparison.Ordinal);
+        //
+        // Read off the list itself rather than the whole page. The Organisation menu now carries an
+        // entry per dimension type, named with its plural, so "Structure Test Departments" and
+        // "Structure Test Divisions" are both in the navigation of every admin page — alphabetically,
+        // which is the opposite order from the one this test is about.
+        var list = SectionWithId(html, "structure-list");
+
+        var divisionPosition = list.IndexOf("Structure Test Division", StringComparison.Ordinal);
+        var departmentPosition = list.IndexOf("Structure Test Department", StringComparison.Ordinal);
 
         divisionPosition.Should().BeGreaterThan(-1);
         departmentPosition.Should().BeGreaterThan(-1);
@@ -118,7 +125,9 @@ public sealed class StructuresAdminTenantTests
             _fixture.Administrator,
             $"/Admin/Dimensions/Designer/AddUnit?structureId={structureId}&parentId={divisionRecordId}");
 
-        before.Should().Contain("Grid Test Section", "the derived map allowed a Section under a Division");
+        UnitKindsOfferedIn(before).Should().Contain(
+            kind => kind.Contains("Grid Test Section", StringComparison.Ordinal),
+            "the derived map allowed a Section under a Division");
 
         var editPage = await BaseTenantFixture.GetPageAsync(
             _fixture.Administrator, $"/Admin/Dimensions/Structures/Edit/{structureId}");
@@ -134,8 +143,8 @@ public sealed class StructuresAdminTenantTests
             _fixture.Administrator,
             $"/Admin/Dimensions/Designer/AddUnit?structureId={structureId}&parentId={divisionRecordId}");
 
-        after.Should().NotContain(
-            "Grid Test Section",
+        UnitKindsOfferedIn(after).Should().NotContain(
+            kind => kind.Contains("Grid Test Section", StringComparison.Ordinal),
             "unticking Division > Section must take it out of the picker, not only out of the validator");
 
         await _fixture.InTenantAsync(async services =>
@@ -220,17 +229,48 @@ public sealed class StructuresAdminTenantTests
             _fixture.Administrator,
             $"/Admin/Dimensions/Designer/AddUnit?structureId={world.TickedStructureId}&parentId={world.DepartmentRecordId}");
 
-        ticked.Should().Contain(
-            "nesting department kind",
+        UnitKindsOfferedIn(ticked).Should().Contain(
+            kind => kind.Contains("nesting department kind", StringComparison.Ordinal),
             "the grid now says a Department may contain a Department, so the picker must offer one");
 
         var untouched = await BaseTenantFixture.GetPageAsync(
             _fixture.Administrator,
             $"/Admin/Dimensions/Designer/AddUnit?structureId={world.OtherStructureId}&parentId={world.OtherDepartmentRecordId}");
 
-        untouched.Should().NotContain(
-            "nesting department kind",
+        UnitKindsOfferedIn(untouched).Should().NotContain(
+            kind => kind.Contains("nesting department kind", StringComparison.Ordinal),
             "the grant belongs to one structure; the other was not edited and must be unchanged");
+    }
+
+    /// <summary>
+    /// The kinds of unit the add-unit screen offers, read off its own picker.
+    /// </summary>
+    /// <remarks>
+    /// Scoped to the control rather than searched for in the page. The Organisation menu now
+    /// carries an entry per dimension type, named with that type's plural, so every type's name
+    /// appears in the navigation of every admin page whether or not the screen under test offers
+    /// it — a whole-page search for "Grid Test Section" finds the menu's "Grid Test Sections" and
+    /// concludes the picker offers one.
+    /// </remarks>
+    private static IReadOnlyList<string> UnitKindsOfferedIn(string html) =>
+        [.. new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html)
+            .QuerySelectorAll("#dimensionTypeId option")
+            .Select(option => option.TextContent.Trim())];
+
+    /// <summary>
+    /// The markup of one element, by id, so an assertion about a screen is about that screen.
+    /// </summary>
+    /// <remarks>
+    /// Same reason as <see cref="UnitKindsOfferedIn"/>: the page's chrome now mentions every
+    /// dimension type the tenant has.
+    /// </remarks>
+    private static string SectionWithId(string html, string id)
+    {
+        var element = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(html).GetElementById(id);
+
+        element.Should().NotBeNull("the page carries an element with id '{0}'", id);
+
+        return element!.InnerHtml;
     }
 
     private sealed record TwoStructures(

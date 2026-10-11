@@ -70,6 +70,36 @@ public sealed class DimensionTypeDocument
     public string ContentTypeName { get; set; } = string.Empty;
 
     /// <summary>
+    /// <b>Retired.</b> Nothing reads this. It is kept so that the shipped
+    /// <c>Migrations.UpdateFrom7Async</c> still compiles and still means what it did.
+    /// </summary>
+    /// <remarks>
+    /// <b>What it was.</b> A menu entry per dimension type, under Organisation, named by
+    /// <see cref="PluralName"/> and ordered by <see cref="MenuOrder"/>. It shipped and was
+    /// withdrawn: on a real tenant the menu read <em>Branchs, Cost centres, Departments,
+    /// Departments, Departments, Divisions, Divisions, Divisions, Projects, Regions, Sections,
+    /// Teams</em>, because several structures legitimately use types of the same name and because no
+    /// rule pluralises an English noun correctly. <c>Navigation.AdminMenu</c> now carries three
+    /// fixed entries, and a type's units are reached from the Dimension types list.
+    ///
+    /// <b>Why the properties are still here and still written to.</b> ADR-0009: a migration is
+    /// append-only and never destroys data. <c>UpdateFrom7Async</c> has shipped — tenants are
+    /// recorded past it and will never run it again — so it cannot be edited or removed, and it
+    /// sets these three. Deleting the properties would stop it compiling; adding a step to clear
+    /// them would be a migration whose whole purpose is to destroy data, for no benefit beyond
+    /// tidiness, and it would run on every tenant including the ones that never had the feature.
+    /// So they stay, inert: nothing writes them except that one frozen step, and nothing reads
+    /// them at all.
+    /// </remarks>
+    public bool ShowInMenu { get; set; }
+
+    /// <inheritdoc cref="ShowInMenu"/>
+    public BilingualText PluralName { get; set; } = new(string.Empty, string.Empty);
+
+    /// <inheritdoc cref="ShowInMenu"/>
+    public int MenuOrder { get; set; }
+
+    /// <summary>
     /// The date this type stopped being offered, or null while it is current. Retiring is dated
     /// rather than boolean because a type retired in June must still resolve for a May report.
     /// </summary>

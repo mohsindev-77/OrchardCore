@@ -25,6 +25,11 @@
         var structureId = wrapper.getAttribute("data-unit-picker-structure") || "";
         var asAt = wrapper.getAttribute("data-unit-picker-as-at") || "";
 
+        // Set when the control is choosing a parent for a new record of this type rather than a
+        // place to put an employee. It changes which question the server answers, and with it the
+        // permission the endpoint checks.
+        var childType = wrapper.getAttribute("data-unit-picker-child-type") || "";
+
         var fallbackNote = wrapper.querySelector("[data-unit-picker-fallback-note]");
 
         if (fallbackNote) {
@@ -42,9 +47,13 @@
             wrapper: wrapper,
             select: select,
             strings: strings,
-            // Never. Not choosing a unit is how a row is left blank, and the form says so; an
-            // explicit "— nowhere —" would be a placement at nowhere, which is not a thing.
-            allowNone: false,
+            // Normally never: not choosing a unit is how a row is left blank, and the form says so;
+            // an explicit "— nowhere —" would be a placement at nowhere, which is not a thing.
+            //
+            // The exception is choosing a parent for a type this structure allows at the top of the
+            // chart. That record genuinely has no parent, which is a choice somebody makes rather
+            // than a box they left empty, so it is an option with its own words.
+            allowNone: wrapper.getAttribute("data-unit-picker-allow-none") === "true",
             search: function (query, deliver, fail) {
                 var parameters = new URLSearchParams();
 
@@ -54,6 +63,10 @@
 
                 if (asAt) {
                     parameters.set("asAt", asAt);
+                }
+
+                if (childType) {
+                    parameters.set("childType", childType);
                 }
 
                 if (within && within.value) {

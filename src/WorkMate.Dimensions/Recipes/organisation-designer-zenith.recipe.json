@@ -50,6 +50,7 @@
             "zenith-division": ["zenith-department", "zenith-project"],
             "zenith-project": ["zenith-team"]
           },
+          "employeeAttachableTypeCodes": ["zenith-department", "zenith-team"],
           "isStrict": true,
           "isPrimaryOrganisation": false
         }

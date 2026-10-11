@@ -297,6 +297,70 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The page of records of one dimension type a list screen should show: those matching
+    /// <paramref name="searchText"/>, optionally only those at or below
+    /// <paramref name="withinRecordId"/> on <paramref name="structureId"/>, in the state asked for.
+    /// </summary>
+    /// <remarks>
+    /// <b>One indexed query for the type, then filtered and paged.</b> Specification section 7's
+    /// "paged and never unbounded" is about the descendant and employee-under-a-node queries, where
+    /// the bound is the whole tenant; here it is the number of records of one type, which is the
+    /// number the screen is about — the same argument <c>GetAssignmentsAtAsync</c> makes for being
+    /// unpaged underneath. A caller still gets a <see cref="Page{T}"/>, because a screen still has
+    /// to page it.
+    ///
+    /// <paramref name="withinRecordId"/> is resolved through the closure index on the date given,
+    /// so "within Retail Banking" means what it meant then rather than what it means today.
+    ///
+    /// <paramref name="structureId"/> does not by itself narrow the set: whether a record is on a
+    /// structure is a property of its <em>type</em>, so every record of one type is on the same
+    /// structures. It is what <paramref name="withinRecordId"/> is resolved against, and what a
+    /// caller shows parents and headcounts for.
+    /// </remarks>
+    /// <param name="status">
+    /// Which records to include, judged on <paramref name="asAt"/>: the ones effective then, the
+    /// ones that are not, or both.
+    /// </param>
+    Task<Page<DimensionNodeRef>> SearchRecordsOfTypeAsync(
+        string dimensionTypeId,
+        string? searchText,
+        string? structureId,
+        string? withinRecordId,
+        DimensionRecordStatus status = DimensionRecordStatus.Active,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every unit on this structure that may be the parent of a record of
+    /// <paramref name="childDimensionTypeId"/>, matching <paramref name="searchText"/>.
+    /// </summary>
+    /// <remarks>
+    /// The containment map read forwards, from the same <c>StructureDocument.Permits</c> that
+    /// <c>IDimensionValidator.ValidatePlacementAsync</c> reads backwards — ADR-0010's lesson
+    /// applied to the one rule it was written about. A picker that offered a parent the validator
+    /// would refuse is a form whose only outcome is a refusal.
+    ///
+    /// It is the search-shaped counterpart of <see cref="GetPermittedChildTypeIdsAsync"/>, which
+    /// answers the same question from the other end: that one is "given this parent, what may go
+    /// under it", for a form that already knows where it is. This is "given this type, where may it
+    /// go", for a form that does not.
+    ///
+    /// A non-strict structure tolerates a pairing it has no rule for, and this honours that the
+    /// same way the pickers already do: on a non-strict structure every unit is offered, because
+    /// every unit would be accepted.
+    /// </remarks>
+    Task<Page<DimensionNodeRef>> SearchPermittedParentsAsync(
+        string structureId,
+        string childDimensionTypeId,
+        string? searchText,
+        string? withinRecordId,
+        DateOnly? asAt = null,
+        int take = 20,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The page of employee-attachable units a picker should offer: those matching
     /// <paramref name="searchText"/>, optionally only those at or below
     /// <paramref name="withinRecordId"/>.
@@ -351,6 +415,26 @@ public interface IDimensionGraphService
     /// The node itself is not in its own list, so a root's entry is empty rather than absent — a
     /// caller builds the displayed path by appending the node to what it is given.
     /// </remarks>
+    /// <summary>
+    /// How far below its root each of <paramref name="recordIds"/> sits on this structure, keyed by
+    /// record id, absent for a record that is not on the structure at all on that date.
+    /// </summary>
+    /// <remarks>
+    /// Batched <see cref="GetDepthAsync"/>, for a list screen drawing a page of rows: a call per
+    /// row would be fifty queries to fill one column.
+    ///
+    /// <b>Absent and zero are different answers, and the distinction is the whole point.</b> Zero
+    /// is a root — a unit at the top of the chart, which is where a Division belongs. Absent is
+    /// unplaced: the record exists and is on no structure, which is what an import leaves behind and
+    /// what the designer's unplaced panel is for. A screen that showed both as "no parent" would be
+    /// telling a reader their Division was fine when it was invisible.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, int>> GetDepthsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetAncestorPathsAsync(
         string structureId,
         IReadOnlyList<string> recordIds,

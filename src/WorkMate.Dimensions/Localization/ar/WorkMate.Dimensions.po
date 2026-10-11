@@ -1610,3 +1610,215 @@ msgstr "المختار: {0}"
 #: Components/UnitPickerTagHelper.cs
 msgid "Choose a unit from the list, or clear the box."
 msgstr "اختر وحدة من القائمة، أو أفرغ الحقل."
+
+#. ---- the per-type record list -----------------------------------------------------------
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "New {0}"
+msgstr "{0} جديد"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Search"
+msgstr "بحث"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Code or name, in either language"
+msgstr "الرمز أو الاسم، بأي من اللغتين"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Every structure"
+msgstr "كل الهياكل"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Decides which structure the parent, the headcount and \"Within\" are about."
+msgstr "يحدد الهيكل الذي تخصه الوحدة الأعلى وعدد الموظفين وعامل التصفية \"ضمن\"."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Active and retired"
+msgstr "النشط والمتقاعد"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Filter"
+msgstr "تصفية"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "— anywhere in this structure —"
+msgstr "— أي مكان في هذا الهيكل —"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Extra columns"
+msgstr "أعمدة إضافية"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "No {0} units yet."
+msgstr "لا توجد وحدات من نوع {0} بعد."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Nothing matches that filter."
+msgstr "لا شيء يطابق هذه التصفية."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml, Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Parent"
+msgstr "الوحدة الأعلى"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Employees"
+msgstr "الموظفون"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml, Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Top level"
+msgstr "المستوى الأعلى"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml, Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Not placed"
+msgstr "غير مُسند"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Retired"
+msgstr "متقاعد"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "from {0}"
+msgstr "من {0}"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Flagged inactive"
+msgstr "مُعلَّم كغير نشط"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Move"
+msgstr "نقل"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Showing {0} of {1}."
+msgstr "عرض {0} من {1}."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Next page"
+msgstr "الصفحة التالية"
+
+#. ---- creating a record of one type ------------------------------------------------------
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Choose a structure…"
+msgstr "اختر هيكلاً…"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "No structure uses this kind of unit yet. Add it as a level on a structure first, and then records of it will have somewhere to go."
+msgstr "لا يستخدم أي هيكل هذا النوع من الوحدات بعد. أضفه مستوىً في هيكل أولاً، وعندها يصبح لسجلاته مكان."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml, Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Back to the list"
+msgstr "العودة إلى القائمة"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Choose a structure to add to."
+msgstr "اختر الهيكل الذي ستضيف إليه."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "This structure has nowhere for a {0} to go: it is not allowed at the top, and no kind of unit on this structure may contain one. The structure's own rules decide that — see its containment grid."
+msgstr "لا يوجد في هذا الهيكل مكان لـ{0}: غير مسموح به في الأعلى، ولا يمكن لأي نوع وحدة في هذا الهيكل أن يحتويه. قواعد الهيكل نفسه هي التي تقرر ذلك — راجع شبكة الاحتواء الخاصة به."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "The day this unit starts existing. It will not appear on the chart before then."
+msgstr "اليوم الذي تبدأ فيه هذه الوحدة بالوجود. لن تظهر في المخطط قبله."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml, Components/UnitPickerTagHelper.cs
+msgid "— no parent: top of the structure —"
+msgstr "— بلا وحدة أعلى: قمة الهيكل —"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Place under"
+msgstr "الإسناد تحت"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "This structure allows a {0} at the top, so it may be left with no parent."
+msgstr "يسمح هذا الهيكل بوجود {0} في الأعلى، لذلك يمكن تركه بلا وحدة أعلى."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Only the units this structure allows a {0} under are offered."
+msgstr "تُعرض فقط الوحدات التي يسمح هذا الهيكل بوجود {0} تحتها."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Create {0}"
+msgstr "إنشاء {0}"
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Choose a structure."
+msgstr "اختر هيكلاً."
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "{0} '{1}' was created."
+msgstr "تم إنشاء {0} '{1}'."
+
+#. ---- editing a record -------------------------------------------------------------------
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Edit {0}"
+msgstr "تعديل {0}"
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "A {0}. The code is the natural key and cannot change."
+msgstr "{0}. الرمز هو المفتاح الطبيعي ولا يمكن تغييره."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Name effective from"
+msgstr "الاسم ساري من"
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "This is a correction: the old text was always wrong"
+msgstr "هذا تصحيح: النص القديم كان خاطئاً دائماً"
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Left unticked, the unit genuinely became something else on the date above and earlier periods keep the old name. Ticked, the new name replaces the old one for the period that covers that date."
+msgstr "إن تُرك بلا تحديد، فإن الوحدة أصبحت فعلاً شيئاً آخر في التاريخ أعلاه وتحتفظ الفترات السابقة بالاسم القديم. وإن حُدِّد، يحل الاسم الجديد محل القديم في الفترة التي تغطي ذلك التاريخ."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Where it sits"
+msgstr "مكانه"
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Move…"
+msgstr "نقل…"
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Retire…"
+msgstr "تقاعد…"
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "'{0}' was updated."
+msgstr "تم تحديث '{0}'."
+
+#. ---- Orchard's generic content screens, redirected ---------------------------------------
+
+#: Filters/DimensionRecordAdminRedirectFilter.cs
+msgid "'{0}' is part of the organisation, so it is edited here rather than on the generic content screen — a name is dated, and where it sits is a placement."
+msgstr "'{0}' جزء من المنظمة، لذلك يُعدَّل هنا لا في شاشة المحتوى العامة — فالاسم مؤرَّخ، ومكانه إسناد تنظيمي."
+
+#: Filters/DimensionRecordAdminRedirectFilter.cs
+msgid "A '{0}' is created here rather than on the generic content screen, because it needs a structure and a place on it. One created the other way would be on no chart at all."
+msgstr "يُنشأ '{0}' هنا لا في شاشة المحتوى العامة، لأنه يحتاج هيكلاً ومكاناً فيه. والمُنشأ بالطريقة الأخرى لا يظهر في أي مخطط."
+
+#. ---- the structures recipe step ----------------------------------------------------------
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' names type '{1}' as holding employees, which does not exist."
+msgstr "الهيكل '{0}' يذكر النوع '{1}' كحامل للموظفين، وهو غير موجود."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "'{0}' could not be updated."
+msgstr "تعذّر تحديث '{0}'."
+
+#. The way in to a type's units. A menu entry per dimension type was tried and withdrawn — see
+#. Navigation/AdminMenu — so this link on each row of the Dimension types list is how the per-type
+#. screens are reached, which is what CLAUDE.md's "every screen reachable by clicking" needs.
+#: Views/DimensionTypesAdmin/Index.cshtml
+msgid "View units"
+msgstr "عرض الوحدات"
+
+#. "Department units" rather than "Departments": the stored plural was maintained by the editor
+#. that went with the withdrawn menu, so no rule has to guess how a noun pluralises in either
+#. language.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "{0} units"
+msgstr "وحدات من نوع {0}"

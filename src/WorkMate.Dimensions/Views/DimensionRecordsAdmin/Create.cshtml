@@ -1,0 +1,136 @@
+@model DimensionRecordCreateViewModel
+@*
+    A new record of one dimension type, with its place on a structure, as one form.
+
+    One operation, not two: saving calls IDimensionService.AddUnitAsync, which creates the record
+    and its dated DimensionLink together and validates both before writing either. Create-then-move
+    is what leaves a record on no structure when the second call fails, which is exactly the
+    half-finished state the designer's unplaced panel exists to reveal.
+*@
+<h1 id="record-create-heading">@T["New {0}", Model.TypeName]</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+@* Which structure, as its own GET form. The permitted parents, whether this type may sit at the
+   top, and the attributes offered are all properties of the structure, so choosing one is
+   navigation rather than an edit — and a POST that re-asked it would have to decide what the
+   half-typed fields beside it meant. *@
+@if (Model.Structures.Count > 1)
+{
+    <form method="get" class="row g-2 align-items-end mb-3" id="record-create-structure-form">
+        <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        <div class="col-sm-6">
+            <label class="form-label" for="record-create-structure">@T["Structure"]</label>
+            <select class="form-select" id="record-create-structure" name="structureId"
+                    onchange="this.form.submit()">
+                <option value="">@T["Choose a structure…"]</option>
+                @foreach (var structure in Model.Structures)
+                {
+                    <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                        @structure.Name (@structure.Code)
+                    </option>
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-secondary">@T["Show"]</button>
+        </div>
+    </form>
+}
+
+@if (Model.Structures.Count == 0)
+{
+    <div class="alert alert-warning" id="record-create-no-structure">
+        @T["No structure uses this kind of unit yet. Add it as a level on a structure first, and then records of it will have somewhere to go."]
+    </div>
+    <a class="btn btn-secondary" asp-action="Index" asp-route-dimensionTypeId="@Model.DimensionTypeId">@T["Back to the list"]</a>
+    return;
+}
+
+@if (string.IsNullOrEmpty(Model.StructureId))
+{
+    <p id="record-create-choose-structure">@T["Choose a structure to add to."]</p>
+    return;
+}
+
+@if (!Model.HasAnywhereToGo)
+{
+    @* A type that is neither a root nor permitted under anything is a configuration mistake. Saying
+       so beats a picker that offers nothing and a save that can only be refused. *@
+    <div class="alert alert-warning" id="record-create-nowhere">
+        @T["This structure has nowhere for a {0} to go: it is not allowed at the top, and no kind of unit on this structure may contain one. The structure's own rules decide that — see its containment grid.", Model.TypeName]
+    </div>
+    <a class="btn btn-secondary" asp-action="Index"
+       asp-route-dimensionTypeId="@Model.DimensionTypeId"
+       asp-route-structureId="@Model.StructureId">@T["Back to the list"]</a>
+    return;
+}
+
+<form method="post" asp-action="Create" id="record-create">
+    <input type="hidden" asp-for="DimensionTypeId" />
+    <input type="hidden" asp-for="StructureId" />
+
+    <div class="mb-3" style="max-width: 24rem;">
+        <label class="form-label" asp-for="Code">@T["Code"]</label>
+        <input class="form-control" asp-for="Code" dir="ltr" autocomplete="off" required maxlength="50" />
+        <div class="form-text">@T["Letters, digits, hyphens and underscores. Unique in this tenant, and permanent."]</div>
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" max-length="200" />
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" id="record-create-effective-from" required />
+        <div class="form-text">@T["The day this unit starts existing. It will not appear on the chart before then."]</div>
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    @* Only the units this structure's containment map says may contain one of these — the same
+       rule the validator reads backwards, so the picker never offers a parent the save would
+       refuse. ADR-0010.
+
+       The "no parent" words are built here rather than inline on the attribute: a localiser call
+       inside a Razor attribute value needs its own quotes, and nesting them is a parse error. *@
+    @{ var noParent = T["— no parent: top of the structure —"]; }
+    <workmate-unit-picker for="ParentRecordId" label="@T["Place under"]"
+                          structure-id="@Model.StructureId"
+                          for-child-type="@Model.DimensionTypeId"
+                          as-at="@Model.EffectiveFrom"
+                          date-field="record-create-effective-from"
+                          allow-none="@Model.MayBeTopLevel"
+                          none-label="@noParent" />
+
+    <div class="form-text mb-3">
+        @if (Model.MayBeTopLevel)
+        {
+            @T["This structure allows a {0} at the top, so it may be left with no parent.", Model.TypeName]
+        }
+        else
+        {
+            @T["Only the units this structure allows a {0} under are offered.", Model.TypeName]
+        }
+    </div>
+
+    @if (Model.Attributes.Count > 0)
+    {
+        <h2 class="fs-5 mt-4">@T["Details"]</h2>
+        <p class="text-muted small">@T["Defined on this kind of unit in the Dimension types screen."]</p>
+    }
+
+    @foreach (var index in Enumerable.Range(0, Model.Attributes.Count))
+    {
+        <partial name="_UnitAttribute" model="Model.Attributes[index]"
+                 view-data="@(new ViewDataDictionary(ViewData)
+                     { TemplateInfo = { HtmlFieldPrefix = $"Attributes[{index}]" } })" />
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary" id="record-create-submit">@T["Create {0}", Model.TypeName]</button>
+        <a class="btn btn-link" asp-action="Index"
+           asp-route-dimensionTypeId="@Model.DimensionTypeId"
+           asp-route-structureId="@Model.StructureId">@T["Cancel"]</a>
+    </div>
+</form>
+
+<script asp-name="workmate-unit-picker" at="Foot"></script>

@@ -1,0 +1,70 @@
+@model UnitAttributeInputViewModel
+@*
+    One custom attribute of a dimension type, as an input.
+
+    One copy, shared by the designer's Add unit screen and by the per-type Create and Edit screens.
+    There were going to be three, and they would have drifted: the bilingual case, the checkbox's
+    hidden companion and the number/date input types are each a small decision that is easy to make
+    differently the second time, and somebody filling in a Project's start date should not get a
+    different control depending on which door they came through.
+
+    Rendered once per attribute, as an editor template rather than a loop inside the partial, with
+    the caller setting the field prefix:
+
+        <partial name="_UnitAttribute" model="Model.Attributes[index]"
+                 view-data="@(new ViewDataDictionary(ViewData)
+                     { TemplateInfo = { HtmlFieldPrefix = $"Attributes[{index}]" } })" />
+
+    That is what lets everything below use plain asp-for: the prefix turns "Value" into
+    "Attributes[0].Value" on the posted name and on the id, through
+    TemplateInfo.GetFullHtmlFieldName, which workmate-bilingual honours too.
+*@
+@* Carried back on the post as well as out on the get, because a form that fails validation is
+   redrawn exactly as it was and the schema is not re-read to do it. Never trusted on the way in:
+   the service checks every submitted name against the type's real schema and rejects anything it
+   does not declare. *@
+<input type="hidden" asp-for="Name" />
+<input type="hidden" asp-for="Kind" />
+<input type="hidden" asp-for="LabelEn" />
+<input type="hidden" asp-for="LabelAr" />
+<input type="hidden" asp-for="IsRequired" />
+
+@if (Model.Kind == DimensionAttributeKind.BilingualText)
+{
+    <workmate-bilingual for-en="Value" for-ar="ValueAr" label="@Model.LabelEn" required="@Model.IsRequired" />
+}
+else if (Model.Kind == DimensionAttributeKind.Boolean)
+{
+    @* The posted name and the id a label points at, both built from the caller's prefix — the same
+       pair asp-for would produce, written out because the checkbox needs a literal value="true"
+       that asp-for would overwrite with the model's own string. *@
+    var booleanName = ViewData.TemplateInfo.GetFullHtmlFieldName(nameof(Model.Value));
+    var booleanId = Microsoft.AspNetCore.Mvc.Rendering.TagBuilder.CreateSanitizedId(booleanName, "_");
+
+    <div class="mb-3 form-check">
+        @* value="true" with a hidden "false" behind it, so that clearing the box posts something:
+           an unchecked box posts nothing at all. *@
+        <input type="hidden" name="@booleanName" value="false" />
+        <input class="form-check-input" type="checkbox"
+               id="@booleanId" name="@booleanName" value="true"
+               checked="@(string.Equals(Model.Value, "true", StringComparison.OrdinalIgnoreCase))" />
+        <label class="form-check-label" for="@booleanId">@Model.LabelEn</label>
+        <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(Model.LabelAr) ? "hidden" : null)">@Model.LabelAr</span>
+    </div>
+}
+else
+{
+    <div class="mb-3" style="max-width: 24rem;">
+        <label class="form-label" asp-for="Value">
+            @Model.LabelEn
+            <span class="text-danger" aria-hidden="true" hidden="@(Model.IsRequired ? null : "hidden")">*</span>
+        </label>
+        <input class="form-control"
+               type="@(Model.Kind == DimensionAttributeKind.Number ? "number"
+                   : Model.Kind == DimensionAttributeKind.Date ? "date" : "text")"
+               step="@(Model.Kind == DimensionAttributeKind.Number ? "any" : null)"
+               asp-for="Value"
+               required="@Model.IsRequired" />
+        <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(Model.LabelAr) ? "hidden" : null)">@Model.LabelAr</span>
+    </div>
+}

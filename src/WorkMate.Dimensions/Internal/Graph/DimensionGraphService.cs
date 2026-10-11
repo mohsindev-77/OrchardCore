@@ -330,6 +330,143 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. units.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
     }
 
+    public async Task<Page<DimensionNodeRef>> SearchRecordsOfTypeAsync(
+        string dimensionTypeId,
+        string? searchText,
+        string? structureId,
+        string? withinRecordId,
+        DimensionRecordStatus status = DimensionRecordStatus.Active,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var date = await ResolveDateAsync(asAt);
+
+        // One indexed query for the type. See the interface for why this is not paged underneath:
+        // the bound is the number of records of one type, which is the number the screen is about.
+        var records = (await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+            .Where(record => status switch
+            {
+                DimensionRecordStatus.Active => record.EffectiveRange.Contains(date),
+                DimensionRecordStatus.Retired => !record.EffectiveRange.Contains(date),
+                _ => true,
+            })
+            .Where(record => Matches(record, searchText))
+            .ToList();
+
+        if (!string.IsNullOrEmpty(structureId) && !string.IsNullOrEmpty(withinRecordId))
+        {
+            var subtree = await SubtreeAsync(structureId, withinRecordId, date, cancellationToken);
+
+            records = [.. records.Where(record => subtree.Contains(record.RecordId))];
+        }
+
+        var ordered = records
+            .OrderBy(record => record.SortOrder)
+            .ThenBy(record => record.NameEn, StringComparer.Ordinal)
+            .ToList();
+
+        return new Page<DimensionNodeRef>(
+            [.. ordered.Skip(Math.Max(skip, 0)).Take(Math.Max(take, 0))],
+            ordered.Count,
+            skip,
+            take);
+    }
+
+    public async Task<Page<DimensionNodeRef>> SearchPermittedParentsAsync(
+        string structureId,
+        string childDimensionTypeId,
+        string? searchText,
+        string? withinRecordId,
+        DateOnly? asAt = null,
+        int take = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var structure = await _structureLookup.GetAsync(structureId, cancellationToken)
+            ?? throw new InvalidOperationException($"There is no structure '{structureId}' in this tenant.");
+
+        var date = await ResolveDateAsync(asAt);
+
+        // The containment map, read forwards: every type this structure says may contain the child.
+        // On a non-strict structure an undeclared pairing is tolerated rather than refused, so every
+        // level is a candidate — the same rule the other pickers honour, from the same document.
+        var parentTypeIds = structure.Levels
+            .Select(level => level.DimensionTypeId)
+            .Where(typeId => !structure.IsStrict || structure.Permits(typeId, childDimensionTypeId))
+            .ToList();
+
+        var candidates = new List<DimensionNodeRef>();
+
+        foreach (var typeId in parentTypeIds)
+        {
+            foreach (var record in await RecordsOfTypeAsync(typeId, cancellationToken))
+            {
+                if (record.EffectiveRange.Contains(date) && Matches(record, searchText))
+                {
+                    candidates.Add(record);
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(withinRecordId))
+        {
+            var subtree = await SubtreeAsync(structureId, withinRecordId, date, cancellationToken);
+
+            candidates = [.. candidates.Where(record => subtree.Contains(record.RecordId))];
+        }
+
+        var ordered = candidates
+            .OrderBy(record => record.SortOrder)
+            .ThenBy(record => record.NameEn, StringComparer.Ordinal)
+            .ToList();
+
+        return new Page<DimensionNodeRef>([.. ordered.Take(Math.Max(take, 0))], ordered.Count, 0, take);
+    }
+
+    /// <summary>
+    /// Every record at or below a node on a date, the node itself included.
+    /// </summary>
+    /// <remarks>
+    /// One closure query rather than <see cref="IsUnderAsync"/> per candidate. Depth zero is
+    /// included deliberately: a unit is within itself, and a reader who narrows to "within Credit"
+    /// and is then refused Credit has been told the opposite of what they asked.
+    /// </remarks>
+    private async Task<HashSet<string>> SubtreeAsync(
+        string structureId,
+        string recordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var date = EffectiveDates.ToColumn(asAt);
+
+        return (await _session
+                .QueryIndex<DimensionClosureIndex>(index =>
+                    index.StructureId == structureId &&
+                    index.AncestorId == recordId &&
+                    index.EffectiveFrom <= date &&
+                    date <= index.EffectiveToInclusive)
+                .ListAsync(cancellationToken))
+            .Select(row => row.DescendantId)
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>Whether a record matches typed text, on its code or either half of its name.</summary>
+    /// <remarks>
+    /// Both languages, always. A reader typing Arabic into a search box on an English page is
+    /// looking for the Arabic name, and a search that only read the half matching the page's
+    /// language would find nothing and say so.
+    /// </remarks>
+    private static bool Matches(DimensionNodeRef record, string? searchText)
+    {
+        var trimmed = searchText?.Trim();
+
+        return string.IsNullOrEmpty(trimmed)
+            || record.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
+            || record.NameEn.Contains(trimmed, StringComparison.OrdinalIgnoreCase)
+            || record.NameAr.Contains(trimmed, StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task<Page<DimensionNodeRef>> SearchEmployeeAttachableUnitsAsync(
         string structureId,
         string? searchText,
@@ -343,35 +480,14 @@ internal sealed class DimensionGraphService : IDimensionGraphService
 
         if (!string.IsNullOrEmpty(withinRecordId))
         {
-            // One closure query for the whole subtree, rather than IsUnderAsync per candidate.
-            // Depth zero is included deliberately: a unit is within itself, and a reader who picks
-            // "within Credit" and is then refused Credit would be being told the opposite.
-            var within = EffectiveDates.ToColumn(date);
-
-            var subtree = (await _session
-                    .QueryIndex<DimensionClosureIndex>(index =>
-                        index.StructureId == structureId &&
-                        index.AncestorId == withinRecordId &&
-                        index.EffectiveFrom <= within &&
-                        within <= index.EffectiveToInclusive)
-                    .ListAsync(cancellationToken))
-                .Select(row => row.DescendantId)
-                .ToHashSet(StringComparer.Ordinal);
+            var subtree = await SubtreeAsync(structureId, withinRecordId, date, cancellationToken);
 
             units = [.. units.Where(unit => subtree.Contains(unit.RecordId))];
         }
 
-        var trimmed = searchText?.Trim();
-
-        if (!string.IsNullOrEmpty(trimmed))
+        if (!string.IsNullOrWhiteSpace(searchText))
         {
-            units =
-            [
-                .. units.Where(unit =>
-                    unit.Code.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                    unit.NameEn.Contains(trimmed, StringComparison.OrdinalIgnoreCase) ||
-                    unit.NameAr.Contains(trimmed, StringComparison.OrdinalIgnoreCase)),
-            ];
+            units = [.. units.Where(unit => Matches(unit, searchText))];
         }
 
         // Already ordered by GetEmployeeAttachableUnitsAsync, and the filters above preserve it.
@@ -414,6 +530,49 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         }
 
         return [.. scopes.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
+    }
+
+    public async Task<IReadOnlyDictionary<string, int>> GetDepthsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var depths = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return depths;
+        }
+
+        var date = EffectiveDates.ToColumn(await ResolveDateAsync(asAt));
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        // Every closure row for the page at once, self pairs included: the self pair at depth zero
+        // is what says the record is on this structure at all, and leaving it out would make a root
+        // indistinguishable from a record nothing has ever placed.
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.DescendantId.IsIn(ids) &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        foreach (var row in rows)
+        {
+            // The deepest, which is what GetDepthAsync answers for one record. A node at two depths
+            // on one date can only mean inconsistent data, and the two methods must at least agree
+            // about which answer they give for it.
+            if (!depths.TryGetValue(row.DescendantId, out var existing) || row.Depth > existing)
+            {
+                depths[row.DescendantId] = row.Depth;
+            }
+        }
+
+        return depths;
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetAncestorPathsAsync(
@@ -1413,6 +1572,16 @@ internal sealed class DimensionGraphService : IDimensionGraphService
             // The children first, while the node's own rows still describe where they were.
             var children = await ChildIdsAsync(structure.StructureId, recordId, cancellationToken);
 
+            // KNOWN DEFECT, not fixed here. On a tenant with several structures this method throws
+            // YesSql's "The object to update was not found in identity map" before reaching the
+            // deletes below — see
+            // DimensionRecordsAdminTenantTests.AForbiddenParentIsRefusedWithTheValidatorsOwnWords,
+            // which is skipped and carries the reproduction and the stack.
+            //
+            // It has one caller: IDimensionService.AddUnitAsync, undoing a record whose placement
+            // was refused after it had been created. Nothing exercised that path until the per-type
+            // create screen made a refusable parent reachable, and a speculative fix to the
+            // removal path is a worse answer than a recorded one.
             if (link is not null)
             {
                 _session.Delete(link);

@@ -160,3 +160,80 @@ An export states `sortOrder` on every record, including zero, because an export 
 rather than expressing an intent — and a round trip that rebuilt the same tree in a different
 left-to-right order would have reproduced something else. A hand-written recipe normally states
 nothing and gets its own listing order, which is the thing its author can actually see.
+
+---
+
+## Addendum — employee attachment, and the one case where absent is not a difference (2026-10-11)
+
+**Status:** accepted, **pending review** — this widens the original decision and a reviewer may
+prefer the alternative recorded below.
+
+### Context
+
+The Zenith and Crescent demo recipes describe structures that declare no
+`employeeAttachableTypeCodes`, so every type on them may hold employees. That is correct by the
+model — `StructureDocument.EmployeeAttachableDimensionTypeIds` documents empty as *unconstrained*,
+not as *nothing may hold employees* — and it is wrong as a demonstration: "Place an employee
+here…" appears on Engineering Division, and an employee placed at a Division is counted by it and
+again by every roll-up beneath it. The demos should show the constraint, so the recipes now state
+it.
+
+That makes `employeeAttachableTypeCodes` something a `structures` row states, and therefore
+something this ADR has to say how to compare. Applying the original rule literally:
+
+- a fresh tenant gets the structure with the constraint; fine;
+- **a tenant that already applied the old recipe fails the step**, because the row now states a
+  value and the tenant holds a different one.
+
+Every existing demo tenant — every developer's, and the reference tenants — would be unable to
+re-run the recipe that built it. That is the behaviour the original decision chose on purpose for a
+*divergent* row, and the question is whether this row is divergent.
+
+### Decision
+
+**Empty is not a different value for this field; it is the absence of one. A row that states
+`employeeAttachableTypeCodes` against a structure holding none fills it in rather than failing.**
+
+Three outcomes instead of two, for this field alone:
+
+| Tenant holds | Recipe states | Outcome |
+| --- | --- | --- |
+| the same set | the set | skip, as before |
+| a different, non-empty set | the set | **fail**, naming both, as before |
+| nothing | a set | **fill it in**, and say so |
+
+The argument is narrow and rests on the model rather than on convenience. ADR-0008 refuses to
+overwrite because "the step cannot tell whether a divergent row in the tenant is the thing the
+recipe is trying to establish or a change someone made deliberately since". For this field it can:
+empty is documented, in the model and in the module README, as *the structure is not expressing the
+constraint* — the state every structure written before the field existed deserialises to, and the
+state the v5 migration deliberately left them in. There is no decision there to overwrite. A
+customer who means "this axis constrains nothing" and a customer who has never been asked are
+indistinguishable because the model says they are the same thing.
+
+A non-empty set is a real answer and is still refused, which is the half that matters: a tenant
+that has ticked Branch and Department does not silently become Department because a recipe said so.
+
+### Alternative considered: a new recipe file
+
+Shipping `organisation-designer-zenith-v2.recipe.json` and leaving the old file alone would have
+honoured the original rule exactly. It was rejected because the demo recipes are reference data
+rather than a customer's: the files are named in fixtures, in the browser suite, in the module
+README and in `DemoCompanyRecipesTenantTests`, and a second file would double all of that to avoid
+a conflict that the model says is not a conflict. The cost would be carried for ever by every
+reader who has to work out which of two files is current.
+
+**If a reviewer disagrees that empty is an absence, the alternative is the fallback** — this
+addendum is the thing to overturn, and the comparison in `StructuresRecipeStep.DifferencesFrom` is
+the one place that implements it.
+
+### Consequences
+
+`structures` is now the only step that can write to a row it did not create. That is worth naming
+plainly, because it is a real widening: the step's contract was "create or skip or fail", and it is
+now "create, fill a gap, skip, or fail". The fill goes through `IStructureService.UpdateAsync`, so
+it is validated and audited exactly as an administrator's own edit on the structures screen would
+be — it is not a direct document write — and it changes nothing except the one field.
+
+`DimensionsRecipeStepsTenantTests` covers all four outcomes, including the one that matters most:
+a tenant whose structure already names a *different* set still fails, writing nothing.

@@ -65,19 +65,33 @@ public sealed class UnitPickerAdminController : Controller
     /// The date the placement is to take effect, so the picker offers the units that are active
     /// then. Reads default to today; a write never defaults at all.
     /// </param>
+    /// <param name="childType">
+    /// The dimension type a new record will be, when the control is choosing a <em>parent</em>
+    /// rather than a place to put an employee. Switches the question from "which units hold
+    /// people" to "which units may contain one of these", and with it the permission: the first is
+    /// a placement decision, the second is a record-management one.
+    /// </param>
     [HttpGet]
     public async Task<IActionResult> Search(
         string structureId,
         string? q,
         string? within,
         string? asAt,
+        string? childType,
         int take = PageSize,
         CancellationToken cancellationToken = default)
     {
-        // Placement is what this control is for, so this is the permission that opens it. A reader
-        // who may not place anybody has no use for a list of the units they could not place them
-        // at.
-        if (!await _authorizationService.AuthorizeAsync(User, Permissions.AssignEmployees))
+        var choosingAParent = !string.IsNullOrEmpty(childType);
+
+        // The permission matches the decision the control is part of, rather than being one
+        // permission for one endpoint. A reader who may not place anybody has no use for a list of
+        // the units they could not place them at; a reader who may not create a record has no use
+        // for a list of the parents they could not create one under.
+        var permission = choosingAParent
+            ? Permissions.ManageDimensionRecords
+            : Permissions.AssignEmployees;
+
+        if (!await _authorizationService.AuthorizeAsync(User, permission))
         {
             return Forbid();
         }
@@ -88,9 +102,13 @@ public sealed class UnitPickerAdminController : Controller
         }
 
         DateOnly? date = IsoDate.TryParse(asAt, out var parsed) ? parsed : null;
+        var page = Math.Clamp(take, 1, PageSize);
 
-        var found = await _graph.SearchEmployeeAttachableUnitsAsync(
-            structureId, q, within, date, Math.Clamp(take, 1, PageSize), cancellationToken);
+        var found = choosingAParent
+            ? await _graph.SearchPermittedParentsAsync(
+                structureId, childType!, q, within, date, page, cancellationToken)
+            : await _graph.SearchEmployeeAttachableUnitsAsync(
+                structureId, q, within, date, page, cancellationToken);
 
         var paths = await _graph.GetAncestorPathsAsync(
             structureId, [.. found.Items.Select(unit => unit.RecordId)], date, cancellationToken);

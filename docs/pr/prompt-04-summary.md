@@ -333,18 +333,112 @@ something any response knew about. `close()` now abandons what is in flight.
 
 ---
 
+## Session D: a list and a New button per dimension type, reached from the Dimension types list
+
+A Department could only be created or edited inside the organisation designer. The designer is a
+chart — it answers "what sits under what", it is navigated by expanding branches, and finding one
+department by a half-remembered code means opening the branch it is in first. HR asked for the shape
+every other list in the product has.
+
+### The way in: "View units" on the Dimension types list
+
+This shipped first as a menu entry per dimension type, built from the tenant's own configuration,
+and the product owner withdrew it on sight: on a real tenant the Organisation menu read *Branchs,
+Cost centres, Departments, Departments, Departments, Divisions, Divisions, Divisions, Projects,
+Regions, Sections, Teams*. Several structures legitimately use types of the same name, and no rule
+pluralises an English noun correctly (Branch, Company, Analysis) while Arabic pluralises by changing
+the word (قسم → أقسام). A navigation menu is a short list somebody scans; it is the wrong place to
+enumerate configuration.
+
+The Organisation menu is three fixed entries — **Organisation designer, Dimension types,
+Structures** — and a type's units are reached by the **View units** link on each row of the
+Dimension types list, which satisfies CLAUDE.md's "every screen reachable by clicking" one click
+further in, where somebody is already looking at the list of types. The "In the menu" block is off
+the dimension type editor.
+
+Three things survived the withdrawal and are deliberate:
+
+- **`ShowInMenu`, `PluralName` and `MenuOrder` are still on `DimensionTypeDocument`, and nothing
+  reads them.** `Migrations.UpdateFrom7Async` has shipped and sets them, and ADR-0009 makes a
+  shipped step uneditable: tenants are recorded past it and will never run it again. Deleting the
+  properties would stop it compiling, and a step to clear them would be a migration whose whole
+  purpose is to destroy data, running on every tenant including those that never had the feature.
+  They stay inert, and the frozen step's own comment now says so. `DimensionTypeMenu` is trimmed to
+  the one method that step calls.
+- **The three fixed entries keep explicit numeric positions.** They used `PrefixPosition()`, which
+  orders by the caption in whatever language the reader is in, so an Arabic reader got a different
+  order from an English one. That is a real defect found while building the per-type entries and is
+  worth keeping fixed.
+- **The per-type screens name a type by its singular** — "Department units", not "Departments". The
+  stored plural was maintained by the editor that went with the menu, so reading it now would be
+  reading a field a customer can no longer correct.
+
+### The list, and creating from it
+
+Code, bilingual name, parent as a full path per structure, status with its dates, headcount linking
+into the employee list, and the type's attributes as optional columns. Search, structure, `Within`
+(the unit picker, narrowing through the closure index) and active/retired, paged.
+
+**Creating is one operation.** "Place under" is the unit picker in a new parent-choosing mode:
+options come from `SearchPermittedParentsAsync`, the containment map read forwards from the same
+`Permits` the validator reads backwards, so the picker never offers a parent the save would refuse.
+A root type may be left with no parent, and that is an option with its own words rather than an empty
+box. Saving calls `IDimensionService.AddUnitAsync`, which writes the record and its dated
+`DimensionLink` together — no create-then-move, no second set of validation messages. Moving and
+retiring stay the designer's dated screens, linked from the list and the editor.
+
+### Orchard's generic screens are not a second way in
+
+A Department created through Content → New is a content item with no `DimensionLink`: on no
+structure, invisible to the closure index and every roll-up. The content type is now
+`Creatable = false` (`UpdateFrom8Async` for existing tenants), `Listable` stays on, and
+`DimensionRecordAdminRedirectFilter` sends the generic create and edit URLs to our screens with a
+note saying why — keyed on the controller's type name, so this module still takes no reference to
+`OrchardCore.Contents`.
+
+### The demo recipes declare which types hold employees
+
+Zenith attaches people to Departments and Teams, Crescent to Branches and Departments, so "Place an
+employee here…" is gone from the containers above them. Stating that on a structure a tenant already
+has raised an ADR-0008 question, answered in that ADR's **11 October addendum** and summarised in the
+Dimensions README: for this field alone, empty in the tenant is the *absence* of an answer rather
+than a different one, so a row that states a set against a structure declaring none fills it in; a
+tenant holding a real, different set is still refused, writing nothing. The addendum is marked
+pending review, and names the alternative (a new recipe file) that a reviewer may prefer.
+
+### A defect found and deliberately not fixed
+
+`IDimensionGraphService.RemoveAsync` throws YesSql's "The object to update was not found in identity
+map" on a tenant with several structures. It has one caller — `AddUnitAsync`, undoing a record whose
+placement was refused after it had been created — and nothing exercised it until this screen made a
+refusable parent reachable. The reproduction, the stack and the reasoning are on the skipped
+`DimensionRecordsAdminTenantTests.AForbiddenParentIsRefusedWithTheValidatorsOwnWords`, and the likely
+repair is to make `AddUnitAsync` validate the placement before creating the record — which needs a
+`IDimensionValidator` entry point for a record that does not exist yet, and belongs in its own slice.
+
+---
+
 ## Test counts
 
 Full `dotnet build -warnaserror` with **NuGet audit ON**: 0 warnings, 0 errors.
 
-| Assembly | Passed | Skipped | Added this session |
+| Assembly | Passed | Skipped | Added in session D |
 | --- | ---: | ---: | ---: |
-| `WorkMate.Dimensions.Tests` | 181 | 0 | 0 |
 | `WorkMate.Platform.Tests` | 199 | 0 | 0 |
-| `WorkMate.Records.Tests` | 101 | 0 | +26 |
-| `WorkMate.Integration.Tests` | 349 | 0 | +32 |
-| `WorkMate.Browser.Tests` | 100 | 3 | +8 |
-| **Total** | **930** | **3** | **+66** |
+| `WorkMate.Dimensions.Tests` | 185 | 0 | +4 |
+| `WorkMate.Records.Tests` | 101 | 0 | 0 |
+| `WorkMate.Integration.Tests` | 373 | 1 | +25 |
+| `WorkMate.Browser.Tests` | 106 | 3 | +6 |
+| **Total** | **964** | **4** | **+35** |
 
-The three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` and skipped with a
-reason when nobody has offered any — unchanged from prompt 3.
+The counts are after the menu withdrawal. Ten tests that only proved per-type menu entries were
+removed — `DimensionTypeMenuTests`, `DimensionTypeMenuTenantTests`, `DimensionTypeMenuBrowserTests`
+and the `UpdateFrom7Async` backfill test, whose subject is now three fields nothing reads (the
+migration chain's catch-up is still covered by the version-2 rollback test). Six replace them:
+`OrganisationMenuTenantTests` asserts the group has exactly those three entries, in order, on a
+tenant carrying base, Zenith and Crescent; `OrganisationMenuBrowserTests` asserts the same in
+English and Arabic in a real browser, where a culture actually switches; and
+`DimensionTypeUnitsBrowserTests` clicks Organisation → Dimension types → View units → + New.
+
+Three skips are `RealDataFact` tests, opt-in by `WORKMATE_REAL_APPDATA` — unchanged from prompt 3.
+The fourth is the recorded `RemoveAsync` defect above.

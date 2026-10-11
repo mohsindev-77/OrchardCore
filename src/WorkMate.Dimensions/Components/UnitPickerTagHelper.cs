@@ -83,6 +83,34 @@ public sealed class UnitPickerTagHelper : TagHelper
     [HtmlAttributeName("allow-within")]
     public bool AllowWithin { get; set; } = true;
 
+    /// <summary>
+    /// The dimension type a new record will be, when this control is choosing its <em>parent</em>.
+    /// </summary>
+    /// <remarks>
+    /// Switches the question the control asks, from "which units may hold employees" to "which
+    /// units may contain one of these" — the containment map read forwards, from the same
+    /// <c>Permits</c> the validator reads backwards. Absent, the control is the employee-placement
+    /// picker it has been since prompt 4.
+    /// </remarks>
+    [HtmlAttributeName("for-child-type")]
+    public string? ChildDimensionTypeId { get; set; }
+
+    /// <summary>
+    /// Whether "no parent" is a choice, for a type this structure allows at the top.
+    /// </summary>
+    /// <remarks>
+    /// It is a choice and not an absence, which is why it is an option in the list rather than
+    /// simply leaving the box empty. A Division at the top of the chart is where it belongs; an
+    /// empty box is a form somebody has not finished. The form refuses the second and accepts the
+    /// first, and the reader can tell which they did.
+    /// </remarks>
+    [HtmlAttributeName("allow-none")]
+    public bool AllowNone { get; set; }
+
+    /// <summary>What the "no parent" choice reads as. Already localised by the caller.</summary>
+    [HtmlAttributeName("none-label")]
+    public object? NoneLabel { get; set; }
+
     /// <summary>The label. Already localised by the caller — see <see cref="TagHelperLabel"/>.</summary>
     public object? Label { get; set; }
 
@@ -113,8 +141,11 @@ public sealed class UnitPickerTagHelper : TagHelper
 
         DateOnly? asAt = IsoDate.TryParse(AsAt, out var parsed) ? parsed : null;
 
-        var choices = await _graph.SearchEmployeeAttachableUnitsAsync(
-            StructureId, searchText: null, withinRecordId: null, asAt, FirstPage);
+        var choices = string.IsNullOrEmpty(ChildDimensionTypeId)
+            ? await _graph.SearchEmployeeAttachableUnitsAsync(
+                StructureId, searchText: null, withinRecordId: null, asAt, FirstPage)
+            : await _graph.SearchPermittedParentsAsync(
+                StructureId, ChildDimensionTypeId, searchText: null, withinRecordId: null, asAt, FirstPage);
 
         var options = choices.Items.ToList();
 
@@ -145,7 +176,13 @@ public sealed class UnitPickerTagHelper : TagHelper
 
         // The empty option is the prompt, not a choice: a placement at nowhere is not a thing that
         // exists, and the form refuses a row with no unit rather than storing one.
-        markup.Append(CultureInfo.InvariantCulture, $"<option value=\"\">{Encode(S["Choose a unit…"].Value)}</option>");
+        //
+        // Except where the caller says otherwise. A type this structure allows at the top of the
+        // chart genuinely has no parent, and that is a choice somebody makes rather than a box they
+        // left empty — so it is an option with its own words, and the form accepts it.
+        var prompt = AllowNone ? NoneText() : Encode(S["Choose a unit…"].Value);
+
+        markup.Append(CultureInfo.InvariantCulture, $"<option value=\"\">{prompt}</option>");
 
         // A stored unit this structure can no longer name — retired, or moved off the axis — still
         // has to survive a save. Named as what it is rather than dropped, because a field that
@@ -199,6 +236,8 @@ public sealed class UnitPickerTagHelper : TagHelper
         output.Attributes.SetAttribute("data-unit-picker-structure", StructureId);
         output.Attributes.SetAttribute("data-unit-picker-as-at", AsAt ?? string.Empty);
         output.Attributes.SetAttribute("data-unit-picker-date-field", DateField ?? string.Empty);
+        output.Attributes.SetAttribute("data-unit-picker-child-type", ChildDimensionTypeId ?? string.Empty);
+        output.Attributes.SetAttribute("data-unit-picker-allow-none", AllowNone ? "true" : "false");
 
         // Localised once here, rather than in the script where there is no localiser.
         output.Attributes.SetAttribute("data-unit-picker-strings", Strings());
@@ -278,8 +317,16 @@ public sealed class UnitPickerTagHelper : TagHelper
     private static string Describe(DimensionNodeRef unit, IReadOnlyList<DimensionNodeRef>? ancestors) =>
         $"{BilingualDisplay.Path(ancestors, unit)} ({unit.Code})";
 
+    /// <summary>The "no parent" option's words: the caller's, or this control's own default.</summary>
+    private string NoneText() =>
+        TagHelperLabel.Html(NoneLabel) ?? Encode(S["— no parent: top of the structure —"].Value);
+
     private string Strings() => System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
     {
+        // The combobox puts this in the list when nothing has been typed, so a reader who opens the
+        // control can choose "top of the structure" the same way they choose a unit.
+        ["none"] = System.Net.WebUtility.HtmlDecode(NoneText()),
+
         ["search"] = S["Search by unit name, path or code"].Value,
         ["empty"] = S["No unit matches. Try part of a name, a parent's name, or a code."].Value,
         ["more"] = S["Showing {0} of {1}. Keep typing to narrow it."].Value,

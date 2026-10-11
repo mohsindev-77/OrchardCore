@@ -15,7 +15,10 @@
 }
 else
 {
-    <table class="table table-striped align-middle">
+    @* Identified so a test can read this list rather than the whole page: the Organisation menu
+       now carries an entry per dimension type, so a type's name appears on every admin page
+       whether or not this screen mentions it. *@
+    <table class="table table-striped align-middle" id="structure-list">
         <thead>
             <tr>
                 <th>@T["Code"]</th>

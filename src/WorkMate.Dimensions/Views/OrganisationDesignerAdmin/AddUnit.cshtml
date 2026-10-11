@@ -92,57 +92,19 @@
         <p class="text-muted small">@T["Defined on this kind of unit in the Dimension types screen."]</p>
     }
 
-    @* Every statement here stays at markup level with an @ on it. The literal-string gate blanks
+    @* One attribute editor, shared with the per-type Create and Edit screens, rather than three
+       copies of the bilingual case, the checkbox's hidden companion and the number/date input
+       types. See Shared/_UnitAttribute.
+
+       Every statement here stays at markup level with an @ on it. The literal-string gate blanks
        markup-level Razor keywords and bare statements ending in a semicolon, but reads a nested
        bare "foreach (...)" or "if (...)" as prose and reports the whole line. Enumerable.Range for
        the same reason: a counting loop's "index < count" scans as markup. *@
     @foreach (var index in Enumerable.Range(0, Model.Attributes.Count))
     {
-        var input = Model.Attributes[index];
-
-        <input type="hidden" asp-for="Attributes[index].Name" />
-        <input type="hidden" asp-for="Attributes[index].Kind" />
-        <input type="hidden" asp-for="Attributes[index].LabelEn" />
-        <input type="hidden" asp-for="Attributes[index].LabelAr" />
-        <input type="hidden" asp-for="Attributes[index].IsRequired" />
-
-        @if (input.Kind == DimensionAttributeKind.BilingualText)
-        {
-            <workmate-bilingual for-en="Attributes[index].Value"
-                                for-ar="Attributes[index].ValueAr"
-                                label="@input.LabelEn"
-                                required="@input.IsRequired" />
-        }
-        else if (input.Kind == DimensionAttributeKind.Boolean)
-        {
-            <div class="mb-3 form-check">
-                @* value="true" with a hidden "false" behind it, so that clearing the box posts
-                   something: an unchecked box posts nothing at all. *@
-                <input type="hidden" asp-for="Attributes[index].Value" value="false" />
-                <input class="form-check-input" type="checkbox"
-                       id="@($"Attributes_{index}__Value")"
-                       name="@($"Attributes[{index}].Value")" value="true"
-                       checked="@(string.Equals(input.Value, "true", StringComparison.OrdinalIgnoreCase))" />
-                <label class="form-check-label" for="@($"Attributes_{index}__Value")">@input.LabelEn</label>
-                <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(input.LabelAr) ? "hidden" : null)">@input.LabelAr</span>
-            </div>
-        }
-        else
-        {
-            <div class="mb-3" style="max-width: 24rem;">
-                <label class="form-label" asp-for="Attributes[index].Value">
-                    @input.LabelEn
-                    <span class="text-danger" aria-hidden="true" hidden="@(input.IsRequired ? null : "hidden")">*</span>
-                </label>
-                <input class="form-control"
-                       type="@(input.Kind == DimensionAttributeKind.Number ? "number"
-                           : input.Kind == DimensionAttributeKind.Date ? "date" : "text")"
-                       step="@(input.Kind == DimensionAttributeKind.Number ? "any" : null)"
-                       asp-for="Attributes[index].Value"
-                       required="@input.IsRequired" />
-                <span class="text-muted small" dir="rtl" lang="ar" hidden="@(string.IsNullOrWhiteSpace(input.LabelAr) ? "hidden" : null)">@input.LabelAr</span>
-            </div>
-        }
+        <partial name="_UnitAttribute" model="Model.Attributes[index]"
+                 view-data="@(new ViewDataDictionary(ViewData)
+                     { TemplateInfo = { HtmlFieldPrefix = $"Attributes[{index}]" } })" />
     }
 
     <div class="mt-4">

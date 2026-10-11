@@ -154,6 +154,9 @@ internal sealed class DimensionTypeService : IDimensionTypeService
                     contentTypeName]));
         }
 
+        // Nothing is written to the retired menu fields. See DimensionTypeDocument.ShowInMenu for
+        // why they are still on the document and why a new type simply leaves them at their
+        // defaults.
         var document = new DimensionTypeDocument
         {
             DimensionTypeId = _idGenerator.GenerateUniqueId(),
@@ -259,6 +262,10 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         document.Name = name;
         document.AllowsSelfNesting = allowsSelfNesting;
         document.AttributeSchema = [.. attributeSchema];
+
+        // The retired menu fields are left exactly as they are rather than cleared — ADR-0009: a
+        // write never destroys stored data, and a tenant that upgraded through UpdateFrom7Async has
+        // values here that cost nothing to carry. See DimensionTypeDocument.ShowInMenu.
 
         await _session.SaveCheckedAsync(document, cancellationToken);
 
@@ -452,7 +459,17 @@ internal sealed class DimensionTypeService : IDimensionTypeService
                 .WithPart(typeName)
                 .WithSettings(new ContentTypeSettings
                 {
-                    Creatable = true,
+                    // Not creatable through Orchard's generic "new content item" screen. That
+                    // screen creates a content item and nothing else: no DimensionLink, so the
+                    // record is on no structure, under no parent, and invisible to the closure
+                    // index and every roll-up built on it. AddUnitAsync is what creates both as one
+                    // operation, and this module's own screens are the only callers of it.
+                    //
+                    // Migrations.UpdateFrom8Async applies the same change to the types a tenant
+                    // already has: the append-only rule, applied to a definition this method
+                    // rewrites on every save.
+                    Creatable = false,
+
                     Listable = true,
                     Securable = true,
 

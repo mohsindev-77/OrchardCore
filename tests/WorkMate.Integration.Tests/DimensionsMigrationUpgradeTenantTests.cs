@@ -382,6 +382,7 @@ public sealed class DimensionsMigrationUpgradeTenantTests
         });
     }
 
+
     /// <summary>
     /// The index tables this module creates, and the schema version each one first appears at.
     /// </summary>

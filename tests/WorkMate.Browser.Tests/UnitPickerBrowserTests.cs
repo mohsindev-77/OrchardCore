@@ -158,12 +158,19 @@ public sealed class UnitPickerBrowserTests
 
         await Assertions.Expect(page.Locator("#designer-tree")).ToBeVisibleAsync();
 
-        // A root, so its card is one the server rendered — and a division, which on a structure
-        // that constrains nothing may hold employees like everything else.
-        var division = DesignerTree.Node(page, "Head Office");
+        // A branch, which is one of the two types Crescent's structure says may hold employees.
+        // Deliberately not a division: since the demo recipes declare employeeAttachableTypeCodes,
+        // a container's card does not offer "Place an employee here…" at all — that is the whole
+        // point of declaring them, and DesignerPlaceEmployeeActionTenantTests is where it is
+        // asserted. It is also at depth three, so its card is one the browser built.
+        await DesignerTree.ExpandEverythingAsync(page);
 
-        await division.Locator(".designer-actions summary").First.ClickAsync();
-        await division.Locator("[data-designer-action='placeemployee']").First.ClickAsync();
+        var branch = DesignerTree.Node(page, "Lahore Main Branch");
+
+        await Assertions.Expect(branch).ToBeVisibleAsync();
+
+        await branch.Locator(".designer-actions summary").First.ClickAsync();
+        await branch.Locator("[data-designer-action='placeemployee']").First.ClickAsync();
 
         await Assertions.Expect(page.Locator(".workmate-unit-picker .workmate-picker-input")).ToBeVisibleAsync();
     }

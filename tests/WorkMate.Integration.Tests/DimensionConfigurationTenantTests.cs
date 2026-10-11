@@ -155,8 +155,17 @@ public sealed class DimensionConfigurationTenantTests
             var settings = definition!
                 .GetSettings<OrchardCore.ContentManagement.Metadata.Settings.ContentTypeSettings>();
 
-            settings.Creatable.Should().BeTrue();
-            settings.Listable.Should().BeTrue();
+            settings.Creatable.Should().BeFalse(
+                "Orchard's generic \"new content item\" screen creates a content item and nothing "
+                + "else — no DimensionLink — so the record would be on no structure, under no "
+                + "parent, and invisible to the closure index and every roll-up built on it. "
+                + "IDimensionService.AddUnitAsync creates both as one operation, and this module's "
+                + "own screens are the only callers of it");
+
+            settings.Listable.Should().BeTrue(
+                "the type still appears in Orchard's content list and still obeys its per-type "
+                + "permissions; it simply has no New button");
+
             settings.Securable.Should().BeTrue();
             settings.Draftable.Should().BeFalse("section 4 says not draftable");
 

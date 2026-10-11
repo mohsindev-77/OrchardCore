@@ -34,6 +34,14 @@ public sealed class Startup : StartupBase
         services.AddPermissionProvider<Permissions>();
         services.AddNavigationProvider<AdminMenu>();
 
+        // Orchard's generic content screens must not be a second way to create or edit a dimension
+        // record: that route writes a content item with no DimensionLink, so the record is on no
+        // structure and invisible to every roll-up. "New" is already gone — the content type is not
+        // creatable — and this catches the URLs and sends a reader to the screens that understand
+        // dates and placements. See DimensionRecordAdminRedirectFilter.
+        services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.Filters.Add<Filters.DimensionRecordAdminRedirectFilter>());
+
         // Every admin asset this module ships, so views name them instead of pathing to them and
         // Orchard gives each URL a content hash. See the manifest's remarks: a bare path is cached
         // by the browser for thirty days and a rebuild never reaches it.

@@ -507,6 +507,116 @@ public sealed class Migrations : DataMigration
     }
 
     /// <summary>
+    /// Gives every dimension type a menu entry: shown, named for its own name, unordered.
+    /// </summary>
+    /// <remarks>
+    /// <b>The feature this was written for has been withdrawn, and this step is frozen as it is.</b>
+    /// A menu entry per dimension type read, on a real tenant, <em>Branchs, Cost centres,
+    /// Departments, Departments, Departments, Divisions, Divisions, Divisions, Projects, Regions,
+    /// Sections, Teams</em>; <c>Navigation.AdminMenu</c> carries three fixed entries again and a
+    /// type's units are reached from the Dimension types list. Nothing reads the three fields this
+    /// writes any more — see <see cref="DimensionTypeDocument.ShowInMenu"/>.
+    ///
+    /// It is not edited and not deleted, and no step is added to undo it. ADR-0009: a shipped
+    /// <c>UpdateFromNAsync</c> is recorded against every tenant that has run it and will never run
+    /// again, so an edit here reaches nobody who has already upgraded and only changes what a
+    /// future tenant gets — which would make two tenants differ for no reason. A step that cleared
+    /// the fields would be a migration whose entire purpose is to destroy stored data, which the
+    /// same ADR forbids, in exchange for tidiness nobody can see. The rest of this comment
+    /// describes what it did when it was written, and is kept for the same reason the code is.
+    ///
+    /// <b>Data, not schema</b>, so it rewrites documents rather than touching <c>SchemaBuilder</c>.
+    /// The three new properties are on <see cref="DimensionTypeDocument"/> and deserialise to their
+    /// defaults on a document written before they existed — <c>false</c>, an empty plural and zero —
+    /// which would leave an upgraded tenant with the Organisation menu it has today and no way to
+    /// discover the new screens. So the upgrade is what puts them there.
+    ///
+    /// <b>Additive, in the sense ADR-0009 requires, and safe to re-run.</b> It only fills a plural
+    /// name that is absent; a type that already has one is left exactly as it is, menu flag and
+    /// order included. That matters for more than tidiness: this step and
+    /// <c>DimensionTypeMenu.DefaultFor</c> produce the same answer from the same name, so a
+    /// half-finished run that is retried cannot give two types in one tenant different treatment,
+    /// and a customer who has already turned an entry off does not get it turned back on.
+    ///
+    /// Retired types are included. A retired type is still a type — the menu provider is what
+    /// decides not to show one, as at the date it is asked — and skipping them here would leave a
+    /// type retired today and reinstated next year with no plural name and no record of why.
+    /// </remarks>
+    public async Task<int> UpdateFrom7Async()
+    {
+        foreach (var type in await _session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+        {
+            if (!string.IsNullOrWhiteSpace(type.PluralName.En) || !string.IsNullOrWhiteSpace(type.PluralName.Ar))
+            {
+                continue;
+            }
+
+            var menu = DimensionTypeMenu.DefaultFor(type.Name);
+
+            type.ShowInMenu = menu.ShowInMenu;
+            type.PluralName = menu.PluralName;
+            type.MenuOrder = menu.MenuOrder;
+
+            await _session.SaveCheckedAsync(type);
+        }
+
+        return 8;
+    }
+
+    /// <summary>
+    /// Takes every dimension record's content type off Orchard's generic "new content item" list.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this closes.</b> A Department created through Content → New is a content item
+    /// with a <c>DimensionRecordPart</c> on it and no <c>DimensionLink</c> anywhere: it is on no
+    /// structure, under no parent, invisible to the closure index and to every roll-up built on it.
+    /// <c>IDimensionService.AddUnitAsync</c> is what creates the record and its dated link as one
+    /// operation, and the generic editor does not call it. The record looks correct on Orchard's own
+    /// screens and is missing from the organisation chart, which is the kind of failure nobody
+    /// notices until a headcount does not add up.
+    ///
+    /// The unplaced panel exists to reveal exactly that state, and it is a repair for records that
+    /// arrive from an import. It is not a reason to keep offering a way to create them by hand.
+    ///
+    /// <b>Listable and securable stay on</b>, so the type still appears in Orchard's content list
+    /// and still obeys its per-type permissions. It simply has no "New" button, which makes this
+    /// module's own screens the only way in. The same treatment, and the same reasoning, as
+    /// <c>WorkMate.Records.Migrations.UpdateFrom2Async</c> gave <c>Employee</c>.
+    ///
+    /// Generic <em>editing</em> is closed separately and differently, by
+    /// <c>DimensionRecordAdminRedirectFilter</c>: a content type cannot be made uneditable without
+    /// making it unusable, so that route is redirected to the screen that knows about dates and
+    /// placements rather than refused.
+    ///
+    /// <b>A new step, and <c>DimensionTypeService.WriteContentDefinitionAsync</c> is amended to
+    /// match.</b> The append-only rule, applied to a definition the service rewrites on every save:
+    /// the service now writes <c>Creatable = false</c> for a type created from here on, and this
+    /// step applies the same change to the types a tenant already has.
+    /// </remarks>
+    public async Task<int> UpdateFrom8Async()
+    {
+        foreach (var type in await _session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+        {
+            if (string.IsNullOrEmpty(type.ContentTypeName))
+            {
+                continue;
+            }
+
+            await _contentDefinitionManager.AlterTypeDefinitionAsync(
+                type.ContentTypeName,
+                definition => definition.WithSettings(new ContentTypeSettings
+                {
+                    Creatable = false,
+                    Listable = true,
+                    Securable = true,
+                    Draftable = false,
+                }));
+        }
+
+        return 9;
+    }
+
+    /// <summary>
     /// Whether <paramref name="tableName"/> already has a column named <paramref name="columnName"/>,
     /// read from the database itself rather than assumed from what the code expects — the whole
     /// point of the check in <see cref="UpdateFrom3Async"/> is to stop trusting that.

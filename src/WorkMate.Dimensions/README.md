@@ -343,10 +343,13 @@ until there is a number to justify taking it on.
 
 ## Admin UI
 
-Three screens, each calling the same services the API and the recipe steps
+Four screens, each calling the same services the API and the recipe steps
 use — no screen holds a privileged path:
 
 - **`DimensionTypesAdminController`** — list and editor for dimension types.
+- **`DimensionRecordsAdminController`** — one list and one editor, serving every
+  type the tenant has, reached from the Dimension types list. See *A list and a
+  New button, per type* below.
 - **`StructuresAdminController`** — list and editor for structures. The editor
   is four blocks: the types this structure uses in reading order; which of them
   may sit at the top; a grid of what may sit under what; and a **build from a
@@ -948,6 +951,96 @@ is rendered hidden and unhidden by the script, because without the script there 
 no round trip behind it and a control that visibly does nothing is worse than one
 that is not there.
 
+### A list and a New button, per type — reached from the Dimension types list
+
+Until this, a Department could only be created or edited inside the organisation
+designer. The designer is a chart: it answers "what sits under what", it is
+navigated by expanding branches, and finding one department by a half-remembered
+code means opening the branch it is in first. HR administrators asked for the
+shape every other list in the product has, and that is what this is.
+
+**The way in is the `View units` link on each row of the Dimension types list.**
+It was briefly a menu entry per type, built from the tenant's own configuration,
+and that was withdrawn: on a real tenant the Organisation menu read *Branchs,
+Cost centres, Departments, Departments, Departments, Divisions, Divisions,
+Divisions, Projects, Regions, Sections, Teams* — several structures legitimately
+use types of the same name, and no rule pluralises an English noun correctly
+(Branch, Company, Analysis), while Arabic pluralises by changing the word rather
+than by adding to it (قسم → أقسام). A navigation menu is a short list somebody
+scans; it is the wrong place to enumerate configuration. The link is one click
+further in, in the place where somebody is already looking at the list of types.
+
+`OrganisationMenuTenantTests` and `OrganisationMenuBrowserTests` assert that the
+group has exactly three entries, in order, in both languages, on a tenant with
+nine dimension types on it — so this does not come back unnoticed.
+
+Three things survive that withdrawal and are worth knowing about:
+
+- **`DimensionTypeDocument.ShowInMenu`, `PluralName` and `MenuOrder` are still
+  on the document and nothing reads them.** `Migrations.UpdateFrom7Async` has
+  shipped and sets them, and ADR-0009 makes a shipped step uneditable — tenants
+  are recorded past it and will never run it again. Deleting the properties would
+  stop it compiling; a step to clear them would be a migration whose whole purpose
+  is to destroy data, running on every tenant including those that never had the
+  feature. So they stay, inert.
+- **The three fixed menu entries keep their explicit numeric positions.** They
+  used `PrefixPosition()`, which orders by the caption in whatever language the
+  reader is in, so an Arabic reader got a different order from an English one.
+  That was found while the per-type entries were being built and is worth keeping
+  on its own merits.
+- **The screens name a type by its singular** — "Department units", not
+  "Departments". The stored plural was maintained by the editor that went with
+  the menu, so reading it now would be reading a field a customer can no longer
+  correct.
+
+The list shows code, bilingual name, parent (the full path, per structure),
+status with its dates, the headcount as a link into the employee list, and the
+type's attributes as **optional** columns — off by default, because a type with
+eight attributes makes an unreadable table and which of them matter is the
+reader's question. It searches code and both names, filters by structure, by
+`Within` (the unit picker again, narrowing to a subtree through the closure
+index) and by active/retired, and it pages.
+
+**Creating is one operation.** The form's "Place under" is the unit picker in its
+parent-choosing mode: the options come from `SearchPermittedParentsAsync`, which
+is the structure's containment map read forwards from the same `Permits` the
+validator reads backwards — so the picker never offers a parent the save would
+refuse. A type the structure allows at the top may be left with no parent, and
+that is an option with its own words rather than an empty box. Saving calls
+`IDimensionService.AddUnitAsync`, which writes the record and its dated
+`DimensionLink` together; there is no create-then-move and no second set of
+validation messages.
+
+**Editing covers names and attributes, and nothing else.** A rename is dated and
+comes in two kinds — substantive or corrective — and the form asks which, because
+the two answer "what was this called last March" differently and nothing
+downstream can infer it. Moving and retiring are links to the designer's own
+dated screens: a move rewrites what every historical report under the unit
+resolves to, which is why it has its own permission and its own dry run, and a
+second way to do it is the last thing it needs.
+
+### Orchard's generic content screens are not a second way in
+
+A Department created through **Content → New** is a content item with a
+`DimensionRecordPart` and no `DimensionLink` anywhere: on no structure, under no
+parent, invisible to the closure index and to every roll-up built on it. It looks
+correct on Orchard's own screens and is missing from the chart, which is the kind
+of failure nobody notices until a headcount does not add up.
+
+- **Not creatable.** `DimensionTypeService` writes `Creatable = false` on every
+  generated content type and `Migrations.UpdateFrom8Async` applies the same to
+  the types a tenant already has — the append-only rule, applied to a definition
+  the service rewrites on every save. The same treatment, and the same reasoning,
+  as `WorkMate.Records` gave `Employee`.
+- **Listable stays on**, so a dimension record still appears in Orchard's content
+  list and still obeys its per-type permissions. It simply has no New button.
+- **Editing is redirected, not refused.** A content type that cannot be edited
+  cannot be used, so `DimensionRecordAdminRedirectFilter` sends anybody reaching
+  the generic create or edit URL to the screen that understands dated names,
+  placements and the attribute schema, with a note saying why. It keys on the
+  controller's type name and the route values rather than on a reference to
+  `OrchardCore.Contents`, which this module does not take and must not.
+
 ### "Place an employee here…" on a card
 
 Declared in `DesignerCardActions.All` immediately after `sethead` and gated on the
@@ -1099,6 +1192,22 @@ run against. Two worked company examples sit beside it:
 - **`organisation-designer-crescent`** — a ragged tree. One Division holds
   Departments two levels deep while its sibling holds Regions, and Departments
   appear again four levels down under a Branch. Three branches are leaves.
+
+**Both now declare `employeeAttachableTypeCodes`** — Zenith attaches people to
+Departments and Teams, Crescent to Branches and Departments — so "Place an
+employee here…" is offered on the units that hold staff and not on the containers
+above them. Without it, every type was attachable (empty means unconstrained),
+and the demos showed the action on an Engineering Division, where an employee
+would be counted by the division and again by every roll-up beneath it.
+
+Stating it on a structure a tenant already has raised an ADR-0008 question, and
+the answer is that ADR's **11 October addendum**: for this field alone, empty in
+the tenant is the *absence* of an answer rather than a different one — the model
+documents it that way, and it is the state every structure written before the
+field existed deserialises to — so a row that states a set against a structure
+declaring none **fills it in** rather than failing the step. A tenant holding a
+real, different set is still refused, writing nothing.
+`StructureEmployeeAttachmentRecipeTenantTests` covers all four outcomes.
 
 The people on each sit in a **separate recipe** —
 `organisation-designer-zenith-employees` and

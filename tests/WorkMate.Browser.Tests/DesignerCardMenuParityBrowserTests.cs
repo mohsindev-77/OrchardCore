@@ -46,16 +46,26 @@ public sealed class DesignerCardMenuParityBrowserTests
 
         await OpenZenithAsync(page);
 
-        // A root: in the page before anything is expanded, so the server rendered it.
-        var atLoad = await MenuOf(page, "Engineering Division");
+        // A root: in the page before anything is expanded, so the server rendered it. A Division,
+        // which Zenith's structure does not place employees on.
+        var atLoad = await MenuOf(page, "Projects Division");
 
         atLoad.Should().NotBeEmpty("a root card carries a menu for an administrator");
         atLoad.Should().Contain("sethead", "which is the action that went missing");
 
+        atLoad.Should().NotContain(
+            "placeemployee",
+            "a Division is a container on this structure — see employeeAttachableTypeCodes in the "
+            + "Zenith recipe — and a menu entry opening a form the validator would refuse is worse "
+            + "than no entry");
+
         await DesignerTree.ExpandEverythingAsync(page);
 
-        // Depth 2: a department under the division, fetched when the division was opened.
-        var depthTwo = await MenuOf(page, "Civil");
+        // Depth 2, and a container too: a Project, fetched when the division was opened. Compared
+        // against a container rather than against any card, because one of the actions now depends
+        // on the unit as well as on the viewer and two cards only have to agree when they are the
+        // same kind of unit.
+        var depthTwo = await MenuOf(page, "Motorway Interchange");
 
         depthTwo.Should().Equal(
             atLoad,
@@ -63,10 +73,22 @@ public sealed class DesignerCardMenuParityBrowserTests
             + "must be the same menu in the same order");
 
         // Depth 3: a team under a project, fetched when the project was opened — two levels of
-        // fetching, so a card cloned from a card that was itself cloned.
+        // fetching, so a card cloned from a card that was itself cloned. A Team does hold
+        // employees, so its menu is the container's plus exactly that one entry, in its declared
+        // position. That is the conditional action asserted end to end through the clone.
         var depthThree = await MenuOf(page, "Site Team A");
 
-        depthThree.Should().Equal(atLoad);
+        depthThree.Should().Contain("placeemployee");
+
+        depthThree.Where(action => action != "placeemployee").Should().Equal(
+            atLoad,
+            "nothing else differs between a unit that holds employees and one that does not");
+
+        var order = depthThree.ToList();
+
+        order.IndexOf("placeemployee").Should().Be(
+            order.IndexOf("sethead") + 1,
+            "it is declared immediately after \"Appoint a head…\" and the menu follows the list");
     }
 
     /// <summary>

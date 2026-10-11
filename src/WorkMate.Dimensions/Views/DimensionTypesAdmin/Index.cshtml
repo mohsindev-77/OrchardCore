@@ -15,7 +15,8 @@
 }
 else
 {
-    <table class="table table-striped align-middle">
+    @* Identified so a test can read this list rather than the whole page. *@
+    <table class="table table-striped align-middle" id="dimension-type-list">
         <thead>
             <tr>
                 <th>@T["Code"]</th>
@@ -29,7 +30,7 @@ else
         <tbody>
             @foreach (var type in Model)
             {
-                <tr>
+                <tr class="dimension-type-row" data-type-code="@type.Code">
                     <td><code>@type.Code</code></td>
                     <td>
                         <div dir="ltr" lang="en">@type.NameEn</div>
@@ -57,6 +58,14 @@ else
                         }
                     </td>
                     <td class="text-end">
+                        @* The way in to this type's records, and the only one outside the chart.
+                           CLAUDE.md requires every screen to be reachable by clicking, and the
+                           per-type menu entry that used to do it was withdrawn — see
+                           Navigation/AdminMenu. Here is where somebody looking at the list of types
+                           already is. *@
+                        <a asp-controller="DimensionRecordsAdmin" asp-action="Index"
+                           asp-route-dimensionTypeId="@type.DimensionTypeId"
+                           class="btn btn-sm btn-outline-secondary dimension-type-units">@T["View units"]</a>
                         <a asp-action="Edit" asp-route-id="@type.DimensionTypeId" class="btn btn-sm btn-outline-secondary">@T["Edit"]</a>
                         @if (type.RetiredOn is null)
                         {

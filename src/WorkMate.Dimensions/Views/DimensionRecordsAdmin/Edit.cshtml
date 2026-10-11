@@ -1,0 +1,110 @@
+@model DimensionRecordEditViewModel
+@*
+    One record's names and attributes.
+
+    Moving it is not here. A move changes what every historical report under the unit resolves to,
+    which is why it has its own permission, its own dry run and its own dated form in the designer;
+    this links to that one rather than being a second way to do the one thing that most needs one
+    way. Retiring is the same argument.
+*@
+<h1 id="record-edit-heading">@T["Edit {0}", Model.CurrentNameEn]</h1>
+
+<p class="text-muted">
+    <code>@Model.Code</code>
+    <span>@T["A {0}. The code is the natural key and cannot change.", Model.TypeName]</span>
+</p>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form method="post" asp-action="Edit" asp-route-id="@Model.RecordId" id="record-edit">
+    <input type="hidden" asp-for="RecordId" />
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" max-length="200" />
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Name effective from"]</label>
+        <input class="form-control" type="date" asp-for="EffectiveFrom" required />
+        <span asp-validation-for="EffectiveFrom" class="text-danger"></span>
+    </div>
+
+    <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" asp-for="IsCorrection" id="record-edit-correction" />
+        <label class="form-check-label" asp-for="IsCorrection">@T["This is a correction: the old text was always wrong"]</label>
+        @* The two kinds answer "what was this called last March" differently, and nothing
+           downstream can infer which was meant. A substantive rename starts a new dated period and
+           leaves prior ones alone; a correction rewrites the period that already covers the date,
+           which is what a typo found by running last year's report needs. *@
+        <div class="form-text">
+            @T["Left unticked, the unit genuinely became something else on the date above and earlier periods keep the old name. Ticked, the new name replaces the old one for the period that covers that date."]
+        </div>
+    </div>
+
+    @if (Model.Attributes.Count > 0)
+    {
+        <h2 class="fs-5 mt-4">@T["Details"]</h2>
+        <p class="text-muted small">@T["Defined on this kind of unit in the Dimension types screen."]</p>
+    }
+
+    @foreach (var index in Enumerable.Range(0, Model.Attributes.Count))
+    {
+        <partial name="_UnitAttribute" model="Model.Attributes[index]"
+                 view-data="@(new ViewDataDictionary(ViewData)
+                     { TemplateInfo = { HtmlFieldPrefix = $"Attributes[{index}]" } })" />
+    }
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary" id="record-edit-submit">@T["Save"]</button>
+        <a class="btn btn-link" asp-action="Index"
+           asp-route-dimensionTypeId="@Model.DimensionTypeId"
+           asp-route-structureId="@Model.StructureId">@T["Cancel"]</a>
+    </div>
+</form>
+
+<h2 class="fs-5 mt-4">@T["Where it sits"]</h2>
+
+<table class="table table-sm" id="record-edit-placements">
+    <thead>
+        <tr>
+            <th>@T["Structure"]</th>
+            <th>@T["Parent"]</th>
+            <th class="text-end">@T["Actions"]</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var placement in Model.Placements)
+        {
+            <tr class="record-edit-placement" data-structure-id="@placement.StructureId">
+                <td>@placement.StructureName</td>
+                <td>
+                    @if (placement.State == DimensionRecordPlacementState.Placed)
+                    {
+                        <span>@placement.Path</span>
+                    }
+                    else if (placement.State == DimensionRecordPlacementState.TopLevel)
+                    {
+                        <span class="text-muted">@T["Top level"]</span>
+                    }
+                    else
+                    {
+                        <span class="text-warning">@T["Not placed"]</span>
+                    }
+                </td>
+                <td class="text-end">
+                    @* The designer's own dated screens. A move is refused, previewed and audited
+                       there; doing it here would be a second mechanism for the operation that can
+                       least afford one. *@
+                    <div class="btn-group btn-group-sm">
+                        <a class="btn btn-outline-secondary record-edit-move"
+                           asp-controller="OrganisationDesignerAdmin" asp-action="Move"
+                           asp-route-structureId="@placement.StructureId"
+                           asp-route-recordId="@Model.RecordId">@T["Move…"]</a>
+                        <a class="btn btn-outline-secondary record-edit-retire"
+                           asp-controller="OrganisationDesignerAdmin" asp-action="Retire"
+                           asp-route-structureId="@placement.StructureId"
+                           asp-route-recordId="@Model.RecordId">@T["Retire…"]</a>
+                    </div>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

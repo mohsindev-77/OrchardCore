@@ -50,6 +50,7 @@
             "crescent-region": ["crescent-branch"],
             "crescent-branch": ["crescent-department"]
           },
+          "employeeAttachableTypeCodes": ["crescent-branch", "crescent-department"],
           "isStrict": true,
           "isPrimaryOrganisation": false
         }
