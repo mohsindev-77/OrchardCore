@@ -1,0 +1,122 @@
+@model LookupListEditViewModel
+
+<h1>@(Model.IsNew ? T["Create lookup list"] : T["Edit lookup list"])</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<form asp-action="@(Model.IsNew ? "Create" : "Edit")" asp-route-id="@Model.LookupListId"
+      method="post" id="lookup-list-editor">
+    <input type="hidden" asp-for="LookupListId" />
+
+    <div class="mb-3">
+        <label asp-for="Code" class="form-label">@T["Code"]</label>
+        @if (Model.IsNew)
+        {
+            <input asp-for="Code" class="form-control w-auto" required maxlength="64"
+                   autofocus="autofocus" id="lookup-list-code" />
+            <div class="form-text">
+                @T["A letter, then letters, digits, hyphens or underscores. This is what a recipe, an export and a field's binding name the list by, so it cannot be changed afterwards."]
+            </div>
+        }
+        else
+        {
+            <input asp-for="Code" class="form-control w-auto" readonly="readonly" id="lookup-list-code" />
+            <div class="form-text">@T["The code cannot be changed once the list exists."]</div>
+        }
+        <span asp-validation-for="Code" class="text-danger small"></span>
+    </div>
+
+    <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" max-length="255" />
+
+    @if (!Model.IsNew && Model.IsSystemDefined)
+    {
+        <p class="text-muted" id="lookup-list-system-defined">
+            @T["This list is defined by WorkMate. Entries can still be added and retired; the list itself cannot be deleted."]
+        </p>
+    }
+
+    <fieldset class="mb-3">
+        <legend class="fs-5">@T["Entries"]</legend>
+        <p class="text-muted">
+            @T["The code is what a record stores; the name is what a reader sees. Once an entry has been saved its code cannot be changed and the entry cannot be removed, because a record may already hold it — untick Active to stop offering it instead. Order decides where it appears in the list a reader is given."]
+        </p>
+
+        <table class="table align-middle" id="lookup-list-items">
+            <thead>
+                <tr>
+                    <th>@T["Code"]</th>
+                    <th>@T["Name (English)"]</th>
+                    <th>@T["Name (Arabic)"]</th>
+                    <th class="text-center" style="width: 7rem;">@T["Active"]</th>
+                    <th class="text-end" style="width: 7rem;">@T["Order"]</th>
+                    <th style="width: 7rem;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var index = 0; index < Model.Items.Count; index++)
+                {
+                    var row = Model.Items[index];
+
+                    <tr class="lookup-item-row" data-row-index="@index"
+                        data-item-code="@row.Code" data-item-stored="@row.IsStored.ToString().ToLowerInvariant()">
+                        <td>
+                            @* A stored entry's code is read-only, and the service refuses a change
+                               to it regardless of what this control allows — see
+                               LookupListItemRowViewModel.IsStored. A readonly input still posts its
+                               value, so the row binds back whole. *@
+                            <input asp-for="Items[index].Code" class="form-control form-control-sm"
+                                   maxlength="64" readonly="@row.IsStored" />
+                            <span asp-validation-for="Items[index].Code" class="text-danger small"></span>
+                        </td>
+                        <td>
+                            <input asp-for="Items[index].NameEn" class="form-control form-control-sm"
+                                   dir="ltr" lang="en" maxlength="255" />
+                            <span asp-validation-for="Items[index].NameEn" class="text-danger small"></span>
+                        </td>
+                        <td>
+                            @* Never marked required. ADR-0003's addendum: English is required and
+                               Arabic is optional unless the tenant has turned RequireArabicNames on,
+                               which is a setting no view can see — so the server decides it and this
+                               marks only the half it can be sure about. *@
+                            <input asp-for="Items[index].NameAr" class="form-control form-control-sm"
+                                   dir="rtl" lang="ar" maxlength="255" />
+                            <span asp-validation-for="Items[index].NameAr" class="text-danger small"></span>
+                        </td>
+                        <td class="text-center">
+                            <input asp-for="Items[index].IsActive" class="form-check-input lookup-item-active" />
+                        </td>
+                        <td class="text-end">
+                            <input asp-for="Items[index].SortOrder" class="form-control form-control-sm text-end"
+                                   type="number" step="1" />
+                        </td>
+                        <td>
+                            @if (row.IsStored)
+                            {
+                                @* Not rendered rather than rendered and disabled. A disabled button
+                                   for something nobody may ever do tells a reader only that the
+                                   product has a feature it is withholding. *@
+                                <span class="text-muted small">@T["Saved"]</span>
+                            }
+                            else
+                            {
+                                <button type="submit" class="btn btn-sm btn-outline-secondary lookup-item-remove"
+                                        name="command" value="remove:@index"
+                                        formnovalidate>@T["Remove"]</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @* Adding a row is a round trip rather than script, like every repeating form in this
+           module. The placement screen's rows set the pattern and say why: these forms commit
+           configuration, and one that only worked once a script had loaded would silently do
+           nothing when it had not. *@
+        <button type="submit" class="btn btn-outline-secondary" name="command" value="add"
+                id="lookup-item-add" formnovalidate>@T["Add an entry"]</button>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary" id="lookup-list-save">@T["Save"]</button>
+    <a asp-action="Index" class="btn btn-link">@T["Cancel"]</a>
+</form>

@@ -1,11 +1,20 @@
 @model RecordsDeploymentStepViewModel
 @*
-    What an export of this tenant's people carries. The employees themselves; where they sit and
-    what they lead belong to the dimension engine's step, which names them by the code exported
-    here — so a plan carrying those without this one produces a file that cannot apply.
+    What an export of this module carries. The employees themselves; where they sit and what they
+    lead belong to the dimension engine's step, which names them by the code exported here — so a
+    plan carrying those without this one produces a file that cannot apply.
+
+    Ordering is the one thing an operator can get wrong, so the form says it rather than leaving it
+    to the ADR: lookup lists before anything that names a lookup value, employees before placements.
 *@
 <fieldset class="mb-3">
     <legend class="fs-6">@T["What to export"]</legend>
+
+    <div class="form-check">
+        <input asp-for="IncludeLookupLists" type="checkbox" class="form-check-input" value="true" />
+        <label asp-for="IncludeLookupLists" class="form-check-label">@T["Lookup lists, with their entries"]</label>
+        <div class="form-text">@T["The choices a form field offers, with each entry's code, both names, whether it is still offered and where it sits in the list. Apply this step before any step that names a lookup value."]</div>
+    </div>
 
     <div class="form-check">
         <input asp-for="IncludeEmployees" type="checkbox" class="form-check-input" value="true" />

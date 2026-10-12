@@ -680,8 +680,16 @@ msgid "Employee records"
 msgstr "سجلات الموظفين"
 
 #: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Thumbnail
-msgid "Exports the tenant's employees as the recipe step the importer reads. Apply it before the organisation's placements and head appointments, which name people by code."
-msgstr "يصدّر موظفي المستأجر كخطوة الوصفة التي يقرأها المستورد. طبّقها قبل مواضع العمل وتعيينات الرؤساء، فهي تسمّي الأشخاص بالرمز."
+msgid "Exports the tenant's lookup lists and employees as the recipe steps the importers read. Apply lookup lists before anything naming a lookup value, and employees before the organisation's placements and head appointments, which name people by code."
+msgstr "يصدّر قوائم الاختيار وموظفي المستأجر كخطوات الوصفة التي يقرأها المستورد. طبّق قوائم الاختيار قبل أي خطوة تسمّي قيمة منها، وطبّق الموظفين قبل مواضع العمل وتعيينات الرؤساء، فهي تسمّي الأشخاص بالرمز."
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Edit
+msgid "Lookup lists, with their entries"
+msgstr "قوائم الاختيار مع مدخلاتها"
+
+#: WorkMate.Records.Views.RecordsDeploymentStep.Fields.Edit
+msgid "The choices a form field offers, with each entry's code, both names, whether it is still offered and where it sits in the list. Apply this step before any step that names a lookup value."
+msgstr "الخيارات التي يعرضها حقل النموذج، مع رمز كل مدخل واسميه وما إذا كان ما يزال معروضاً وموقعه في القائمة. طبّق هذه الخطوة قبل أي خطوة تسمّي قيمة من قوائم الاختيار."
 
 #: WorkMate.Records.Views.EmployeesAdmin.Index
 msgid "Employees in {0} ({1}) as at {2}"
@@ -871,3 +879,227 @@ msgstr "تغيير التوزيع بالكامل بدلاً من ذلك…"
 #: Controllers/EmployeePlacementAdminController.cs
 msgid "Choose an employee."
 msgstr "اختر موظفاً."
+
+#. ---- the Forms screen: the form designer's one admin menu entry ---------------------------
+
+#: Navigation/AdminMenu.cs, Views/FormsAdmin/Index.cshtml, Services/FormsAuditTrail.cs
+msgid "Forms"
+msgstr "النماذج"
+
+#: Views/FormsAdmin/Index.cshtml
+msgid "How the employee record is configured: the fields each section holds, and the lists a field offers as choices."
+msgstr "كيفية إعداد سجل الموظف: الحقول التي يحملها كل قسم، والقوائم التي يعرضها الحقل كخيارات."
+
+#: Views/FormsAdmin/Index.cshtml
+msgid "The choices a field offers — grades, employment types, document types, nationalities. Each entry has a code and a name in both languages, and entries are retired rather than deleted so that older records keep reading correctly."
+msgstr "الخيارات التي يعرضها الحقل — الدرجات وأنواع التوظيف وأنواع الوثائق والجنسيات. لكل مدخل رمز واسم باللغتين، وتُحال المدخلات إلى التقاعد بدلاً من حذفها كي تبقى السجلات الأقدم مقروءة بشكل صحيح."
+
+#: Views/FormsAdmin/Index.cshtml
+msgid "{0} list(s) in this tenant."
+msgstr "عدد القوائم في هذا المستأجر: {0}."
+
+#: Views/FormsAdmin/Index.cshtml
+msgid "Open"
+msgstr "فتح"
+
+#: Views/FormsAdmin/Index.cshtml
+msgid "Designing the fields themselves — adding a field to a section, adding a section, changing a label or help text, or saying when a field should appear — is not available yet. Until it is, the employee record carries the fields WorkMate ships and the lists above are what a choice field will offer."
+msgstr "تصميم الحقول نفسها — إضافة حقل إلى قسم، أو إضافة قسم، أو تغيير تسمية أو نص مساعدة، أو تحديد متى يظهر الحقل — غير متاح بعد. وإلى أن يتاح، يحمل سجل الموظف الحقول التي يوفّرها وركميت، والقوائم أعلاه هي ما سيعرضه حقل الاختيار."
+
+#. ---- the lookup lists: the list of lists -------------------------------------------------
+
+#: Views/LookupListsAdmin/Index.cshtml, Views/FormsAdmin/Index.cshtml
+msgid "Lookup lists"
+msgstr "قوائم الاختيار"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "Create lookup list"
+msgstr "إنشاء قائمة اختيار"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "Back to Forms"
+msgstr "العودة إلى النماذج"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "A lookup list is the set of choices a field offers — grades, employment types, document types, nationalities. Each entry has a code, which is what records store, and a name in both languages, which is what a reader sees. An entry is retired rather than deleted, so a record created last year still reads correctly."
+msgstr "قائمة الاختيار هي مجموعة الخيارات التي يعرضها الحقل — الدرجات وأنواع التوظيف وأنواع الوثائق والجنسيات. لكل مدخل رمز تخزّنه السجلات، واسم باللغتين يراه القارئ. ويُحال المدخل إلى التقاعد بدلاً من حذفه، كي يبقى السجل الذي أُنشئ العام الماضي مقروءاً بشكل صحيح."
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "No lookup lists have been created yet."
+msgstr "لم تُنشأ أي قائمة اختيار بعد."
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "Entries"
+msgstr "المدخلات"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "{0} active"
+msgstr "{0} معروضة"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "{0} retired"
+msgstr "{0} متقاعدة"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "System-defined"
+msgstr "مُعرَّفة من وركميت"
+
+#: Views/LookupListsAdmin/Index.cshtml
+msgid "Tenant's own"
+msgstr "خاصة بالمستأجر"
+
+#: Views/LookupListsAdmin/Index.cshtml, Views/LookupListsAdmin/Delete.cshtml
+msgid "Delete"
+msgstr "حذف"
+
+#. ---- the lookup list editor --------------------------------------------------------------
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Edit lookup list"
+msgstr "تعديل قائمة اختيار"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "A letter, then letters, digits, hyphens or underscores. This is what a recipe, an export and a field's binding name the list by, so it cannot be changed afterwards."
+msgstr "حرف، ثم حروف أو أرقام أو شرطات أو شرطات سفلية. هذا ما تسمّي به الوصفةُ والتصديرُ وارتباطُ الحقل هذه القائمة، لذا لا يمكن تغييره بعد الإنشاء."
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "The code cannot be changed once the list exists."
+msgstr "لا يمكن تغيير الرمز بعد إنشاء القائمة."
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "This list is defined by WorkMate. Entries can still be added and retired; the list itself cannot be deleted."
+msgstr "هذه القائمة مُعرَّفة من وركميت. يمكن إضافة المدخلات وإحالتها إلى التقاعد، أما القائمة نفسها فلا يمكن حذفها."
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "The code is what a record stores; the name is what a reader sees. Once an entry has been saved its code cannot be changed and the entry cannot be removed, because a record may already hold it — untick Active to stop offering it instead. Order decides where it appears in the list a reader is given."
+msgstr "الرمز هو ما يخزّنه السجل، والاسم هو ما يراه القارئ. وبعد حفظ المدخل لا يمكن تغيير رمزه ولا إزالته، لأن سجلاً قد يحمله بالفعل — أزل علامة «معروض» لإيقاف عرضه بدلاً من ذلك. ويحدّد الترتيب موقعه في القائمة المعروضة على القارئ."
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Name (English)"
+msgstr "الاسم (بالإنجليزية)"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Name (Arabic)"
+msgstr "الاسم (بالعربية)"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Order"
+msgstr "الترتيب"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Saved"
+msgstr "محفوظ"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Add an entry"
+msgstr "إضافة مدخل"
+
+#. ---- deleting an empty lookup list -------------------------------------------------------
+
+#: Views/LookupListsAdmin/Delete.cshtml
+msgid "Delete lookup list"
+msgstr "حذف قائمة اختيار"
+
+#: Views/LookupListsAdmin/Delete.cshtml
+msgid "Delete the lookup list '{0}' ({1})?"
+msgstr "هل تريد حذف قائمة الاختيار «{0}» ({1})؟"
+
+#: Views/LookupListsAdmin/Delete.cshtml
+msgid "This list holds no entries, so no record can be holding one of them. A list that has entries cannot be deleted at all; its entries are retired instead."
+msgstr "لا تحمل هذه القائمة أي مدخلات، فلا يمكن لأي سجل أن يحمل واحداً منها. أما القائمة التي تحمل مدخلات فلا يمكن حذفها إطلاقاً، وإنما تُحال مدخلاتها إلى التقاعد."
+
+#. ---- the lookup list service's rules -----------------------------------------------------
+
+#: Services/LookupListService.cs
+msgid "'{0}' is not a valid list code. Use a letter followed by letters, digits, hyphens or underscores, up to {1} characters."
+msgstr "«{0}» ليس رمز قائمة صالحاً. استخدم حرفاً يتبعه حروف أو أرقام أو شرطات أو شرطات سفلية، بما لا يتجاوز {1} حرفاً."
+
+#: Services/LookupListService.cs
+msgid "There is already a lookup list with the code '{0}' in this tenant."
+msgstr "توجد بالفعل قائمة اختيار بالرمز «{0}» في هذا المستأجر."
+
+#: Services/LookupListService.cs
+msgid "A lookup list needs an English name."
+msgstr "تحتاج قائمة الاختيار إلى اسم بالإنجليزية."
+
+#: Services/LookupListService.cs
+msgid "'{0}' is not a valid entry code. Use letters, digits, hyphen, underscore, dot or slash, up to {1} characters, with no spaces."
+msgstr "«{0}» ليس رمز مدخل صالحاً. استخدم حروفاً أو أرقاماً أو شرطة أو شرطة سفلية أو نقطة أو شرطة مائلة، بما لا يتجاوز {1} حرفاً، دون مسافات."
+
+#: Services/LookupListService.cs
+msgid "The entry code '{0}' is used more than once in this list."
+msgstr "رمز المدخل «{0}» مستخدم أكثر من مرة في هذه القائمة."
+
+#: Services/LookupListService.cs
+msgid "The entry '{0}' needs an English name."
+msgstr "يحتاج المدخل «{0}» إلى اسم بالإنجليزية."
+
+#: Services/LookupListService.cs
+msgid "The entry '{0}' cannot be removed from this list, because a record may already hold it and nothing would report that it no longer resolves. Retire it instead: it stops being offered and stays readable on the records that have it."
+msgstr "لا يمكن إزالة المدخل «{0}» من هذه القائمة، لأن سجلاً قد يحمله بالفعل ولن يُبلّغ شيء بأنه لم يعد قابلاً للتحليل. أحِله إلى التقاعد بدلاً من ذلك: فيتوقف عرضه ويبقى مقروءاً على السجلات التي تحمله."
+
+#: Services/LookupListService.cs
+msgid "There is no lookup list with the id '{0}' in this tenant."
+msgstr "لا توجد قائمة اختيار بالمعرّف «{0}» في هذا المستأجر."
+
+#: Services/LookupListService.cs
+msgid "'{0}' is defined by WorkMate and cannot be deleted. Its entries can still be retired."
+msgstr "«{0}» مُعرَّفة من وركميت ولا يمكن حذفها. ويمكن مع ذلك إحالة مدخلاتها إلى التقاعد."
+
+#: Services/LookupListService.cs
+msgid "'{0}' still holds entries and cannot be deleted, because a record may already hold one of them. Retire the entries you no longer offer; a list can only be deleted while it is empty."
+msgstr "«{0}» ما تزال تحمل مدخلات ولا يمكن حذفها، لأن سجلاً قد يحمل أحدها. أحِل المدخلات التي لم تعد تعرضها إلى التقاعد؛ فالقائمة لا تُحذف إلا وهي فارغة."
+
+#. ---- the lookup list screens' messages ---------------------------------------------------
+
+#: Controllers/LookupListsAdminController.cs
+msgid "Lookup list '{0}' was created."
+msgstr "أُنشئت قائمة الاختيار «{0}»."
+
+#: Controllers/LookupListsAdminController.cs
+msgid "Lookup list '{0}' was saved."
+msgstr "حُفظت قائمة الاختيار «{0}»."
+
+#: Controllers/LookupListsAdminController.cs
+msgid "Lookup list '{0}' was deleted."
+msgstr "حُذفت قائمة الاختيار «{0}»."
+
+#: Controllers/LookupListsAdminController.cs
+msgid "'{0}' cannot be deleted. A list can only be deleted while it holds no entries, because an entry may be a value records already carry — retire the entries you no longer offer instead."
+msgstr "لا يمكن حذف «{0}». فالقائمة لا تُحذف إلا وهي خالية من المدخلات، لأن المدخل قد يكون قيمة تحملها السجلات بالفعل — أحِل المدخلات التي لم تعد تعرضها إلى التقاعد بدلاً من ذلك."
+
+#. ---- the lookup-lists recipe step --------------------------------------------------------
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' is listed more than once."
+msgstr "قائمة الاختيار «{0}» مذكورة أكثر من مرة."
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "'{0}' is not a valid lookup list code."
+msgstr "«{0}» ليس رمز قائمة اختيار صالحاً."
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' states the entry code '{1}', which is not valid."
+msgstr "تذكر قائمة الاختيار «{0}» رمز المدخل «{1}»، وهو غير صالح."
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' lists the entry '{1}' more than once."
+msgstr "تذكر قائمة الاختيار «{0}» المدخل «{1}» أكثر من مرة."
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' already exists with different content: {1}."
+msgstr "توجد قائمة الاختيار «{0}» بالفعل بمحتوى مختلف: {1}."
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' could not be created."
+msgstr "تعذّر إنشاء قائمة الاختيار «{0}»."
+
+#. ---- the audit trail's form configuration category ---------------------------------------
+
+#: Services/FormsAuditTrail.cs
+msgid "Lookup list changed"
+msgstr "تغيّرت قائمة اختيار"
+
+#: Services/FormsAuditTrail.cs
+msgid "A list of choices was created, renamed, or had entries added or retired."
+msgstr "أُنشئت قائمة خيارات أو أُعيدت تسميتها أو أُضيفت إليها مدخلات أو أُحيلت مدخلاتها إلى التقاعد."

@@ -1,0 +1,39 @@
+@model FormsIndexViewModel
+
+<h1>@T["Forms"]</h1>
+
+<p class="text-muted">
+    @T["How the employee record is configured: the fields each section holds, and the lists a field offers as choices."]
+</p>
+
+@* The one way in to the lookup lists. The product owner's rule is that the form designer adds a
+   single admin menu entry, so every other screen it brings is reached from here or from the
+   employee editor. *@
+@if (Model.MayManageLookupLists)
+{
+    <div class="card mb-3" id="forms-lookup-lists">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="h5 card-title">@T["Lookup lists"]</h2>
+                <p class="card-text text-muted mb-0">
+                    @T["The choices a field offers — grades, employment types, document types, nationalities. Each entry has a code and a name in both languages, and entries are retired rather than deleted so that older records keep reading correctly."]
+                </p>
+                <p class="card-text small text-muted mb-0" id="forms-lookup-list-count">
+                    @T["{0} list(s) in this tenant.", Model.LookupListCount]
+                </p>
+            </div>
+            <a class="btn btn-primary ms-3 text-nowrap"
+               asp-controller="LookupListsAdmin" asp-action="Index"
+               id="forms-open-lookup-lists">@T["Open"]</a>
+        </div>
+    </div>
+}
+
+@* Said plainly rather than left blank. A screen that is waiting on something says so, the way the
+   placeholder pickers in WorkMate.Platform do; a page with one card and no explanation reads as a
+   product that has lost something. *@
+<div class="alert alert-info" id="forms-designer-pending">
+    <p class="mb-0">
+        @T["Designing the fields themselves — adding a field to a section, adding a section, changing a label or help text, or saying when a field should appear — is not available yet. Until it is, the employee record carries the fields WorkMate ships and the lists above are what a choice field will offer."]
+    </p>
+</div>

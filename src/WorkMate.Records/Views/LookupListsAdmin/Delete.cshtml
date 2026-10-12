@@ -1,0 +1,23 @@
+@model LookupListDeleteViewModel
+
+<h1>@T["Delete lookup list"]</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<p id="lookup-list-delete-subject">
+    @T["Delete the lookup list '{0}' ({1})?", Model.NameEn ?? string.Empty, Model.Code ?? string.Empty]
+</p>
+
+@* The reason this is safe, said on the page that does it. A list reaches this screen only while it
+   holds no entries, which is the one state in which nothing can be relying on it — the service
+   checks the same thing again on the POST. *@
+<p class="text-muted">
+    @T["This list holds no entries, so no record can be holding one of them. A list that has entries cannot be deleted at all; its entries are retired instead."]
+</p>
+
+<form asp-action="Delete" method="post" id="lookup-list-delete">
+    <input type="hidden" asp-for="LookupListId" />
+
+    <button type="submit" class="btn btn-danger">@T["Delete"]</button>
+    <a asp-action="Index" class="btn btn-link">@T["Cancel"]</a>
+</form>

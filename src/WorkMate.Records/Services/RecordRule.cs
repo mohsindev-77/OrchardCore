@@ -63,4 +63,30 @@ public enum RecordRule
     /// touch, because payroll, leave and attendance depend on it by name.
     /// </summary>
     ReservedField,
+
+    /// <summary>There is no lookup list with that id or code in this tenant.</summary>
+    UnknownLookupList,
+
+    /// <summary>
+    /// Something that already holds data was removed or had its type changed.
+    /// </summary>
+    /// <remarks>
+    /// Named for the rule rather than for the thing, because the rule is one rule applied to
+    /// several things: a lookup entry cannot be removed or have its code changed (ADR-0014), and
+    /// from slice B3 a published form field cannot be removed or have its type changed. Both
+    /// destroy data already stored under the name being taken away, and both have the same answer —
+    /// retire it instead. The dimension engine spells the same rule <c>ImmutableOnceInUse</c>, and
+    /// the vocabularies matching is worth more here than a name specific to lookups.
+    /// </remarks>
+    ImmutableOnceInUse,
+
+    /// <summary>
+    /// A lookup list that still holds entries was asked to be deleted.
+    /// </summary>
+    /// <remarks>
+    /// A list with no entries can be deleted because there is provably nothing to lose, which is
+    /// what makes a mistyped code recoverable. One with entries cannot, because an entry is a value
+    /// records may already hold.
+    /// </remarks>
+    LookupListNotEmpty,
 }

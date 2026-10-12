@@ -15,7 +15,7 @@ namespace WorkMate.Records;
 /// <c>OrchardCore.DataLocalization</c> feature, which the base recipe enables. <c>WorkMate.Platform</c>
 /// and <c>WorkMate.Dimensions</c> both carry the same note.
 ///
-/// <b>Four, and placement is deliberately not one of them.</b> Placing an employee on a structure is
+/// <b>Five, and placement is deliberately not one of them.</b> Placing an employee on a structure is
 /// a dimension-engine write and already has <c>WorkMate.Dimensions.Permissions.AssignEmployees</c>;
 /// a second permission here would split one capability across two modules and leave a customer
 /// granting both to achieve one thing. Setting a unit head is the same write and takes the same
@@ -59,12 +59,30 @@ public sealed class Permissions : IPermissionProvider
         "View sensitive employee data such as bank details and identity documents",
         isSecurityCritical: true);
 
+    /// <summary>
+    /// Create and change the managed lists a form field offers as choices.
+    /// </summary>
+    /// <remarks>
+    /// Configuration rather than data, and therefore its own permission rather than part of
+    /// <see cref="ManageEmployees"/>: changing a list changes what every record in the tenant may
+    /// say, while changing an employee changes one. A customer routinely wants HR officers who keep
+    /// records current without being able to redefine the grades those records are classified by.
+    ///
+    /// Not security-critical. Retiring a grade is disruptive and recoverable — the entry and every
+    /// record naming it survive, because ADR-0014 refuses removal — which is a different kind of
+    /// thing from terminating somebody or reading their passport number.
+    /// </remarks>
+    public static readonly Permission ManageLookupLists = new(
+        nameof(ManageLookupLists),
+        "Create and change the lookup lists that form fields choose from");
+
     private static readonly IReadOnlyList<Permission> AllPermissions =
     [
         ManageEmployees,
         ViewEmployees,
         ChangeEmploymentStatus,
         ViewEmployeeSensitiveData,
+        ManageLookupLists,
     ];
 
     public Task<IEnumerable<Permission>> GetPermissionsAsync() =>

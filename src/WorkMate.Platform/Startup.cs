@@ -39,6 +39,14 @@ public sealed class Startup : StartupBase
         // IVisibilityService for why a permissive stub is the right one.
         services.AddScoped<IVisibilityService, AllowAllVisibilityService>();
 
+        // Whether a capability is entitled on this tenant. The same shape and the same reasoning as
+        // the line above: a stub that allows everything until prompt 8 builds the signed entitlement
+        // record specification section 8 describes, declared and called now so that every service
+        // already asks and prompt 8 has nothing to go and find. The seam is here rather than in
+        // WorkMate.Entitlement because nothing depends on that module and everything depends on this
+        // one. See IEntitlementService.
+        services.AddScoped<IEntitlementService, AllowAllEntitlementService>();
+
         // System authority: the explicit opt-in a recipe step or background task enters when it
         // genuinely runs as the platform. Scoped, so it cannot outlive the shell scope that
         // entered it. Every module's services consult it, which is why it lives here.

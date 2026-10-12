@@ -21,6 +21,29 @@ nothing about employees, and it holds no business logic.
 | `WorkMateNavbarDisplayDriver` | WorkMate's chrome in the admin header — the approval badge — and the shared `workmate-admin` stylesheet. |
 | `WorkMateLogScope` | Tenant, user and correlation id on every log line. |
 | `ISystemOperation` | System authority as an explicit, scoped opt-in. A recipe step, background task or maintenance command enters it with a logged reason; outside it, a caller with no authenticated user is refused. Scoped, so it cannot outlive the shell scope that entered it. Every module's services consult it, which is why it is here rather than in one of them. |
+| `IVisibilityService` | Which employees the current caller may see. **A stub that allows everything** until specification section 9's visibility by node is built in prompt 9. Declared and called now so every candidate set in the product already goes through it. |
+| `IEntitlementService` | Whether a capability is available to this tenant. **A stub that allows everything** until prompt 8 builds the signed entitlement record of specification section 8. The same shape and the same reasoning as the line above. |
+
+### The two stubs, and why they are here
+
+`IVisibilityService` and `IEntitlementService` are both questions this module cannot
+answer. They are declared here anyway, and called from the day a service needs them,
+because a service written without the check is a service whose call sites nobody can
+find when the check arrives. CLAUDE.md rule 5 requires permissions **and** entitlement
+to be checked in the service; a module that could not ask the question would otherwise
+simply not comply, quietly, in every service it ships.
+
+The seam is in the platform rather than in `WorkMate.Entitlement` because specification
+section 3 has every module depend on this one and nothing depend on that one, while
+section 8 has every module ask it a question. The only way both hold is for the question
+to live here and the answer to be registered over it. When prompt 8 builds the
+entitlement record it replaces `AllowAllEntitlementService` and nothing else in the
+product changes.
+
+Both allow everything rather than nothing. A tenant where every capability is refused
+is not a safer failure, only a more confusing one — and permissions are checked
+separately, so "allows everything" means "everything the caller already had permission
+to do".
 
 ## Decisions taken
 

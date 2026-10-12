@@ -3,11 +3,69 @@
 The employee record and the form designer, both built on runtime content-type
 definition. Contracted in section 5 of `/docs/technical-specification.md`.
 
-**Status: sessions A1 and A2 of prompt 4.** The model, the migration, the
-services and the screens are built. The recipe steps and the export are A3; the
-form designer is session B and nothing of it exists yet.
+**Status: prompt 4 session A complete, and session B slice B1.** The employee
+record, its screens, its recipe step and its export are session A. The managed
+lookup lists are B1. The form designer itself — field definitions, the compiler,
+the rule language, request forms — is slices B3 to B7 and nothing of it exists
+yet; `Views/FormsAdmin/Index.cshtml` says so on the screen rather than leaving a
+reader to wonder.
 
 ## Owns
+
+### Managed lookup lists — built in B1
+
+- **`LookupListDocument`** — a list the tenant maintains: a code, a bilingual
+  name, and an ordered set of entries each with a code, a bilingual name, an
+  active flag and a sort order.
+
+  **Documents of ours rather than Orchard taxonomies, per ADR-0014.**
+  Specification section 5's field table names a taxonomy field; verified against
+  the pinned version, `TaxonomyField` stores content item **ids**, and everything
+  portable on this platform is named by **code** — ADR-0011's "references by code,
+  never by id, the rule every other step follows, and the reason a recipe is
+  portable at all". Read ADR-0014 before changing any of this; it also records
+  what is replaced if the decision is overturned, and that `ILookupListService` is
+  the seam that makes the blast radius six files.
+
+- **`ILookupListService`** — create, update, delete, and the two reads. The
+  permission and the entitlement capability are both checked here, not only in a
+  controller, so the recipe step and any future API are covered by the same check.
+
+  **Two rules make a list safe to bind a field to, and both live here.** An entry
+  that the tenant already holds cannot be dropped out of the set, and an entry's
+  code cannot change. Either would leave records naming something nothing can
+  resolve — and nothing would report it, because a report grouping by a missing
+  code simply comes out short. Retiring is the supported way to stop offering an
+  entry: it disappears from what a reader is given and stays readable on every
+  record that has it. This is the same rule `DimensionTypeService.UpdateAsync`
+  applies to an attribute schema, reached independently and for the same reason.
+
+  **A list may be deleted only while it is empty**, which is the one state in
+  which nothing can be relying on it. That makes a mistyped code recoverable
+  without opening a hole. A system-defined list — one that arrived in a recipe —
+  is never deleted at all.
+
+- **`LookupListIndex`** — code lookup, the uniqueness check, and the entry counts
+  the list screen shows. `CodeUpper` is a second column rather than a
+  case-insensitive comparison in the query, for the reason `EmployeeIndex` gives
+  at length: collation is the database's property and not ours.
+
+- **`LookupCodes`** — two code rules, not one. A list code is an identifier we
+  author that ends up in a URL segment, so it is a leading letter then letters,
+  digits, hyphens and underscores. An entry code is whatever the customer already
+  calls the thing — `G1`, `001`, `FT`, `ID.CARD`, `HR/0042` — so it is as loose as
+  an employee code. Holding both to one rule would either refuse data customers
+  arrive with or let a slash into a route value.
+
+- **`RecordsDocuments`** — the one way this module writes a concurrency-checked
+  document, with `ConcurrencyCheckedSaveTests` enforcing it over the source. The
+  same helper and the same guard `WorkMate.Dimensions` keeps, and the same reason:
+  YesSql's check is opt-in per call, so one bare `SaveAsync` turns it off for that
+  path with no error and no trace.
+
+- **`Capabilities`** — the three entitlement capability constants specification
+  section 8 asks each module to declare. `FormFieldConfiguration` is what the
+  lookup lists are gated on. Nothing is refused yet; see known limitations.
 
 ### The employee record — built
 
@@ -196,8 +254,43 @@ tenant, so a "Bank details" section would invite somebody to add a blog post to 
 
 ## Admin UI
 
-Four screens, each calling the same services a recipe step or an API would — no
+Seven screens, each calling the same services a recipe step or an API would — no
 screen holds a privileged path.
+
+### Forms, and the one new menu entry
+
+**`People → Forms` is the only admin menu entry the form designer gets.** A
+product-owner constraint rather than a preference: the designer brings a lookup
+list screen, a list editor, and later a reconciliation screen, a form list and a
+version history, and every one of them is individually reasonable to put in a
+menu. A menu is how a product becomes unusable one reasonable decision at a time.
+`PeopleMenuTenantTests` and `LookupListClickBrowserTests` are what stop it
+eroding, in both languages.
+
+- **`FormsAdminController`** — the Forms screen. In B1 it is the way in to the
+  lookup lists and an honest statement of what is not built yet, in the manner
+  `PlaceholderPickerTagHelper` already sets for this product. It exists now rather
+  than in B4 because a menu entry is the thing customers learn and link to, and
+  moving one later is a change every customer notices for no benefit they can see.
+
+- **`LookupListsAdminController`** — the list of lists, the editor, and the narrow
+  deletion. Reached from Forms, never from the menu.
+
+  **Entry rows are added and removed by round trip, not by script**, like the
+  placement split screen and for the reason it gives: these forms commit
+  configuration, and one that only worked once a script had loaded would silently
+  do nothing when it had not. The round trip is also what redraws a row's controls
+  against what the server knows — which is what keeps a saved entry's code
+  read-only and keeps Remove off it.
+
+  **The affordances match the rules.** A stored entry has no Remove button and a
+  read-only code, because it can never be removed or recoded; a reader who could
+  press Remove and then be refused would reasonably conclude the product was
+  broken rather than that the rule exists. The service refuses it either way —
+  `LookupListsAdminTenantTests` posts a hand-made request that drops one, and gets
+  the message on the form rather than a 500.
+
+### The employee screens
 
 - **`EmployeesAdminController`** — the list and the editor. The list searches a
   code and both halves of a name, filters by status, and shows where each person
@@ -410,6 +503,17 @@ can find.
 
 ## What it records in the audit trail
 
+Two categories.
+
+Category `Forms`, one mandatory event: `LookupListChanged`, carrying the whole
+list before and after and the operation that changed it. **A second category
+rather than more events in the first**, because changing a lookup list changes
+what every record in the tenant may say, while changing an employee changes one —
+and an auditor asking "who retired the grade every report groups by" should not
+have to read a thousand employee events to find it. Slice B3's form definitions
+file here too, which is why the category is named for what will live in it rather
+than for what is in it today.
+
 Category `Employee`, three mandatory events: `EmployeeChanged`,
 `EmploymentStatusChanged` and `JoinDateCorrected`. The last two are separate from
 the first because they are the kinds of edit that change what *other* modules do —
@@ -429,6 +533,14 @@ that records somebody leaving.
 | `ViewEmployees` — see the list and a record | Platform/Tenant admin, HR admin, Auditor |
 | `ChangeEmploymentStatus` — the lifecycle, and correcting a join date. Security-critical | Platform/Tenant admin, HR admin |
 | `ViewEmployeeSensitiveData` — bank details, documents, date of birth. Security-critical | Platform/Tenant admin, HR admin |
+| `ManageLookupLists` — create and change the lists a form field offers | Platform/Tenant admin, HR admin |
+
+**Lookup lists are configuration, not data, which is why they are not part of
+`ManageEmployees`.** Changing a list changes what every record in the tenant may
+say; changing an employee changes one. A customer routinely wants HR officers who
+keep records current without being able to redefine the grades those records are
+classified by. It is not security-critical: retiring a grade is disruptive and
+recoverable, because the entry and every record naming it survive.
 
 **Placement is deliberately not one of them.** Placing an employee on a structure
 is a dimension-engine write and already has
@@ -445,7 +557,32 @@ mechanism exists to prevent.
 
 ## Recipe steps
 
-`employees`, in `Recipes/`. People by code, which is what
+Two, in `Recipes/`, and the order between them matters: `lookup-lists` is applied
+before anything that names a value from one, and `employees` before the dimension
+engine's `employee-assignments` and `unit-heads`.
+
+### `lookup-lists`
+
+Lists by code, with their entries. Re-running is safe per ADR-0008, with two
+asymmetries worth knowing because neither is obvious:
+
+- **An entry the tenant holds and the file does not mention is not a
+  difference.** The ADR's rule is that comparison is scoped to what a row actually
+  states, and a list a customer has added their own entries to since a pack
+  shipped is exactly that case. Without this, every tenant that had ever used the
+  feature would be unable to re-run the recipe that built it.
+- **An entry the file states and the tenant does not hold *is* a difference, and
+  the step fails.** ADR-0008 applied literally: the row is making a claim the
+  tenant contradicts. The cost is real and is recorded under known limitations.
+
+`isActive` and `sortOrder` are nullable in the step model so that "absent" and
+"stated" are different things. An absent `isActive` means offered; an absent
+`sortOrder` means the order the file lists them in, which is the ruling ADR-0008's
+sort-order addendum already made for dimension records.
+
+### `employees`
+
+People by code, which is what
 `WorkMate.Dimensions`' `employee-assignments` and `unit-heads` resolve their
 references against — so a recipe lists this step before either of them.
 
@@ -469,10 +606,26 @@ may list people in any order.
 ### Export (ADR-0011)
 
 `Deployment/` holds the other half: `RecordsDeploymentStep`, under
-**Tools → Deployments**, with one switch (`IncludeEmployees`) writing the same
-`employees` step the importer reads. Leavers are exported — somebody who left in
-March is part of what this tenant is, and payroll and gratuity still answer
-questions about them.
+**Tools → Deployments**, with two switches writing the same steps the importers
+read. Leavers are exported — somebody who left in March is part of what this
+tenant is, and payroll and gratuity still answer questions about them.
+
+**`IncludeLookupLists` is on by default and `IncludeEmployees` is too, which is a
+different judgement from the dimension engine's.** A lookup list is
+configuration: the kind of thing that travels from a configuration tenant to a
+production one as a matter of course. That is the distinction the A3 amendment
+drew when it turned `IncludeAssignments` and `IncludeHeads` off by default
+because they are operational data about real people. A grade list is not about
+anybody.
+
+The export **states every field on every entry**, including `isActive` and
+`sortOrder` when they hold the value an importer would have defaulted to, because
+an export reproduces a tenant rather than expressing an intent — ADR-0008's
+sort-order addendum settled the same question for dimension records. Arabic is
+the exception and goes the other way: it is optional since ADR-0003's addendum,
+so an absent half is absent from the file rather than present and empty.
+`LookupListsExportRoundTripTenantTests` applies its own export twice, which is
+what catches a field written in a shape the comparison would read as different.
 
 What it cannot carry is a status *history*. An employee's past statuses are in
 the audit trail rather than in a dated table, so what the record holds, and
@@ -484,6 +637,10 @@ because the join between them is a code resolved at import.
 
 ## Decisions recorded
 
+- **ADR-0014** — a managed lookup list is a document of ours, not an Orchard
+  taxonomy. Departs from specification section 5's field table, so it is accepted
+  **pending second review**; read it before touching anything in the lookup list
+  layer.
 - **ADR-0003 and its addendum** — the bilingual field lives in
   `WorkMate.Platform`; English is required and Arabic is optional unless the
   tenant turns `RequireArabicNames` on. Asked here through `IBilingualNamePolicy`,
@@ -522,6 +679,59 @@ the two cannot disagree — both are "the English name" — and a path where Liq
 does work gives the same answer rather than a different one.
 
 ## Known limitations
+
+### Which edition each capability belongs to is not decided
+
+`Capabilities.cs` declares `FormFieldConfiguration`, `FormDesigner` and
+`FormDefinitionVersioning`, and `LookupListService` asks
+`IEntitlementService.IsAllowedAsync` before every write. **Nothing is refused**,
+on two counts. There is nothing to ask — `WorkMate.Entitlement` is a skeleton and
+the signed entitlement record arrives in prompt 8, so the platform's
+`AllowAllEntitlementService` answers yes. And the product specification's
+packaging table ("Forms | Standard forms, field configuration | Full form
+designer | Form designer plus definition versioning") has not been confirmed as
+the mapping, so guessing it here would turn a commercial decision into a code one
+taken by accident.
+
+The constants and the call sites are in place so that settling the question is a
+change to one implementation rather than a hunt through every service.
+
+### A second version of a pack cannot add an entry to a list a tenant already has
+
+`lookup-lists` follows ADR-0008 exactly: a stated entry the tenant does not hold
+is the row making a claim the tenant contradicts, so the step fails naming it.
+The consequence is that shipping `grade` with a sixth entry to a tenant that has
+five means the operator adds the sixth through the screen; re-applying the file
+after that succeeds, because then every stated entry matches.
+
+Filling the gap in silently is the behaviour ADR-0008 exists to refuse, and the
+one case where it was allowed — the `employeeAttachableTypeCodes` addendum —
+turned on the model documenting empty as *an absence* rather than *an answer*. A
+list with entries in it has answered. If this proves painful in practice it is an
+addendum to ADR-0008 with a worked case behind it, not a quiet change here.
+
+### Lookup lists are not cached yet
+
+Specification section 9 requires a per-tenant cache with tenant-prefixed keys for
+anything read on every request, which is what `WorkMate.Dimensions` does for
+structures and types through `ISignal` and `CacheAside`. In B1 a lookup list is
+read by two admin screens and nothing else, so the machinery would be cost with
+no benefit and one more thing to invalidate correctly. **Slice B2 is where it
+becomes necessary**, because that is when a bound field resolves a list on every
+employee editor render — and the cache arrives with the test that asserts the key
+contains the tenant name, as the dimension engine's does.
+
+### No lookup lists ship yet, and the demo tenants have no section data to reconcile
+
+The standard lists — job title, grade, employment type, nationality, document
+type, relationship, currency — are slice B2's, with the editor that binds a field
+to one. Until then a tenant has whatever lists it creates.
+
+Worth recording because it is the reason the binding is cheap: the `employees`
+recipe step carries only the employee **core**, so no demo employee on Zenith or
+Crescent has a job detail, a document, a bank account, a qualification, a
+dependant or a contact. There is almost nothing to migrate, which makes this the
+cheapest moment the change will ever have.
 
 ### Two simultaneous creates can share a code
 

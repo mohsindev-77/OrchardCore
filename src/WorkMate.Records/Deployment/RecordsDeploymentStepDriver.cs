@@ -24,6 +24,7 @@ public sealed class RecordsDeploymentStepDriver : DisplayDriver<DeploymentStep, 
         Initialize<RecordsDeploymentStepViewModel>("RecordsDeploymentStep_Fields_Edit", model =>
         {
             model.IncludeEmployees = step.IncludeEmployees;
+            model.IncludeLookupLists = step.IncludeLookupLists;
         }).Location("Content");
 
     public override async Task<IDisplayResult> UpdateAsync(
@@ -34,9 +35,11 @@ public sealed class RecordsDeploymentStepDriver : DisplayDriver<DeploymentStep, 
 
         var model = new RecordsDeploymentStepViewModel();
 
-        await context.Updater.TryUpdateModelAsync(model, Prefix, m => m.IncludeEmployees);
+        await context.Updater.TryUpdateModelAsync(
+            model, Prefix, m => m.IncludeEmployees, m => m.IncludeLookupLists);
 
         step.IncludeEmployees = model.IncludeEmployees;
+        step.IncludeLookupLists = model.IncludeLookupLists;
 
         return Edit(step, context);
     }

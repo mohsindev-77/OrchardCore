@@ -45,6 +45,11 @@ public sealed class Startup : StartupBase
 
         services.AddScoped<IEmployeeService, EmployeeService>();
 
+        // The managed lookup lists a choice field offers. Documents of ours rather than Orchard
+        // taxonomies, per ADR-0014 — read it before changing any of this.
+        services.AddIndexProvider<LookupListIndexProvider>();
+        services.AddScoped<ILookupListService, LookupListService>();
+
         // This module's answer to the dimension engine's question "who is this employee". Declared
         // there, implemented here, because that module needs the answer and must not depend on the
         // module that holds it — the same shape as IDimensionDeletionBlockerProvider.
@@ -64,6 +69,14 @@ public sealed class Startup : StartupBase
         // This module's audit trail category and its three events, so an administrator can find and
         // filter them alongside Orchard's own.
         services.AddTransient<IConfigureOptions<AuditTrailOptions>, RecordsAuditTrailOptionsConfiguration>();
+
+        // And the form configuration category beside it. A second category rather than more events
+        // in the first: changing a lookup list changes what every record may say, which is a
+        // different question from what any one of them does say. See FormsAuditTrail.
+        services.AddTransient<IConfigureOptions<AuditTrailOptions>, FormsAuditTrailOptionsConfiguration>();
+
+        // The lists, before anything that names a value from one.
+        services.AddRecipeExecutionStep<LookupListsRecipeStep>();
 
         // People, by code — the step the dimension engine's employee-assignments and unit-heads
         // steps resolve their references against, so a recipe lists this one before either of

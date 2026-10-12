@@ -1,0 +1,82 @@
+@model List<LookupListListItemViewModel>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>@T["Lookup lists"]</h1>
+    <a asp-action="Create" class="btn btn-primary" id="lookup-list-create">@T["Create lookup list"]</a>
+</div>
+
+@* Back to where this screen is reached from, because it is reached from there and from nowhere
+   else: there is no menu entry for it. *@
+<p>
+    <a asp-controller="FormsAdmin" asp-action="Index" id="lookup-list-back">@T["Back to Forms"]</a>
+</p>
+
+<p class="text-muted">
+    @T["A lookup list is the set of choices a field offers — grades, employment types, document types, nationalities. Each entry has a code, which is what records store, and a name in both languages, which is what a reader sees. An entry is retired rather than deleted, so a record created last year still reads correctly."]
+</p>
+
+@if (Model.Count == 0)
+{
+    <p id="lookup-list-empty">@T["No lookup lists have been created yet."]</p>
+}
+else
+{
+    @* Identified so a test can read this list rather than the whole page. *@
+    <table class="table table-striped align-middle" id="lookup-list-table">
+        <thead>
+            <tr>
+                <th>@T["Code"]</th>
+                <th>@T["Name"]</th>
+                <th class="text-end">@T["Entries"]</th>
+                <th>@T["Status"]</th>
+                <th class="text-end">@T["Actions"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var list in Model)
+            {
+                <tr class="lookup-list-row" data-lookup-list-code="@list.Code">
+                    <td><code>@list.Code</code></td>
+                    <td>
+                        <div dir="ltr" lang="en" class="lookup-list-name-en">@list.NameEn</div>
+                        @* Only when there is Arabic to show. Optional since ADR-0003's addendum, so
+                           an untranslated row would otherwise carry an empty second line. *@
+                        @if (!string.IsNullOrWhiteSpace(list.NameAr))
+                        {
+                            <div dir="rtl" lang="ar" class="text-muted small lookup-list-name-ar">@list.NameAr</div>
+                        }
+                    </td>
+                    <td class="text-end lookup-list-counts">
+                        <span>@T["{0} active", list.ActiveItemCount]</span>
+                        @if (list.RetiredItemCount > 0)
+                        {
+                            <div class="text-muted small">@T["{0} retired", list.RetiredItemCount]</div>
+                        }
+                    </td>
+                    <td>
+                        @if (list.IsSystemDefined)
+                        {
+                            <span class="badge text-bg-info">@T["System-defined"]</span>
+                        }
+                        else
+                        {
+                            <span class="badge text-bg-success">@T["Tenant's own"]</span>
+                        }
+                    </td>
+                    <td class="text-end">
+                        <a asp-action="Edit" asp-route-id="@list.LookupListId"
+                           class="btn btn-sm btn-outline-secondary lookup-list-edit">@T["Edit"]</a>
+                        @* Offered only where it can succeed. A list with entries can never be
+                           deleted — an entry may be a value records already hold — so a button
+                           that would always be refused is not shown at all. *@
+                        @if (!list.IsSystemDefined && list.ItemCount == 0)
+                        {
+                            <a asp-action="Delete" asp-route-id="@list.LookupListId"
+                               class="btn btn-sm btn-outline-danger lookup-list-delete">@T["Delete"]</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

@@ -114,6 +114,50 @@ public sealed class Migrations : DataMigration
     }
 
     /// <summary>
+    /// The table behind <see cref="LookupListIndex"/>: the managed lists a choice field offers.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0014 decided these are documents of ours rather than Orchard taxonomies, so this module
+    /// owns their schema. One row per list; the entries live in the document, because a list is
+    /// read whole — a reader is offered all of it or none of it — and a second table would buy a
+    /// join on every render for a set that is tens of rows.
+    ///
+    /// <b>Called only from <see cref="UpdateFrom3Async"/>, never from <see cref="CreateAsync"/>.</b>
+    /// A brand-new tenant runs <see cref="CreateAsync"/> and then every <c>UpdateFromNAsync</c> in
+    /// turn, so a table named in both would be created twice and the second attempt fails the whole
+    /// migration — which fails tenant setup, with an error about a table rather than about the step
+    /// that added it. A wholly new table therefore goes in the new step alone, exactly as
+    /// <c>WorkMate.Dimensions.Migrations.UpdateFrom5Async</c> does for <c>UnitHeadIndex</c>.
+    ///
+    /// That is not in tension with ADR-0009. The rule there is that a <em>shipped</em> step is never
+    /// edited, and that <see cref="CreateAsync"/> is kept current for things an update step cannot
+    /// express on its own — a content type setting, say, which <see cref="UpdateFrom2Async"/> had to
+    /// state in both places because altering a definition is idempotent and creating a table is not.
+    /// </remarks>
+    private async Task CreateLookupListIndexAsync()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<LookupListIndex>(table => table
+            .Column<string>(nameof(LookupListIndex.LookupListId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(LookupListIndex.Code), column => column.WithLength(LookupCodes.MaxLength))
+            .Column<string>(nameof(LookupListIndex.CodeUpper), column => column.WithLength(LookupCodes.MaxLength))
+            .Column<string>(nameof(LookupListIndex.NameEn), column => column.WithLength(NameLength))
+            .Column<string>(nameof(LookupListIndex.NameAr), column => column.WithLength(NameLength))
+            .Column<bool>(nameof(LookupListIndex.IsSystemDefined))
+            .Column<int>(nameof(LookupListIndex.ItemCount))
+            .Column<int>(nameof(LookupListIndex.ActiveItemCount)));
+
+        await SchemaBuilder.AlterIndexTableAsync<LookupListIndex>(table =>
+        {
+            // The uniqueness check on create and the lookup a recipe step, an export and a bound
+            // field's editor all make. On the folded column, because that is what the comparison
+            // uses — see LookupListIndex.CodeUpper.
+            table.CreateIndex($"IDX_{nameof(LookupListIndex)}_CodeUpper", nameof(LookupListIndex.CodeUpper));
+
+            table.CreateIndex($"IDX_{nameof(LookupListIndex)}_LookupListId", nameof(LookupListIndex.LookupListId));
+        });
+    }
+
+    /// <summary>
     /// The fixed core, declared here rather than by a service.
     /// </summary>
     /// <remarks>
@@ -331,6 +375,104 @@ public sealed class Migrations : DataMigration
             }));
 
         return 3;
+    }
+
+    /// <summary>
+    /// Gives a tenant created before slice B1 the table the managed lookup lists live in.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0009: a shipped step is never edited, so the table arrives in a step of its own. It is
+    /// the only place the table is created — see <see cref="CreateLookupListIndexAsync"/> for why
+    /// naming it in <see cref="CreateAsync"/> as well would fail every fresh tenant's setup.
+    ///
+    /// <b>It is safe to re-enter.</b> No earlier step creates this table, so the guard is not
+    /// about tolerating two shipped versions the way
+    /// <c>WorkMate.Dimensions.Migrations.UpdateFrom3Async</c>'s is. It is about a recorded version
+    /// going backwards, which happens — see <see cref="TableExistsAsync"/> for the three ways and
+    /// for what the failure looks like when it does, which is a migration aborting somewhere else
+    /// entirely.
+    ///
+    /// <c>RecordsMigrationUpgradeTenantTests</c> is the upgrade test the rule requires: it rolls a
+    /// tenant back to version 3, drops the table as a tenant of that vintage would have had it,
+    /// runs the migration forward, and then creates and reads a list through
+    /// <see cref="Services.ILookupListService"/> — the real operation, not a check that a column
+    /// exists.
+    /// </remarks>
+    public async Task<int> UpdateFrom3Async()
+    {
+        if (!await TableExistsAsync(nameof(LookupListIndex)))
+        {
+            await CreateLookupListIndexAsync();
+        }
+
+        return 4;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="tableName"/> already exists, read from the database itself rather
+    /// than inferred from the recorded migration version.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why a migration step that creates a table has to ask.</b> Orchard's runner records a
+    /// version per tenant and will not normally re-run a step the tenant is past — but "normally"
+    /// is doing real work in that sentence. A recorded version can go backwards: an operator
+    /// repairing a half-migrated tenant, a restore that brings back an older migration document
+    /// beside a newer schema, or — the case that found this — another part of the suite rolling
+    /// this module back to exercise an earlier step. The runner then re-enters this step against a
+    /// database that already has the table, <c>CreateMapIndexTableAsync</c> throws, and the whole
+    /// feature's migration aborts: every later step stops running and the failure surfaces
+    /// somewhere else entirely.
+    ///
+    /// A step that is safe to re-enter costs one query and removes that whole class of problem.
+    /// <c>WorkMate.Dimensions.Migrations.UpdateFrom3Async</c> reached the same conclusion for a
+    /// column, by a different route, and carries the detail on why
+    /// <c>DbConnection.GetSchema("Columns", …)</c> is not the provider-agnostic answer it looks
+    /// like — <c>Microsoft.Data.Sqlite</c> 10.0.8, the provider these tests run against, does not
+    /// implement the collection at all. So each dialect is queried directly.
+    ///
+    /// SQL Server's branch is unverified against a live SQL Server — this solution's tests run on
+    /// SQLite only — but <c>INFORMATION_SCHEMA.TABLES</c> is standard ANSI SQL rather than a
+    /// SQL-Server-specific guess.
+    /// </remarks>
+    private async Task<bool> TableExistsAsync(string tableName)
+    {
+        var fullTableName = SchemaBuilder.TablePrefix + tableName;
+        var connection = SchemaBuilder.Connection;
+
+        var wasClosed = connection.State == System.Data.ConnectionState.Closed;
+
+        if (wasClosed)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = SchemaBuilder.Transaction;
+
+            command.CommandText =
+                string.Equals(SchemaBuilder.Dialect.Name, "Sqlite", StringComparison.OrdinalIgnoreCase)
+                    ? "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = @table"
+                    : "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @table";
+
+            var tableParameter = command.CreateParameter();
+            tableParameter.ParameterName = "@table";
+            tableParameter.Value = fullTableName;
+            command.Parameters.Add(tableParameter);
+
+            var count = await command.ExecuteScalarAsync();
+
+            return count is not null and not DBNull &&
+                Convert.ToInt64(count, CultureInfo.InvariantCulture) > 0;
+        }
+        finally
+        {
+            if (wasClosed)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 
     /// <summary>One field on one section item type.</summary>

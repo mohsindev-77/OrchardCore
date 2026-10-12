@@ -41,13 +41,26 @@ internal sealed class RecordsDeploymentSource : DeploymentSourceBase<RecordsDepl
     private const int PageSize = 200;
 
     private readonly IEmployeeService _employees;
+    private readonly ILookupListService _lookupLists;
 
-    public RecordsDeploymentSource(IEmployeeService employees) => _employees = employees;
+    public RecordsDeploymentSource(IEmployeeService employees, ILookupListService lookupLists)
+    {
+        _employees = employees;
+        _lookupLists = lookupLists;
+    }
 
     protected override async Task ProcessAsync(RecordsDeploymentStep step, DeploymentPlanResult result)
     {
         ArgumentNullException.ThrowIfNull(step);
         ArgumentNullException.ThrowIfNull(result);
+
+        // Lists first, because a value an employee record holds has to resolve against a list that
+        // already exists. Nothing in slice B1 binds a field to a list yet, so nothing yet depends on
+        // the order — which is exactly why it is worth fixing now rather than after something does.
+        if (step.IncludeLookupLists)
+        {
+            await ExportLookupListsAsync(result);
+        }
 
         if (!step.IncludeEmployees)
         {
@@ -81,6 +94,86 @@ internal sealed class RecordsDeploymentSource : DeploymentSourceBase<RecordsDepl
             ["name"] = "employees",
             ["employees"] = new JsonArray([.. ordered.Select(employee => Entry(employee, byId))]),
         });
+    }
+
+    /// <summary>
+    /// Writes the <c>lookup-lists</c> step the importer reads.
+    /// </summary>
+    /// <remarks>
+    /// <b>Every field is stated, including the ones a hand-written recipe would leave out.</b> An
+    /// export reproduces a tenant rather than expressing an intent, so <c>isActive</c> and
+    /// <c>sortOrder</c> are written on every entry even when they hold the value the importer would
+    /// have defaulted to. ADR-0008's sort-order addendum settled the same question for dimension
+    /// records and gave the reason: a round trip that rebuilt the same list in a different order
+    /// would have reproduced something else.
+    ///
+    /// Arabic is the exception, and for the opposite reason. It is optional since ADR-0003's
+    /// addendum, so an absent half is absent from the file rather than present and empty — the two
+    /// say different things, and the importer's comparison treats a stated empty name as a claim.
+    /// </remarks>
+    private async Task ExportLookupListsAsync(DeploymentPlanResult result)
+    {
+        var lists = await _lookupLists.ListAsync();
+
+        if (lists.Count == 0)
+        {
+            return;
+        }
+
+        result.Steps.Add(new JsonObject
+        {
+            ["name"] = "lookup-lists",
+            // By code, so two exports of the same tenant produce the same file and a diff between
+            // them is a difference in the data rather than in the iteration.
+            ["lists"] = new JsonArray(
+            [
+                .. lists
+                    .OrderBy(list => list.Code, StringComparer.Ordinal)
+                    .Select(LookupListEntry),
+            ]),
+        });
+    }
+
+    private static JsonObject LookupListEntry(LookupListDocument list)
+    {
+        var entry = new JsonObject
+        {
+            ["code"] = list.Code,
+            ["nameEn"] = list.Name.En,
+            ["isSystemDefined"] = list.IsSystemDefined,
+            ["items"] = new JsonArray(
+            [
+                .. list.Items
+                    .OrderBy(item => item.SortOrder)
+                    .ThenBy(item => item.Name.En, StringComparer.OrdinalIgnoreCase)
+                    .Select(LookupListItemEntry),
+            ]),
+        };
+
+        if (!string.IsNullOrWhiteSpace(list.Name.Ar))
+        {
+            entry["nameAr"] = list.Name.Ar;
+        }
+
+        return entry;
+    }
+
+    private static JsonObject LookupListItemEntry(LookupListItem item)
+    {
+        var entry = new JsonObject
+        {
+            ["code"] = item.Code,
+            ["nameEn"] = item.Name.En,
+            ["isActive"] = item.IsActive,
+            ["sortOrder"] = item.SortOrder,
+        };
+
+        if (!string.IsNullOrWhiteSpace(item.Name.Ar))
+        {
+            entry["nameAr"] = item.Name.Ar;
+        }
+
+        return entry;
     }
 
     private static JsonObject Entry(EmployeeRecord employee, Dictionary<string, EmployeeRecord> byId)
