@@ -8,12 +8,16 @@ namespace WorkMate.Records.Internal;
 /// <c>IMemoryCache</c> involved, and it is the one place a tenant-qualified key is built, so every
 /// cached read and every invalidation call agree on the same shape.
 ///
-/// <b><c>IMemoryCache</c> in this host is a singleton shared across every tenant in the process</b>
-/// — Orchard Core does not re-register it per shell — so the tenant name is part of every key, not
-/// an afterthought. Two tenants whose grade lists happen to share the code <c>grade</c> must never
-/// see each other's entries, and a lookup list is exactly the kind of small, frequently read
-/// document where that mistake would be invisible until somebody noticed one customer's grades on
-/// another customer's screen. <c>RecordsCacheKeyTests</c> asserts the tenant is in every key.
+/// <b>The tenant is in every key, and the reason is not the one this comment used to give.</b> It
+/// said <c>IMemoryCache</c> was a process-wide singleton shared by every tenant. That is wrong, and
+/// it was checked rather than assumed when the invalidation defect behind ADR-0019 was being traced:
+/// Orchard registers <c>IMemoryCache</c> in the tenant container (<c>OrchardCore.AddCaching</c>, and
+/// the comment there says so), and a tenant that is released gets a new one — measured on a live
+/// tenant, the instance changes when a recipe releases the shell. So two tenants cannot collide
+/// today. The tenant stays in the key anyway, because a key that is correct only while a
+/// registration in another codebase stays as it is, is not a key worth relying on, and because the
+/// specification's section 9 rule says every cache key begins with the tenant name.
+/// <c>RecordsCacheKeyTests</c> asserts it is there.
 ///
 /// Invalidation is coarse on purpose: one signal for every lookup list in a tenant, not one per
 /// list. Lists are read on every employee editor render and written a handful of times in a

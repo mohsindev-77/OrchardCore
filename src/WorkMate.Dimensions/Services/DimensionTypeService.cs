@@ -11,6 +11,7 @@ using OrchardCore.Title.Models;
 using WorkMate.Core;
 using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
+using WorkMate.Platform.Services;
 using YesSql;
 
 namespace WorkMate.Dimensions.Services;
@@ -102,8 +103,27 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         S = stringLocalizer;
     }
 
+    /// <summary>
+    /// Evicts the cached type reads: now, and again once this scope's writes have committed.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CacheSignals.SignalNowAndAfterCommitAsync"/> rather than
+    /// <c>ISignal.SignalTokenAsync</c> alone, which is ADR-0019 and was a defect here before it was
+    /// a decision: a signal sent as the write is staged lands before the session commits, so a read
+    /// arriving in between caches the state the write is about to replace under a token that will
+    /// never be signalled again. It was found in <c>WorkMate.Records</c>' lookup lists, where the
+    /// symptom was visible — bound fields rendering as free text until the application restarted —
+    /// and this was the same code with the same hole.
+    ///
+    /// <b>The immediate half of that helper matters more here than anywhere else in the product.</b>
+    /// This module writes and then reads in one scope all the time — a recipe step creating types
+    /// and then the records that name them, a designer action, a scenario builder — and those reads
+    /// go through the cached lookup. Deferring the signal and sending nothing immediately fails some
+    /// thirty tests in this module, which is how the rule got its shape.
+    /// <c>DimensionCachingTenantTests</c> now covers both halves.
+    /// </remarks>
     private Task InvalidateCacheAsync() =>
-        _signal.SignalTokenAsync(DimensionCacheKeys.TypesSignal(_shellSettings.Name));
+        _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.TypesSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<DimensionResult<DimensionTypeDocument>> CreateAsync(

@@ -358,7 +358,7 @@ tenant, so a "Bank details" section would invite somebody to add a blog post to 
 
 ## Admin UI
 
-Seven screens, each calling the same services a recipe step or an API would — no
+Eight screens, each calling the same services a recipe step or an API would — no
 screen holds a privileged path.
 
 ### Forms, and the one new menu entry
@@ -376,6 +376,27 @@ eroding, in both languages.
   `PlaceholderPickerTagHelper` already sets for this product. It exists now rather
   than in B4 because a menu entry is the thing customers learn and link to, and
   moving one later is a change every customer notices for no benefit they can see.
+
+  **It carries the Load standard lists button**, shown only while a list in
+  `StandardLookupLists.All` is missing — which on a tenant created after B2 is
+  never, because the base recipe applies the same file at setup. A tenant upgraded
+  into B2 has the bindings and none of the entries, so its bound fields render as
+  free-text boxes until somebody loads them; before this existed the only way to
+  do that was Configuration → Recipes, an operator's screen listing every recipe
+  in the installation, three clicks from anything an HR administrator should be
+  touching.
+
+  **`IStandardLookupListsLoader` runs the module's own recipe rather than holding
+  a second copy of the entries.** A hundred and sixty codes and twice that many
+  names in C# beside the same thing in JSON is a pair that drifts, and the first
+  time it did, a tenant seeded by the button and one seeded by the recipe would
+  hold different lists under the same codes with nothing to report it. Running the
+  file also inherits what the recipe step already guarantees: safe to press twice,
+  fills in entries a later version adds, leaves the customer's own entries alone
+  (ADR-0008), and writes through `ILookupListService` so every list is validated
+  and audited like a hand-typed one. The permission and the entitlement are checked
+  in the loader, before the step enters system authority — out there the caller is
+  still a person, and inside it the platform is acting.
 
 - **`LookupListsAdminController`** — the list of lists, the editor, the narrow
   deletion, and the **Check stored values** screen. Reached from Forms, never from
@@ -424,6 +445,53 @@ eroding, in both languages.
   **The list resolves placement in two queries per page, not two per row.** A
   screen is the easiest place in a product to grow an N+1, and this one would
   have grown it on the column that matters most.
+
+- **`EmployeeSectionsAdminController`** — the six sections of one employee, at
+  `/Admin/Employees/Sections/Edit/{id}`, reached from the employee page and from
+  nowhere in the menu.
+
+  **It replaces a link to Orchard's generic content editor**, which worked and was
+  addressed to somebody else: it introduced the job details section as "JobDetails
+  — Provides a collection behavior for your content item where you can place other
+  content items", put a disabled "Title — auto-generated using the pattern" box
+  above it, and lit up Content → Content Items in the menu while the reader was in
+  the middle of an employee record.
+
+  **The fields inside a section are still Orchard's**, built through
+  `IContentItemDisplayManager` by the display drivers that own each field type —
+  including this module's lookup editor on the bound ones. Only the frame is ours.
+  Reimplementing the editor would mean doing it again for every field type the
+  form designer adds in B3.
+
+  **Three extension points, no change to Orchard**, as the hard boundary requires:
+  a controller of our own; the shape alternate
+  `Views/ContentPart-Employee-BagPart.Edit.cshtml`, which is
+  `ContentPart_Edit__Employee__BagPart` and so matches every bag section on the
+  employee type and nothing else in the tenant; and `placement.json`, which
+  withholds `TitlePart_Edit`.
+
+  **The alternate is generic over the sections.** The six WorkMate ships are named
+  in it because they are ours to word; a section the designer adds is headed with
+  the display name the tenant gave it. Nothing here needs changing when the set
+  changes — and it will: the FRS work on positions moves grade off the job details
+  section.
+
+  **Withholding the title editor does not withhold the title.** `TitlePartHandler`
+  generates it from the pattern on save, which is what `GeneratedDisabled` means;
+  the editor was only ever showing the answer. `EmployeeSectionsTenantTests` saves
+  a section and asserts the employee's name and generated title are untouched.
+  `placement.json` lists the seven content types by name because Orchard 3.0.1
+  ships placement filters for content type and content part only — there is no
+  stereotype filter — so a section type the designer adds in B3 will need its own
+  line, or a shape table provider that can read the stereotype. That file carries
+  no comments because Orchard deserialises every top-level key in it as a
+  placement node, `$comment` included.
+
+  **The write goes through `IEmployeeService.UpdateSectionsAsync`**, which owns the
+  permission, the publish and the audit entry. `GetContentItemAsync` is the only
+  place this module hands a `ContentItem` out, and the pair is why that is not a
+  leak: a caller holding the item cannot save it without stepping outside the
+  aggregate.
 
 - **`EmployeeLifecycleAdminController`** — the five dated transitions, each its
   own small form rather than one screen with a dropdown, for the reason the
@@ -788,6 +856,18 @@ because the join between them is a code resolved at import.
   Read it before writing session B's form designer, which creates content types at
   runtime the same way this module's migration does.
 - **ADR-0009** — migrations are append-only.
+- **ADR-0019** — a cache invalidation is signalled again after the write commits.
+  This module's lookup list cache is what found it: `ISignal.SignalTokenAsync` on
+  its own fires while the write is still staged on the session, so a read that
+  overlaps the write caches the pre-write state under a token nothing will signal
+  again — and the lists loaded by the standard-lists recipe went on rendering as
+  free-text boxes until the application was restarted. Writes here now go through
+  `CacheSignals.SignalNowAndAfterCommitAsync`, and
+  `CacheInvalidationSignalTests` in this module's test project fails the build if
+  anything calls `SignalTokenAsync` directly. The same ADR records the second line
+  taken here and nowhere else: `CachedLookupListLookup` never caches an absence,
+  because a stale "there is no such list" looks exactly like the correct behaviour
+  for a tenant that has not loaded them.
 - **ADR-0012** — the unit head is a dated appointment of its own, not a flag on an
   assignment row and not a field on the dimension record. The storage and the
   service surface are in `WorkMate.Dimensions`; what this module owns is closing

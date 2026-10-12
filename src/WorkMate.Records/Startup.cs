@@ -60,6 +60,11 @@ public sealed class Startup : StartupBase
         // reconciliation screen alike.
         services.AddScoped<ILookupChoiceProvider, LookupChoiceProvider>();
 
+        // The Load standard lists button on People > Forms. It runs this module's own recipe rather
+        // than holding a second copy of the entries, so a tenant seeded at setup and one seeded
+        // afterwards get the same lists from the same file.
+        services.AddScoped<IStandardLookupListsLoader, StandardLookupListsLoader>();
+
         // Finding the values records hold that are in no list, and mapping them.
         services.AddScoped<ILookupValueReconciliation, LookupValueReconciliation>();
 

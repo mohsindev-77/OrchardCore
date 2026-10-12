@@ -6,6 +6,34 @@
     @T["How the employee record is configured: the fields each section holds, and the lists a field offers as choices."]
 </p>
 
+@* Shown only while something is missing, which on a tenant created after slice B2 is never: the
+   base recipe applies the same file at setup. A tenant upgraded into the slice has the bindings and
+   none of the entries, so its bound fields render as free-text boxes until this is pressed — and
+   before this existed, the only way to press it was Configuration > Recipes, an operator's screen
+   that lists every recipe in the installation. Safe to press twice: the recipe step compares what
+   it finds and changes nothing that already matches (ADR-0008). *@
+@if (Model.MayManageLookupLists && Model.MissingStandardLists.Count > 0)
+{
+    <div class="card mb-3 border-primary" id="forms-standard-lists">
+        <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="h5 card-title">@T["Load the standard lists"]</h2>
+                <p class="card-text text-muted mb-0">
+                    @T["This tenant does not have the lists WorkMate ships, so the fields that offer them are still plain text boxes. Loading them turns those fields into drop-downs straight away. Nothing already in a record is changed, and anything typed before is kept."]
+                </p>
+                <p class="card-text small text-muted mb-0" id="forms-standard-lists-missing">
+                    @T["Missing: {0}.", string.Join(", ", Model.MissingStandardLists)]
+                </p>
+            </div>
+            <form method="post" asp-action="LoadStandardLists" class="ms-3">
+                <button type="submit" class="btn btn-primary text-nowrap" id="forms-load-standard-lists">
+                    @T["Load standard lists"]
+                </button>
+            </form>
+        </div>
+    </div>
+}
+
 @* The one way in to the lookup lists. The product owner's rule is that the form designer adds a
    single admin menu entry, so every other screen it brings is reached from here or from the
    employee editor. *@

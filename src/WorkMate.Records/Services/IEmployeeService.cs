@@ -1,3 +1,4 @@
+using OrchardCore.ContentManagement;
 using WorkMate.Core;
 using WorkMate.Records.Models;
 
@@ -145,6 +146,40 @@ public interface IEmployeeService
 
     /// <summary>The employee with this id, or null.</summary>
     Task<EmployeeRecord?> GetAsync(string employeeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The employee's content item, for the one screen that edits the sections on it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The only place this module hands a <see cref="ContentItem"/> out, and it is deliberate
+    /// rather than a leak.</b> The six standard sections are <c>BagPart</c>s on this item, edited by
+    /// Orchard's own display drivers through <c>IContentItemDisplayManager</c> — which takes a
+    /// content item and nothing else. Projecting them into a view model of our own would mean
+    /// reimplementing the editor for every field type a section can hold, and then again for every
+    /// field type the form designer adds in slice B3.
+    ///
+    /// What does not leak is the writing: the item comes back through
+    /// <see cref="UpdateSectionsAsync"/>, which is where the permission, the publish and the audit
+    /// entry live. A caller holding this cannot save it through <c>IContentManager</c> without
+    /// stepping outside the aggregate, and <c>EmployeeSectionsAdminController</c> is the one caller.
+    /// </remarks>
+    Task<ContentItem?> GetContentItemAsync(string employeeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Saves changes made to the sections on an employee's content item.
+    /// </summary>
+    /// <remarks>
+    /// Takes the item that <see cref="GetContentItemAsync"/> returned and the editor has since
+    /// updated. It does not inspect what changed: the sections are whatever the tenant has
+    /// configured — six today, more when the form designer ships, and the FRS work on positions will
+    /// change what is on the job details one — so a method that knew their shape would be wrong by
+    /// the next slice. What it owns is what is true of saving any of them: who may do it, that the
+    /// item is published rather than left as a draft, and that the audit trail says the record was
+    /// touched and by whom.
+    /// </remarks>
+    Task<RecordResult<EmployeeRecord>> UpdateSectionsAsync(
+        ContentItem item,
+        CancellationToken cancellationToken = default);
 
     /// <summary>The employee with this code, or null. How a recipe and an export name one.</summary>
     Task<EmployeeRecord?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);

@@ -1,4 +1,5 @@
 using System.Globalization;
+using OrchardCore.DisplayManagement;
 using WorkMate.Core;
 using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Services;
@@ -726,4 +727,39 @@ public static class EmployeeDisplay
         value == decimal.Truncate(value)
             ? value.ToString("0'%'", CultureInfo.CurrentCulture)
             : value.ToString("0.##'%'", CultureInfo.CurrentCulture);
+}
+
+/// <summary>
+/// The employee sections screen: who the record is about, and the editor for the sections on it.
+/// </summary>
+/// <remarks>
+/// <b>It carries a shape, which no other view model in this module does.</b> The sections are
+/// <c>BagPart</c>s edited by Orchard's own display drivers, and what those produce is a shape tree
+/// rather than a value this module could usefully project. Flattening it into properties would mean
+/// reimplementing the editor for every field type a section holds, and again for every type the form
+/// designer adds in slice B3 — see <c>EmployeeSectionsAdminController</c>.
+///
+/// The name and the code are beside it for the reason every other screen in this module carries
+/// them: a form about a person says which person, so that somebody who opened two tabs can tell
+/// them apart before they type into one.
+/// </remarks>
+public sealed class EmployeeSectionsViewModel
+{
+    public string EmployeeId { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary>Whether the reader may change what they are looking at.</summary>
+    /// <remarks>
+    /// An auditor holds <c>ViewEmployees</c> and not <c>ManageEmployees</c>: reading somebody's
+    /// documents is their job and changing them is not. They get the screen without a Save button —
+    /// not rendered rather than rendered and refused, the rule the lifecycle controls and the
+    /// lookup list screens already follow. The service refuses the post either way.
+    /// </remarks>
+    public bool MaySave { get; set; }
+
+    /// <summary>The editor shape for the employee's content item.</summary>
+    public IShape Editor { get; set; } = default!;
 }

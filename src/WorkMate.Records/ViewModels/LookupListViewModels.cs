@@ -263,4 +263,18 @@ public sealed class FormsIndexViewModel
     /// rendered, rather than rendered and disabled.
     /// </remarks>
     public bool MayManageLookupLists { get; set; }
+
+    /// <summary>
+    /// The lists WorkMate ships that this tenant does not hold yet.
+    /// </summary>
+    /// <remarks>
+    /// Drives the "Load standard lists" card, which is shown only while something is missing. A
+    /// tenant created after slice B2 has them all from setup and never sees it; a tenant upgraded
+    /// into the slice sees it once, presses it, and never sees it again.
+    ///
+    /// The codes rather than a count, because the card names them. "Ten lists are missing" is a
+    /// number somebody has to take on trust; "grade, employment type, nationality…" is a sentence
+    /// they can check against the screen they were just looking at.
+    /// </remarks>
+    public IReadOnlyList<string> MissingStandardLists { get; set; } = [];
 }

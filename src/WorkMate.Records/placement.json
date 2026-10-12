@@ -1,0 +1,16 @@
+{
+  "TitlePart_Edit": [
+    {
+      "place": "-",
+      "contentType": [
+        "Employee",
+        "EmployeeJobDetail",
+        "EmployeeDocument",
+        "EmployeeBankAccount",
+        "EmployeeQualification",
+        "EmployeeDependant",
+        "EmployeeContact"
+      ]
+    }
+  ]
+}

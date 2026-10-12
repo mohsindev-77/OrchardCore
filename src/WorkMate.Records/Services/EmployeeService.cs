@@ -438,6 +438,61 @@ internal sealed class EmployeeService : IEmployeeService
         return item is null ? null : ToRecord(employeeId, item.Get<EmployeePart>(EmployeeFieldNames.PartName)!);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Gated on <c>ViewEmployees</c> rather than on nothing, because the sections carry a person's
+    /// documents, dependants and bank details: the item this hands back is more sensitive than the
+    /// summary <see cref="GetAsync"/> returns, not less. Whether the reader may also <em>save</em> it
+    /// is <see cref="UpdateSectionsAsync"/>'s question, and it asks it again.
+    /// </remarks>
+    public async Task<ContentItem?> GetContentItemAsync(
+        string employeeId,
+        CancellationToken cancellationToken = default) =>
+        await _authorisation.AuthoriseAsync(Permissions.ViewEmployees)
+            ? await LoadAsync(employeeId, cancellationToken)
+            : null;
+
+    /// <inheritdoc />
+    public async Task<RecordResult<EmployeeRecord>> UpdateSectionsAsync(
+        ContentItem item,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageEmployees))
+        {
+            return RecordResult.NotAuthorised<EmployeeRecord>();
+        }
+
+        var part = item.Get<EmployeePart>(EmployeeFieldNames.PartName);
+
+        if (part is null)
+        {
+            // Not an employee. Reachable only by a caller that built the item itself, which is why
+            // this is a refusal rather than an exception: the screen posts an id, and an id that
+            // names something else is a bad request and not a crash.
+            return RecordResult.Failed<EmployeeRecord>(UnknownEmployee(item.ContentItemId));
+        }
+
+        await _contentManager.UpdateAsync(item);
+        await _contentManager.PublishAsync(item);
+
+        // The core fields are untouched by a section edit, so before and after are the same state
+        // and the entry carries no diff. It is still worth recording: "who opened this person's
+        // documents and saved something" is a question an auditor asks, and an audit trail that
+        // answers it only when a phone number changed is one that hides the sensitive half.
+        await RecordAsync(
+            item.ContentItemId,
+            part.EmployeeCode,
+            "SectionsUpdated",
+            effectiveOn: null,
+            EmployeeState.Of(part),
+            part);
+
+        return RecordResult.Success(ToRecord(item.ContentItemId, part));
+    }
+
     public async Task<EmployeeRecord?> GetByCodeAsync(
         string code,
         CancellationToken cancellationToken = default)

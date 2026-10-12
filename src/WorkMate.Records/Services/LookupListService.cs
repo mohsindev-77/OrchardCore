@@ -56,11 +56,18 @@ internal sealed class LookupListService : ILookupListService
     }
 
     /// <remarks>
-    /// Signalled after the write rather than before it, so that a reader racing the write refills
-    /// the cache from the committed state rather than from the state the write is about to replace.
+    /// <b>Through <see cref="CacheSignals.SignalNowAndAfterCommitAsync"/>, which is ADR-0019, rather
+    /// than through <c>ISignal.SignalTokenAsync</c> alone.</b> This method used to call that
+    /// directly, and claimed in this comment that doing so signalled "after the write". It did not.
+    /// A write is staged on the session and committed when the shell scope is disposed, so an
+    /// immediate signal lands before the commit, and a read arriving in between refills the cache
+    /// from the state the write is about to replace, under a token nothing will signal again. On a
+    /// tenant that had no lists, the ten writes of the standard-lists recipe left every bound field
+    /// rendering a free-text box until the application was restarted. That is the defect this is
+    /// written from; <c>LookupListInvalidationTenantTests</c> reproduces it.
     /// </remarks>
     private Task InvalidateCacheAsync() =>
-        _signal.SignalTokenAsync(RecordsCacheKeys.LookupListsSignal(_shellSettings.Name));
+        _signal.SignalNowAndAfterCommitAsync(RecordsCacheKeys.LookupListsSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<LookupListDocument?> GetAsync(

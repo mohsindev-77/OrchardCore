@@ -7,6 +7,7 @@ using OrchardCore.Environment.Shell;
 using WorkMate.Core;
 using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
+using WorkMate.Platform.Services;
 using YesSql;
 
 namespace WorkMate.Dimensions.Services;
@@ -97,8 +98,16 @@ internal sealed class StructureService : IStructureService
         S = stringLocalizer;
     }
 
+    /// <summary>
+    /// Evicts the cached structure reads: now, and again once this scope's writes have committed.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0019, and see <c>DimensionTypeService.InvalidateCacheAsync</c> for the defect it was
+    /// written from: an immediate signal on its own lands before the session commits, which is the
+    /// one moment at which a read in another scope can poison the cache permanently.
+    /// </remarks>
     private Task InvalidateCacheAsync() =>
-        _signal.SignalTokenAsync(DimensionCacheKeys.StructuresSignal(_shellSettings.Name));
+        _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.StructuresSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<DimensionResult<StructureDocument>> CreateAsync(

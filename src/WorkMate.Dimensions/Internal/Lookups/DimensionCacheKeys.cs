@@ -8,10 +8,13 @@ namespace WorkMate.Dimensions.Internal.Lookups;
 /// <c>IMemoryCache</c> involved, and it is the one place a tenant-qualified key is built, so every
 /// cached read and every invalidation call agree on the same shape.
 ///
-/// <c>IMemoryCache</c> in this host is a singleton shared across every tenant in the process —
-/// Orchard Core does not re-register it per shell — so the tenant name is part of every key, not
-/// an afterthought. Two tenants whose dimension types happen to share a code must never see each
-/// other's cached document.
+/// The tenant is in every key, and the reason is not the one this comment used to give. It said
+/// <c>IMemoryCache</c> was a process-wide singleton shared by every tenant; it is not. Orchard
+/// registers it in the tenant container (<c>OrchardCore.AddCaching</c>), and a released tenant gets
+/// a new one — measured on a live tenant while tracing the invalidation defect behind ADR-0019. The
+/// tenant stays in the key anyway: specification section 9 requires it, and a key that is only
+/// correct while a registration in another codebase stays as it is would be a poor thing to rely
+/// on.
 ///
 /// Invalidation is coarse on purpose: one signal per aggregate kind per tenant, not one per id.
 /// Dimension types and structures are read constantly and written rarely, per the module README,

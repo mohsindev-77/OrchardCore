@@ -87,10 +87,30 @@ internal sealed class LookupListLookup : ILookupListLookup
 /// Invalidated through <see cref="ISignal"/>, never by reaching into <see cref="IMemoryCache"/>:
 /// every entry is tagged with the change token for this tenant's
 /// <see cref="RecordsCacheKeys.LookupListsSignal"/>, and <c>LookupListService</c> signals that key
-/// after every write. <c>ISignal</c> resolves to Orchard's local <c>Signal</c> today; if a
-/// distributed cache is ever configured for this host (specification section 11, open decision 6)
-/// it resolves to a distributed implementation that publishes the same call over the message bus,
-/// and nothing here changes.
+/// after every write — after it <em>commits</em>, which is ADR-0019 and
+/// <c>CacheSignals.SignalNowAndAfterCommitAsync</c>. <c>ISignal</c> resolves to Orchard's local
+/// <c>Signal</c> today; if a distributed cache is ever configured for this host (specification
+/// section 11, open decision 6) it resolves to a distributed implementation that publishes the same
+/// call over the message bus, and nothing here changes.
+///
+/// <b>An absence is never cached, and that is a deliberate second line rather than a tuning
+/// choice.</b> A list that is not there, or one with nothing in it, is not stored: the next read
+/// asks the database again. Three reasons, in order of weight.
+///
+/// The first is what the mechanism is for. A cached absence is the only cached value on this path
+/// that can be wrong in a way nobody can see — a cached list that has gone stale shows the wrong
+/// entries, which somebody notices and reports; a cached "there is no such list" shows a free-text
+/// box, which is exactly what a tenant that has not loaded the lists is supposed to see. That is
+/// how the invalidation defect behind ADR-0019 survived to manual testing, and how it would have
+/// survived any fix that made it merely less likely.
+///
+/// The second is that the window it protects is the one that matters. An absence is only cacheable
+/// at all before the lists exist, which is the few minutes between upgrading a tenant and loading
+/// them — and the one write in those minutes is the write that fills them in.
+///
+/// The third is that it costs almost nothing. The read is one indexed lookup on
+/// <c>LookupListIndex</c>, and only a tenant with no lists pays it at all; a tenant with lists
+/// caches every one of them exactly as before, which is every tenant after the first five minutes.
 /// </remarks>
 internal sealed class CachedLookupListLookup : ILookupListLookup
 {
@@ -121,7 +141,8 @@ internal sealed class CachedLookupListLookup : ILookupListLookup
                 _shellSettings.Name,
                 LookupCodes.Normalise(code).ToUpperInvariant()),
             RecordsCacheKeys.LookupListsSignal(_shellSettings.Name),
-            () => _inner.GetByCodeAsync(code, cancellationToken));
+            () => _inner.GetByCodeAsync(code, cancellationToken),
+            isCacheable: list => list is not null);
 
     public Task<IReadOnlyList<LookupListDocument>> ListAsync(CancellationToken cancellationToken = default) =>
         CacheAside.GetOrSetAsync(
@@ -129,7 +150,8 @@ internal sealed class CachedLookupListLookup : ILookupListLookup
             _signal,
             RecordsCacheKeys.LookupListList(_shellSettings.Name),
             RecordsCacheKeys.LookupListsSignal(_shellSettings.Name),
-            () => _inner.ListAsync(cancellationToken));
+            () => _inner.ListAsync(cancellationToken),
+            isCacheable: lists => lists.Count > 0);
 }
 
 /// <summary>
@@ -139,18 +161,24 @@ internal sealed class CachedLookupListLookup : ILookupListLookup
 /// A plain <c>TryGetValue</c>/<c>CreateEntry</c> pair rather than
 /// <c>IMemoryCache.GetOrCreateAsync</c>, for the reason <c>WorkMate.Dimensions</c>' own
 /// <c>CacheAside</c> gives: that extension's generic signature is awkward to match for a type
-/// argument that is itself a nullable reference type — a cached "this code does not exist" has to
-/// be a real, storable null — and getting it wrong compiles with a nullability warning and
-/// misbehaves at run time. Writing the two steps out keeps the nullability honest.
+/// argument that is itself a nullable reference type, and getting it wrong compiles with a
+/// nullability warning and misbehaves at run time. Writing the two steps out keeps the nullability
+/// honest.
 /// </remarks>
 internal static class CacheAside
 {
+    /// <param name="isCacheable">
+    /// Whether this particular answer is worth keeping. See <see cref="CachedLookupListLookup"/> for
+    /// why an absence is not: it is the one answer on this path whose staleness looks exactly like
+    /// correct behaviour.
+    /// </param>
     public static async Task<T> GetOrSetAsync<T>(
         IMemoryCache cache,
         ISignal signal,
         string key,
         string signalKey,
-        Func<Task<T>> factory)
+        Func<Task<T>> factory,
+        Func<T, bool>? isCacheable = null)
     {
         if (cache.TryGetValue(key, out T? cached))
         {
@@ -158,6 +186,11 @@ internal static class CacheAside
         }
 
         var value = await factory();
+
+        if (isCacheable is not null && !isCacheable(value))
+        {
+            return value;
+        }
 
         using (var entry = cache.CreateEntry(key))
         {

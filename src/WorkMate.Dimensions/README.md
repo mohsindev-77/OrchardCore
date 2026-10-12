@@ -319,21 +319,39 @@ until there is a number to justify taking it on.
   and `StructureLookup`, registered as `IDimensionTypeLookup` / `IStructureLookup` in their place.
   Everything that resolves the interface — the validator, the graph service, both write services'
   own read methods — gets caching for free, with no change at any of those call sites.
-- **Keys carry the tenant.** `IMemoryCache` in this host is a singleton shared across every tenant
-  in the process — Orchard Core does not re-register it per shell — so every key
-  `DimensionCacheKeys` builds is `WorkMate.Dimensions:{tenant}:...`. Two tenants whose dimension
-  types happen to share a code must never see each other's cached document.
+- **Keys carry the tenant**, so every key `DimensionCacheKeys` builds is
+  `WorkMate.Dimensions:{tenant}:...`. This bullet used to say the tenant was in the key because
+  `IMemoryCache` is a process-wide singleton shared by every tenant. **That is wrong**, and it was
+  checked rather than assumed while tracing the invalidation defect behind ADR-0019: Orchard
+  registers `IMemoryCache` in the tenant container, and a released tenant gets a new one — measured
+  on a live tenant, the instance changes when a recipe releases the shell. The tenant stays in the
+  key anyway, because specification section 9 requires it and because a key that is correct only
+  while a registration in another codebase stays as it is would be a poor thing to rely on.
   `DimensionCacheKeysTests` pins the shape directly, with no shell involved.
 - **Invalidation is coarse and goes through `ISignal`, never `IMemoryCache.Remove`.** Every cached
   entry for a tenant's dimension types is tagged with one change token,
   `DimensionCacheKeys.TypesSignal(tenant)`; every entry for that tenant's structures is tagged with
-  another. `DimensionTypeService` calls `ISignal.SignalTokenAsync` on the types signal after every
-  write — create, update, retire — and `StructureService` does the same on the structures signal
-  after create and update, which is also what covers a structure's levels changing. One signal per
-  aggregate per tenant rather than one per id, because types and structures change rarely enough
-  that evicting all of a tenant's cached types on any one write to them costs nothing worth
-  avoiding, and it is far simpler to get right than tracking which cached entries one write could
-  have affected.
+  another. `DimensionTypeService` signals the types signal after every write — create, update,
+  retire — and `StructureService` does the same on the structures signal after create and update,
+  which is also what covers a structure's levels changing. One signal per aggregate per tenant
+  rather than one per id, because types and structures change rarely enough that evicting all of a
+  tenant's cached types on any one write to them costs nothing worth avoiding, and it is far
+  simpler to get right than tracking which cached entries one write could have affected.
+- **The signal is sent again once the write has committed — ADR-0019, and this module had the
+  defect too.** Both services used to call `ISignal.SignalTokenAsync` directly, which fires while
+  the write is still staged on the session: a read arriving between that and the commit refills the
+  cache from the state the write is about to replace, under a token that has already been spent,
+  and the entry is then wrong until the process restarts. It was found in `WorkMate.Records`, where
+  it was visible on a screen; here it would have shown as a rename that never reaches the
+  organisation chart. Both now call `CacheSignals.SignalNowAndAfterCommitAsync`, which signals now,
+  again after the commit, and again if the scope fails instead.
+
+  **The "now" half is not redundant, and this module is the reason it survives.** Recipe steps,
+  designer actions and the scenario builders all write and then read in one scope, through the
+  cached lookups; deferring the only signal to the commit fails some thirty tests here.
+  `DimensionCachingTenantTests` covers both halves, and
+  `CacheInvalidationSignalTests` in this module's test project fails the build if anything calls
+  `SignalTokenAsync` directly again.
 - **This is also what specification section 11's open decision 6 — the distributed cache — reaches
   this module for free, once it is taken.** `ISignal` is Orchard's own abstraction; verified
   against the pinned version with the API probe, it resolves to `Signal` (local,

@@ -92,4 +92,17 @@ public enum RecordRule
     /// records may already hold.
     /// </remarks>
     LookupListNotEmpty,
+
+    /// <summary>
+    /// The lists WorkMate ships could not be loaded: the recipe that carries them is not available
+    /// to this tenant, or applying it failed.
+    /// </summary>
+    /// <remarks>
+    /// A rule of its own rather than <see cref="UnknownLookupList"/>, because the two lead a reader
+    /// somewhere different. "There is no list with that code" is about what the tenant holds and is
+    /// answered by loading or creating one. This is about the mechanism for loading them not being
+    /// there at all — a feature disabled, a recipe file missing from the deployment — which is an
+    /// operator's problem and not an administrator's.
+    /// </remarks>
+    StandardListsUnavailable,
 }

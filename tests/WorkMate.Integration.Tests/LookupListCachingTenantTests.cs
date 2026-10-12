@@ -41,8 +41,10 @@ public sealed class LookupListCachingTenantTests
     /// The key is rebuilt here from <see cref="ShellSettings.Name"/> rather than hard-coded, so
     /// this asserts that the key the cached lookup used and the key the rest of the module would
     /// build are the same one. Specification section 9's rule is that every cache key begins with
-    /// the tenant name, and <c>IMemoryCache</c> is a process-wide singleton: a key without it is
-    /// not a key that fails, it is a key two customers share.
+    /// the tenant name. This comment used to add that <c>IMemoryCache</c> is a process-wide
+    /// singleton, so a key without the tenant would be a key two customers share; that is not true
+    /// of the pinned version — Orchard registers the cache per tenant — and the correction is in
+    /// ADR-0019 along with the defect that found it.
     /// </remarks>
     [Fact]
     public async Task AReadIsCachedUnderTheTenantsOwnKey() =>
@@ -65,16 +67,27 @@ public sealed class LookupListCachingTenantTests
         });
 
     /// <summary>
-    /// A list added after a cached list-read is visible on the next one.
+    /// A list added after a cached list-read is visible on the next request's read.
     /// </summary>
+    /// <remarks>
+    /// <b>The second read is in a new scope, and that is ADR-0019 rather than a convenience.</b>
+    /// This test used to read again in the writing scope and expect the new list, which passed
+    /// while the cache was being signalled as the write was staged — the behaviour that left a
+    /// reader racing the write with a permanently wrong entry. Invalidation now happens when the
+    /// scope commits, so the question "is the write visible afterwards" has to be asked afterwards.
+    ///
+    /// Nothing in the product depends on the old behaviour: every write screen redirects after a
+    /// successful post, which is a new request and a new scope, and the two write paths read
+    /// through the uncached <c>ILookupListService</c> anyway because YesSql requires a tracked
+    /// document to be mutated through the instance the session is holding.
+    /// </remarks>
     [Fact]
-    public async Task CreatingAListIsVisibleInAnAlreadyCachedList() =>
+    public async Task CreatingAListIsVisibleInAnAlreadyCachedListOnTheNextRequest()
+    {
         await InTenantAsync(async services =>
         {
-            var lookup = services.GetRequiredService<ILookupListLookup>();
-
             // Warms the cache.
-            var before = await lookup.ListAsync();
+            var before = await services.GetRequiredService<ILookupListLookup>().ListAsync();
 
             before.Should().NotContain(list => list.Code == "cache-created");
 
@@ -84,11 +97,13 @@ public sealed class LookupListCachingTenantTests
                 []);
 
             created.Succeeded.Should().BeTrue(created.Describe());
-
-            (await lookup.ListAsync()).Should().Contain(
-                list => list.Code == "cache-created",
-                "the write signalled the token every cached read is tagged with");
         });
+
+        await InTenantAsync(async services =>
+            (await services.GetRequiredService<ILookupListLookup>().ListAsync()).Should().Contain(
+                list => list.Code == "cache-created",
+                "the write signalled the token every cached read is tagged with, once it had committed"));
+    }
 
     /// <summary>
     /// An entry added to a list is visible on the next cached read of that list.

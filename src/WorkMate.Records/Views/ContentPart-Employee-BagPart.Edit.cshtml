@@ -1,0 +1,87 @@
+@using Microsoft.AspNetCore.Mvc.Localization
+@using OrchardCore.ContentManagement.Metadata.Models
+@model dynamic
+
+@*
+    One employee section, headed in WorkMate's own words.
+
+    This replaces Orchard's ContentPart.Edit template for every BagPart on the Employee type, and
+    for nothing else in the tenant: the alternate ContentPart_Edit__Employee__BagPart is matched on
+    the content type as well as the part type. Orchard's own template introduces each section with
+    the part's name and the part definition's description — for a bag that reads "JobDetails
+    Provides a collection behavior for your content item where you can place other content items",
+    which is addressed to somebody building a CMS and not to somebody filing a passport.
+
+    Deliberately generic over the sections rather than one view per section. The six WorkMate ships
+    are named below because they are ours to word; a section the form designer adds in slice B3 is
+    the tenant's, so it is headed with the display name they gave it. Either way this file does not
+    need changing when the set changes — which it will: the FRS work on positions moves grade off
+    the job details section.
+
+    Everything inside a section is still rendered by the display drivers that own it, including this
+    module's lookup editor on a bound field. Only the frame is ours.
+*@
+
+@{
+    var shapes = (IReadOnlyList<object>)Model.Items;
+
+    ContentTypePartDefinition definition = Model.ContentTypePartDefinition;
+
+    var sectionName = definition.Name;
+
+    // The display name the content definition carries, for a section WorkMate did not ship. The
+    // designer sets it, so it is already the tenant's own wording and already their language.
+    var named = definition.DisplayName();
+
+    var heading = sectionName switch
+    {
+        EmployeeSections.JobDetails => T["Job details"],
+        EmployeeSections.Documents => T["Documents"],
+        EmployeeSections.BankDetails => T["Bank details"],
+        EmployeeSections.Qualifications => T["Qualifications"],
+        EmployeeSections.Dependants => T["Dependants"],
+        EmployeeSections.Contacts => T["Contacts"],
+
+        // Not through the localiser, and that is the point: this is the name the tenant typed into
+        // the form designer, already in whatever language they typed it in. Looking it up would
+        // find nothing and show it unchanged, while implying WorkMate had a translation for it.
+        _ => new LocalizedHtmlString(string.Empty, string.IsNullOrWhiteSpace(named) ? sectionName : named),
+    };
+
+    var help = sectionName switch
+    {
+        EmployeeSections.JobDetails =>
+            T["Grade, employment type, work location and the dates each applied from. Add a row when something changes rather than editing the one before it, so last year's payroll still reads correctly."],
+        EmployeeSections.Documents =>
+            T["Identity and right-to-work documents, each with its own expiry date. Expiry dates here are what the renewal reminders are read from."],
+        EmployeeSections.BankDetails =>
+            T["Where salary is paid, including a split across more than one account."],
+        EmployeeSections.Qualifications =>
+            T["Education and professional qualifications, with the country each was awarded in."],
+        EmployeeSections.Dependants =>
+            T["Family members. These are what sponsorship, air tickets and medical cover are worked out from."],
+        EmployeeSections.Contacts =>
+            T["Addresses, telephone numbers and the person to call in an emergency."],
+        _ => T["Rows kept on this employee record."],
+    };
+}
+
+@* Nothing at all for a section the reader may not edit: the display drivers produced no shapes for
+   it, and a heading with an empty card under it reads as something broken rather than as something
+   withheld. *@
+@if (shapes.Count > 0)
+{
+    <section class="card mb-3 workmate-employee-section"
+             id="section-@sectionName.ToLowerInvariant()"
+             data-section="@sectionName">
+        <div class="card-body">
+            <h2 class="h5 card-title">@heading</h2>
+            <p class="card-text text-muted">@help</p>
+
+            @foreach (var shape in shapes)
+            {
+                @(await DisplayAsync(shape))
+            }
+        </div>
+    </section>
+}

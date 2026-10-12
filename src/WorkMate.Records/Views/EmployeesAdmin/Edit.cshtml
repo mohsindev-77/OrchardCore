@@ -94,10 +94,16 @@
 
 <h2>@T["Sections"]</h2>
 <p class="text-muted">
-    @T["Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of dated rows. They are edited on the content screen, which is where the standard editors for them live."]
+    @T["Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of rows kept over time."]
 </p>
+@* A WorkMate screen since this slice. It used to link to ~/Admin/Contents/ContentItems/{id}/Edit,
+   Orchard's generic content editor, which works and is addressed to somebody building a CMS: it
+   headed the job details section with the BagPart's own description, put a disabled auto-generated
+   Title box above it, and lit up Content > Content Items in the menu while the reader was in the
+   middle of an employee record. *@
 <a class="btn btn-outline-secondary" id="employee-sections-link"
-   href="@Url.Content($"~/Admin/Contents/ContentItems/{Model.EmployeeId}/Edit")">@T["Edit sections"]</a>
+   asp-controller="EmployeeSectionsAdmin" asp-action="Edit"
+   asp-route-id="@Model.EmployeeId">@T["Edit sections"]</a>
 
 @* The picker's search. Without it the control is still a working <select> of the first
    page; with it, everybody in the tenant is reachable by typing. *@

@@ -284,9 +284,6 @@ msgstr "العودة إلى القائمة"
 msgid "Sections"
 msgstr "الأقسام"
 
-#: Views/EmployeesAdmin/Edit.cshtml
-msgid "Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of dated rows. They are edited on the content screen, which is where the standard editors for them live."
-msgstr "بيانات الوظيفة والمستندات والبيانات البنكية والمؤهلات والمعالون وجهات الاتصال قوائم على هذا الموظف، كل منها مجموعة سجلات مؤرَّخة. تُحرَّر من شاشة المحتوى، حيث توجد المحررات القياسية الخاصة بها."
 
 #: Views/EmployeesAdmin/Edit.cshtml
 msgid "Edit sections"
@@ -1255,3 +1252,111 @@ msgstr "أُعيد ربط قيم قائمة اختيار"
 #: Services/FormsAuditTrail.cs
 msgid "A value stored on employee records was rewritten onto an entry of a lookup list."
 msgstr "أُعيدت كتابة قيمة مخزَّنة على سجلات الموظفين لتصبح مدخلاً في قائمة اختيار."
+
+# --- Loading the lists WorkMate ships (People > Forms) -------------------------------------
+
+#: WorkMate.Records.Views.FormsAdmin.Index
+msgid "Load the standard lists"
+msgstr "تحميل القوائم القياسية"
+
+#: WorkMate.Records.Views.FormsAdmin.Index
+msgid "This tenant does not have the lists WorkMate ships, so the fields that offer them are still plain text boxes. Loading them turns those fields into drop-downs straight away. Nothing already in a record is changed, and anything typed before is kept."
+msgstr "لا تحتوي هذه المنشأة على القوائم التي يوفّرها ووركميت، لذلك ما زالت الحقول التي تعرضها مربعات نصية عادية. تحميلها يحوّل تلك الحقول إلى قوائم منسدلة فورًا. لا يتغيّر شيء مسجّل مسبقًا، ويُحتفظ بكل ما أُدخل من قبل."
+
+#: WorkMate.Records.Views.FormsAdmin.Index
+msgid "Missing: {0}."
+msgstr "الناقص: {0}."
+
+#: WorkMate.Records.Views.FormsAdmin.Index
+msgid "Load standard lists"
+msgstr "تحميل القوائم القياسية"
+
+#: WorkMate.Records.Controllers.FormsAdminController
+msgid "The standard lists were already loaded. Nothing changed."
+msgstr "القوائم القياسية محمّلة بالفعل. لم يتغيّر شيء."
+
+#: WorkMate.Records.Controllers.FormsAdminController
+msgid "The standard lists are loaded: {0}."
+msgstr "تم تحميل القوائم القياسية: {0}."
+
+#: WorkMate.Records.Services.StandardLookupListsLoader
+msgid "The standard lookup lists cannot be loaded, because the recipe that carries them is not available to this tenant. An administrator of the installation can apply it from Configuration, under Recipes."
+msgstr "تعذّر تحميل قوائم الاختيار القياسية لأن الوصفة التي تحملها غير متاحة لهذه المنشأة. يمكن لمسؤول التثبيت تطبيقها من الإعدادات، ضمن الوصفات."
+
+# --- The employee sections screen ----------------------------------------------------------
+
+#: WorkMate.Records.Views.EmployeeSectionsAdmin.Edit
+msgid "Sections: {0}"
+msgstr "الأقسام: {0}"
+
+#: WorkMate.Records.Views.EmployeeSectionsAdmin.Edit
+msgid "Job details, documents, bank details, qualifications, dependants and contacts. Each is a list of rows kept over time, so earlier rows stay readable: add a new row when something changes rather than editing the one that was true before."
+msgstr "تفاصيل الوظيفة والمستندات والتفاصيل المصرفية والمؤهلات والمعالين وجهات الاتصال. كل قسم قائمة صفوف محفوظة عبر الزمن، فتبقى الصفوف السابقة مقروءة: أضف صفًا جديدًا عند تغيّر شيء بدلًا من تعديل الصف الذي كان صحيحًا من قبل."
+
+#: WorkMate.Records.Views.EmployeeSectionsAdmin.Edit
+msgid "Back to the employee"
+msgstr "العودة إلى الموظف"
+
+#: WorkMate.Records.Controllers.EmployeeSectionsAdminController
+msgid "The sections have been saved."
+msgstr "تم حفظ الأقسام."
+
+# The six section headings and their help text, raised by the ContentPart-Employee-BagPart.Edit
+# alternate. These replace the part name and the BagPart's own description, which Orchard's
+# generic template shows and which are written for somebody building a CMS.
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Job details"
+msgstr "تفاصيل الوظيفة"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Grade, employment type, work location and the dates each applied from. Add a row when something changes rather than editing the one before it, so last year's payroll still reads correctly."
+msgstr "الدرجة ونوع التوظيف وموقع العمل وتواريخ سريان كل منها. أضف صفًا عند تغيّر شيء بدلًا من تعديل الصف السابق، حتى تبقى رواتب العام الماضي مقروءة بشكل صحيح."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Documents"
+msgstr "المستندات"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Identity and right-to-work documents, each with its own expiry date. Expiry dates here are what the renewal reminders are read from."
+msgstr "مستندات الهوية وحق العمل، لكل منها تاريخ انتهاء خاص به. تواريخ الانتهاء هنا هي ما تُقرأ منه تنبيهات التجديد."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Bank details"
+msgstr "التفاصيل المصرفية"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Where salary is paid, including a split across more than one account."
+msgstr "حيث يُدفع الراتب، بما في ذلك تقسيمه على أكثر من حساب."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Qualifications"
+msgstr "المؤهلات"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Education and professional qualifications, with the country each was awarded in."
+msgstr "المؤهلات التعليمية والمهنية، مع بلد منح كل منها."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Dependants"
+msgstr "المعالون"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Family members. These are what sponsorship, air tickets and medical cover are worked out from."
+msgstr "أفراد الأسرة. منهم تُحتسب الكفالة وتذاكر السفر والتغطية الطبية."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Contacts"
+msgstr "جهات الاتصال"
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Addresses, telephone numbers and the person to call in an emergency."
+msgstr "العناوين وأرقام الهاتف والشخص الذي يُتصل به في حالة الطوارئ."
+
+#: WorkMate.Records.Views.ContentPart-Employee-BagPart.Edit
+msgid "Rows kept on this employee record."
+msgstr "صفوف محفوظة في سجل هذا الموظف."
+
+#: WorkMate.Records.Views.EmployeesAdmin.Edit
+msgid "Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of rows kept over time."
+msgstr "تفاصيل الوظيفة والمستندات والتفاصيل المصرفية والمؤهلات والمعالون وجهات الاتصال قوائم على سجل هذا الموظف، كل منها مجموعة صفوف محفوظة عبر الزمن."

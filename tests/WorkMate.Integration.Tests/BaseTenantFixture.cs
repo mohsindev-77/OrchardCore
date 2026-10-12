@@ -66,6 +66,29 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     public static BaseTenantFixture Withholding(params string[] features) =>
         new() { _withheldFeatures = features };
 
+    /// <summary>
+    /// Nested recipes struck out of the base recipe's <c>recipes</c> step before setup.
+    /// </summary>
+    /// <remarks>
+    /// For standing up the tenant a customer already has: one created before a later slice shipped
+    /// the recipe that configures something, which an operator then applies by hand from
+    /// Configuration → Recipes. That sequence — a screen rendered before the configuration exists,
+    /// the recipe applied afterwards — is the one a tenant set up with everything can never
+    /// reproduce, and it is where the stale-cache defect lived.
+    /// </remarks>
+    private string[] _withheldRecipes = [];
+
+    /// <summary>
+    /// A fixture whose tenant is set up with these nested recipes struck out of the base recipe.
+    /// </summary>
+    /// <remarks>
+    /// A second factory beside <see cref="Withholding"/> rather than a parameter on it, for the
+    /// reason that one records: xUnit refuses a fixture type with more than one public constructor,
+    /// so every variation of this fixture is a static factory over the same private constructor.
+    /// </remarks>
+    public static BaseTenantFixture WithholdingRecipes(params string[] recipeNames) =>
+        new() { _withheldRecipes = recipeNames };
+
     private string ApplicationData => Path.Combine(_contentRoot, "App_Data");
 
     /// <summary>A client signed in as the site administrator.</summary>
@@ -253,6 +276,39 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     }
 
     /// <summary>
+    /// The same recipe with the named nested recipes struck out of its <c>recipes</c> step.
+    /// </summary>
+    /// <remarks>
+    /// Orchard's <c>recipes</c> step names each nested recipe by its <c>Name</c>, so the values are
+    /// filtered on that rather than on the file name — the same reason
+    /// <see cref="WithoutFeatures"/> edits JSON rather than text.
+    /// </remarks>
+    private static string WithoutRecipes(string recipe, string[] withheld)
+    {
+        var document = System.Text.Json.Nodes.JsonNode.Parse(recipe)!.AsObject();
+
+        foreach (var step in document["steps"]?.AsArray() ?? [])
+        {
+            if (step?["name"]?.GetValue<string>() is not "recipes" ||
+                step["Values"] is not System.Text.Json.Nodes.JsonArray values)
+            {
+                continue;
+            }
+
+            var kept = values
+                .Where(value => !withheld.Contains(
+                    value?["Name"]?.GetValue<string>(),
+                    StringComparer.Ordinal))
+                .Select(value => System.Text.Json.Nodes.JsonNode.Parse(value!.ToJsonString())!)
+                .ToArray();
+
+            step["Values"] = new System.Text.Json.Nodes.JsonArray(kept);
+        }
+
+        return document.ToJsonString();
+    }
+
+    /// <summary>
     /// Lays out what Orchard reads from the content root: the recipes, so the base recipe is
     /// offered at setup, and the PO files. Both are copied from where they are tracked rather
     /// than from the host's folders, so the test does not depend on a build having copied them
@@ -288,14 +344,26 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
         {
             var destination = Path.Combine(recipes, Path.GetFileName(recipe));
 
-            if (_withheldFeatures.Length == 0)
+            if (_withheldFeatures.Length == 0 && _withheldRecipes.Length == 0)
             {
                 File.Copy(recipe, destination, overwrite: true);
 
                 continue;
             }
 
-            File.WriteAllText(destination, WithoutFeatures(File.ReadAllText(recipe), _withheldFeatures));
+            var text = File.ReadAllText(recipe);
+
+            if (_withheldFeatures.Length > 0)
+            {
+                text = WithoutFeatures(text, _withheldFeatures);
+            }
+
+            if (_withheldRecipes.Length > 0)
+            {
+                text = WithoutRecipes(text, _withheldRecipes);
+            }
+
+            File.WriteAllText(destination, text);
         }
 
         foreach (var module in Directory.EnumerateDirectories(Path.Combine(repositoryRoot, "src")))

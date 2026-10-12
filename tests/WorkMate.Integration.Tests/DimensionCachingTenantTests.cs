@@ -203,4 +203,79 @@ public sealed class DimensionCachingTenantTests
             (await structures.GetAsync(structureId))!.Code.Should().Be(
                 structureCodeBefore, "nothing about a record or the graph changes a structure's own document");
         });
+
+    /// <summary>
+    /// A read that overlaps a write does not leave the cache holding the version from before it.
+    /// </summary>
+    /// <remarks>
+    /// <b>ADR-0019, proved here as well as in <c>WorkMate.Records</c>, because the defect was in
+    /// this module's code too and nobody had seen it.</b> It was found in the lookup lists, where
+    /// the symptom was visible on a screen; here the same mistake would show as a dimension type
+    /// whose rename never reaches the organisation chart until the application restarts.
+    ///
+    /// Every other test in this file writes and reads in one scope, which the immediate half of the
+    /// signal has always handled. This one needs the halves to overlap: the reader runs after the
+    /// write is staged and before the writing scope is disposed, so it caches the committed old
+    /// version under a token the immediate signal has already spent. Only a signal sent after the
+    /// commit can evict that.
+    /// </remarks>
+    [Fact]
+    public async Task AReadThatOverlapsATypeRenameDoesNotLeaveTheOldNameInTheCache()
+    {
+        const string Code = "cache-overlap-type";
+
+        string id = string.Empty;
+
+        await _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var created = await services.GetRequiredService<IDimensionTypeService>().CreateAsync(
+                Code, new BilingualText("Before", "قبل"), [], allowsSelfNesting: false);
+
+            created.Succeeded.Should().BeTrue(Describe(created));
+            id = created.Value!.DimensionTypeId;
+        });
+
+        var staged = new TaskCompletionSource();
+        var read = new TaskCompletionSource();
+
+        var writer = Task.Run(() => _tenant.InTenantAsSystemAsync(async services =>
+        {
+            var updated = await services.GetRequiredService<IDimensionTypeService>().UpdateAsync(
+                id, new BilingualText("After", "بعد"), [], allowsSelfNesting: false);
+
+            updated.Succeeded.Should().BeTrue(Describe(updated));
+
+            // Staged and signalled, but nothing is committed until this scope is disposed.
+            staged.SetResult();
+
+            await read.Task;
+        }));
+
+        var reader = Task.Run(async () =>
+        {
+            await staged.Task;
+
+            try
+            {
+                await _tenant.InTenantAsSystemAsync(services =>
+                    services.GetRequiredService<IDimensionTypeService>().GetByCodeAsync(Code));
+            }
+            finally
+            {
+                read.SetResult();
+            }
+        });
+
+        await Task.WhenAll(writer, reader);
+
+        await _tenant.InTenantAsSystemAsync(async services =>
+            (await services.GetRequiredService<IDimensionTypeService>().GetByCodeAsync(Code))!
+                .Name.En.Should().Be(
+                    "After",
+                    "the overlapping read cached the committed old name, and only a signal sent "
+                    + "after the commit can evict it"));
+    }
+
+    private static string Describe<T>(DimensionResult<T> result) =>
+        string.Join("; ", result.Errors.Select(error => error.Message.Value));
 }
