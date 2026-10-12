@@ -38,8 +38,14 @@
 
     <div class="row">
         <div class="col-sm-6 mb-3">
-            <label class="form-label" asp-for="NationalityCode">@T["Nationality"]</label>
-            <input class="form-control" asp-for="NationalityCode" maxlength="2" />
+            @* Bound to the managed nationality list. The core still stores a two-letter ISO code
+               and is still beyond the form designer's reach — what the binding changes is which
+               control edits it. A tenant that has not applied the standard lists sees the text box
+               it has always seen, because the control falls back to free text when the list has
+               nothing to offer. *@
+            <workmate-lookup for="NationalityCode"
+                             list-code="@StandardLookupLists.Nationality"
+                             label="@T["Nationality"]" />
             <div class="form-text">@T["A two-letter ISO country code. Statutory treatment depends on it."]</div>
         </div>
         <div class="col-sm-6 mb-3">

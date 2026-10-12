@@ -60,8 +60,11 @@
             <span asp-validation-for="DateOfBirth" class="text-danger"></span>
         </div>
         <div class="col-sm-6 mb-3">
-            <label class="form-label" asp-for="NationalityCode">@T["Nationality"]</label>
-            <input class="form-control" asp-for="NationalityCode" maxlength="2" />
+            @* See Create.cshtml: bound to the managed list, falling back to free text on a tenant
+               that has not applied it, and never dropping a value the record already holds. *@
+            <workmate-lookup for="NationalityCode"
+                             list-code="@StandardLookupLists.Nationality"
+                             label="@T["Nationality"]" />
         </div>
     </div>
 

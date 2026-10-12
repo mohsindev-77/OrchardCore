@@ -128,6 +128,72 @@ public sealed class LookupListClickBrowserTests
     }
 
     /// <summary>
+    /// The reconciliation screen is reached from the list editor, and nowhere else.
+    /// </summary>
+    /// <remarks>
+    /// The product owner's constraint is one menu entry for the whole form designer, so every
+    /// screen it brings has to be a click from another. This one hangs off the editor because that
+    /// is where somebody who has just bound a list already is — and a screen with no link to it
+    /// passes every test that starts by going there.
+    /// </remarks>
+    [Fact]
+    public async Task TheStoredValuesScreenIsReachedByClickingFromTheListEditor()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync("/Admin");
+
+        await OpenPeopleGroupAsync(page);
+        await page.ClickAsync("a[href*='/Admin/Forms/Index']");
+        await page.ClickAsync("#forms-open-lookup-lists");
+
+        // A list the base recipe ships, so there is something real to open.
+        await page.ClickAsync("tr.lookup-list-row[data-lookup-list-code='grade'] .lookup-list-edit");
+
+        await page.ClickAsync("#lookup-list-check-values");
+
+        await Assertions.Expect(page.Locator("#lookup-values-locations")).ToBeVisibleAsync();
+
+        // Where it looked, named. On this tenant the grade list is offered by one field, and a
+        // reader who sees nothing needs to be able to tell "no unmatched values" from "nothing is
+        // bound".
+        await Assertions.Expect(page.Locator(".lookup-values-location")).ToHaveCountAsync(1);
+
+        // And back again, by clicking.
+        await page.ClickAsync("#lookup-values-back");
+        await Assertions.Expect(page.Locator("#lookup-list-editor")).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// A list nothing offers says so, rather than reporting that the data is clean.
+    /// </summary>
+    /// <remarks>
+    /// <c>job-title</c> ships as a list and is deliberately bound to no field — a bilingual name
+    /// field cannot post a single chosen code without script, so binding it is a separate decision.
+    /// A reader checking it must not be told "every stored value matches", which would be true and
+    /// useless.
+    /// </remarks>
+    [Fact]
+    public async Task AListNothingOffersSaysSoRatherThanReportingCleanData()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await page.GotoAsync("/Admin");
+
+        await OpenPeopleGroupAsync(page);
+        await page.ClickAsync("a[href*='/Admin/Forms/Index']");
+        await page.ClickAsync("#forms-open-lookup-lists");
+
+        await page.ClickAsync("tr.lookup-list-row[data-lookup-list-code='job-title'] .lookup-list-edit");
+        await page.ClickAsync("#lookup-list-check-values");
+
+        await Assertions.Expect(page.Locator(".lookup-values-location")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.Locator("#lookup-values-locations .alert")).ToBeVisibleAsync();
+    }
+
+    /// <summary>
     /// The People menu offers exactly two entries, in that order, whatever language the reader is in.
     /// </summary>
     /// <remarks>

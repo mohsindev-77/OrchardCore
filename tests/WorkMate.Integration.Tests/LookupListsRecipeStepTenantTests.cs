@@ -5,7 +5,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using OrchardCore.Recipes.Models;
 using OrchardCore.Recipes.Services;
+using WorkMate.Core;
 using WorkMate.Platform.Services;
+using WorkMate.Records.Models;
 using WorkMate.Records.Services;
 using Xunit;
 
@@ -151,16 +153,18 @@ public sealed class LookupListsRecipeStepTenantTests
     }
 
     /// <summary>
-    /// A stated entry the tenant does not hold fails the step, naming it.
+    /// A stated entry the tenant does not hold is added rather than refused.
     /// </summary>
     /// <remarks>
-    /// ADR-0008 applied literally — the row is making a claim the tenant contradicts — and the
-    /// consequence worth stating: a second version of a pack that adds an entry to an existing list
-    /// cannot be applied over it, and the operator adds the entry through the screen. The
-    /// alternative is filling a gap in silently, which is the behaviour the ADR exists to refuse.
+    /// ADR-0008's lookup-list addendum, and the reason it exists: the standard lists are the kind
+    /// of reference data that grows — a new document type when a country changes its visa regime, a
+    /// grade when a customer adds a band — and under the original rule the second version of that
+    /// file could not be applied to any tenant holding the first. An entry the tenant does not hold
+    /// has never been in the list, because ADR-0014 guarantees an entry is only ever retired, so
+    /// there is no decision to overwrite.
     /// </remarks>
     [Fact]
-    public async Task AnEntryTheFileAddsToAnExistingListFailsTheStep()
+    public async Task AnEntryTheFileAddsToAnExistingListIsFilledIn()
     {
         await ApplyAsync(Recipe(List(
             "step-added",
@@ -177,13 +181,136 @@ public sealed class LookupListsRecipeStepTenantTests
 
         var failure = await Record.ExceptionAsync(() => ApplyAsync(withAnother));
 
-        failure.Should().NotBeNull();
+        failure.Should().BeNull("a missing entry is a gap to fill, not a difference to refuse");
 
         await InTenantAsync(async lists =>
         {
             var list = await lists.GetByCodeAsync("step-added");
 
-            list!.Items.Should().ContainSingle("nothing was written on the way to failing");
+            list!.Items.Select(item => item.Code).Should().Equal(["ONE", "TWO"]);
+            list.Items.Single(item => item.Code == "TWO").Name.Ar.Should().Be(
+                "اثنان", "the entry arrives with everything the file says about it");
+        });
+    }
+
+    /// <summary>
+    /// A file that adds an entry <em>and</em> disagrees about an existing one fails, and fills
+    /// nothing.
+    /// </summary>
+    /// <remarks>
+    /// The half of the addendum that keeps it narrow. The fill is only safe because the rest of the
+    /// list matched; a file that contradicts the tenant about an entry that exists is a file whose
+    /// intent is in doubt, and partially applying it would leave the tenant in a state neither the
+    /// file nor the operator asked for.
+    /// </remarks>
+    [Fact]
+    public async Task AFileThatAlsoDisagreesAboutAnExistingEntryFillsNothing()
+    {
+        await ApplyAsync(Recipe(List(
+            "step-added-conflict",
+            "Conflict",
+            "تعارض",
+            Entry("ONE", "One", "واحد", order: 10))));
+
+        var conflicting = Recipe(List(
+            "step-added-conflict",
+            "Conflict",
+            "تعارض",
+            Entry("ONE", "Renamed", "واحد", order: 10),
+            Entry("TWO", "Two", "اثنان", order: 20)));
+
+        var failure = await Record.ExceptionAsync(() => ApplyAsync(conflicting));
+
+        failure.Should().NotBeNull();
+
+        await InTenantAsync(async lists =>
+        {
+            var list = await lists.GetByCodeAsync("step-added-conflict");
+
+            list!.Items.Should().ContainSingle("the gap was not filled either");
+            list.Items.Single().Name.En.Should().Be("One");
+        });
+    }
+
+    /// <summary>
+    /// A tenant missing a shipped entry gets it, and the newer file stays re-appliable.
+    /// </summary>
+    /// <remarks>
+    /// The upgrade path, which is what the addendum is for: a tenant on an older version of a
+    /// shipped file is by definition a tenant missing entries the current one has. The second
+    /// application is what proves the fill is idempotent rather than a one-shot.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantMissingAShippedEntryGetsItAddedAndTheFileStaysReAppliable()
+    {
+        await ApplyAsync(Recipe(List(
+            "step-upgrade",
+            "Upgrade",
+            "ترقية",
+            Entry("A", "Alpha", "ألفا", order: 10),
+            Entry("B", "Bravo", "برافو", order: 20))));
+
+        var newer = Recipe(List(
+            "step-upgrade",
+            "Upgrade",
+            "ترقية",
+            Entry("A", "Alpha", "ألفا", order: 10),
+            Entry("B", "Bravo", "برافو", order: 20),
+            Entry("C", "Charlie", "تشارلي", order: 30)));
+
+        await ApplyAsync(newer);
+
+        await InTenantAsync(async lists =>
+        {
+            var list = await lists.GetByCodeAsync("step-upgrade");
+
+            list!.Items.Select(item => item.Code).Should().Equal(["A", "B", "C"]);
+        });
+
+        var again = await Record.ExceptionAsync(() => ApplyAsync(newer));
+
+        again.Should().BeNull("the fill is idempotent: the second run finds nothing missing");
+    }
+
+    /// <summary>
+    /// Re-applying the real standard lists over a tenant that has extended one changes nothing.
+    /// </summary>
+    /// <remarks>
+    /// The same rules against the file an operator actually applies and the base recipe actually
+    /// names, rather than against a fixture. A failure here is a customer unable to take a platform
+    /// update.
+    /// </remarks>
+    [Fact]
+    public async Task TheStandardListsReApplyOverATenantThatHasExtendedThem()
+    {
+        await InTenantAsync(async lists =>
+        {
+            var grade = (await lists.GetByCodeAsync(StandardLookupLists.Grade))!;
+
+            var extended = await lists.UpdateAsync(
+                grade.LookupListId,
+                grade.Name,
+                [
+                    .. grade.Items,
+                    new LookupListItem(
+                        "G99",
+                        new BilingualText("The customer's own grade", "درجة العميل"),
+                        SortOrder: 999),
+                ]);
+
+            extended.Succeeded.Should().BeTrue(extended.Describe());
+        });
+
+        var failure = await Record.ExceptionAsync(ApplyStandardListsAsync);
+
+        failure.Should().BeNull("the file a customer already has must stay appliable");
+
+        await InTenantAsync(async lists =>
+        {
+            var grade = (await lists.GetByCodeAsync(StandardLookupLists.Grade))!;
+
+            grade.Items.Should().Contain(item => item.Code == "G99", "the customer's own entry survives");
+            grade.Items.Should().Contain(item => item.Code == "G1", "and so do the shipped ones");
         });
     }
 
@@ -347,6 +474,51 @@ public sealed class LookupListsRecipeStepTenantTests
             },
         ]),
     };
+
+    /// <summary>
+    /// Applies the real <c>standard-lookup-lists</c> file, the way an operator would from
+    /// Configuration → Recipes.
+    /// </summary>
+    /// <remarks>
+    /// From the module's own <c>Recipes</c> folder rather than from a copy, so that a change to the
+    /// shipped file is exercised by this test rather than silently diverging from it.
+    /// </remarks>
+    private Task ApplyStandardListsAsync() =>
+        InTenantAsServicesAsync(async services =>
+        {
+            var fileProvider = new PhysicalFileProvider(
+                Path.Combine(RepositoryRoot, "src", "WorkMate.Records", "Recipes"));
+
+            await services.GetRequiredService<IRecipeExecutor>().ExecuteAsync(
+                Guid.NewGuid().ToString("n"),
+                new RecipeDescriptor
+                {
+                    Name = "WorkMate.StandardLookupLists",
+                    BasePath = string.Empty,
+                    FileProvider = fileProvider,
+                    RecipeFileInfo = fileProvider.GetFileInfo("standard-lookup-lists.recipe.json"),
+                    RequireNewScope = false,
+                },
+                new Dictionary<string, object>(),
+                CancellationToken.None);
+        });
+
+    private static string RepositoryRoot
+    {
+        get
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+            while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "WorkMate.sln")))
+            {
+                directory = directory.Parent;
+            }
+
+            directory.Should().NotBeNull("the test runs inside the repository");
+
+            return directory!.FullName;
+        }
+    }
 
     private async Task ApplyAsync(JsonObject recipe) =>
         await InTenantAsServicesAsync(async services =>

@@ -3,14 +3,118 @@
 The employee record and the form designer, both built on runtime content-type
 definition. Contracted in section 5 of `/docs/technical-specification.md`.
 
-**Status: prompt 4 session A complete, and session B slice B1.** The employee
-record, its screens, its recipe step and its export are session A. The managed
-lookup lists are B1. The form designer itself — field definitions, the compiler,
-the rule language, request forms — is slices B3 to B7 and nothing of it exists
-yet; `Views/FormsAdmin/Index.cshtml` says so on the screen rather than leaving a
-reader to wonder.
+**Status: prompt 4 session A complete, and session B slices B1 and B2.** The
+employee record, its screens, its recipe step and its export are session A. The
+managed lookup lists are B1; binding fields to them, the standard lists and the
+reconciliation screen are B2. The form designer itself — field definitions, the
+compiler, the rule language, request forms — is slices B3 to B7 and nothing of it
+exists yet; `Views/FormsAdmin/Index.cshtml` says so on the screen rather than
+leaving a reader to wonder.
 
 ## Owns
+
+### Binding a field to a list — built in B2
+
+- **`LookupFieldSettings` and `LookupFieldEditor.Name`** — what a binding is: the
+  field's `Editor` setting becomes `WorkMateLookup` and its settings name a list
+  by code.
+
+  **Binding changes the editor, never the stored shape.** A bound field is still
+  the Orchard `TextField` it always was, holding the same plain string. That is
+  what makes binding free — no type change, no data migration, no downtime, and
+  reversible by clearing two settings — and it is asserted rather than asserted by
+  comment: `LookupBindingTenantTests` checks the live definition still says
+  `TextField`.
+
+- **`Views/TextField-WorkMateLookup.Edit.cshtml`** — the alternate editor Orchard
+  renders for a bound field.
+
+  **No field driver is registered, deliberately.** Orchard's own
+  `TextFieldDisplayDriver` asks for the shape `GetEditorShapeType` names, which
+  for this editor is `TextField_Edit__WorkMateLookup` — this file. It is the same
+  mechanism Orchard's own `PredefinedList` text editor uses. A second driver
+  registered for the editor name would not replace Orchard's: 
+  `ContentFieldDisplayDriverResolver.GetEditorDrivers` returns *every* driver whose
+  predicate matches, so the field would render twice, and the only way to stop it
+  would be to reach into another module's registration and narrow its predicate in
+  an order neither module controls.
+
+- **`<workmate-lookup>`** — one control, used by the alternate editor view *and*
+  by this module's own employee screens for the core nationality. The employee
+  picker is "two things" for a good reason; this is one thing used twice, which is
+  better where it is possible.
+
+  **A plain `<select>`, with no script at all.** Unlike the employee picker there
+  is nothing to search: a list is tens of entries and the browser's own control
+  beats anything this could add.
+
+- **`ILookupChoiceProvider`** — what a bound field offers, and the two rules that
+  make binding safe:
+
+  **It falls back to free text when the list is missing or has nothing to offer.**
+  That is what lets the binding ship to every tenant, including ones created long
+  before the lists existed: nothing changes on their screens until they apply the
+  lists. An empty dropdown would have taken away the ability to type a value — a
+  regression dressed as a feature.
+
+  **It never drops the value the record holds.** A value matching no entry is
+  rendered as its own option, selected and marked *not in the list*; a retired
+  entry the record holds is offered and marked *retired*. Without that the
+  `<select>` could not represent what is stored, and the first save after binding
+  would silently replace somebody's grade.
+
+- **`ILookupValueReconciliation`** — finding the values records hold that no entry
+  matches, and mapping them. The deliberate half of "no data lost": the control
+  keeps the value, and a person decides what it should be.
+
+  **Behind a button, because it reads every employee record in the tenant.** A
+  bag's rows are serialised inside their employee rather than stored as content
+  items, so there is no index over their values; one would be a row per bound
+  field per employee, written on every save, to serve a screen opened a handful of
+  times. Capped at 2,000 records, and the screen says when it stopped early.
+
+  **The core nationality is written through `IEmployeeService`, section rows
+  through `IContentManager`.** The core has a service that owns it; a section row
+  is only ever edited through Orchard's content editor and has none.
+
+### The standard lists, and what is bound to them — B2
+
+`StandardLookupLists` declares them once and three things read it: the migration
+that binds the fields, the recipe that ships the entries, and the reconciliation
+screen that has to know where a list's values live.
+
+| List | Bound to |
+| --- | --- |
+| `grade` | Job details → `GradeCode` |
+| `employment-type` | Job details → `EmploymentTypeCode` |
+| `work-location` | Job details → `WorkLocation` |
+| `document-type` | Documents → `DocumentTypeCode` |
+| `currency` | Bank details → `CurrencyCode` |
+| `country` | Qualifications and Contacts → `CountryCode` |
+| `relationship` | Dependants → `RelationshipCode` |
+| `nationality` | The employee **core**, and Dependants → `DependantNationalityCode` |
+| `contact-type` | Contacts → `ContactTypeCode` |
+| `job-title` | **nothing** — see known limitations |
+
+**The binding is a migration; the entries are a recipe.** A binding is schema: the
+same on every tenant, and it has to reach tenants that already exist, which a
+recipe cannot do because a recipe is applied once at setup. The entries are
+content, so they ship as `standard-lookup-lists.recipe.json` — named by
+`base.recipe.json`'s `recipes` step for a new tenant, and applied by hand from
+Configuration → Recipes for one created earlier. One file either way, because a
+tenant set up today and one upgraded today must end up with the same lists.
+
+**Binding the core's nationality does not make the core editable.** The core
+already stores a two-letter code; what the binding changes is which control edits
+it. `EmployeeFieldNames.Reserved` is untouched and the guard still refuses any
+attempt to define a content field with a core name — `LookupBindingTenantTests`
+asserts both halves.
+
+**So is binding "off by default" for an existing tenant?** In the only sense that
+matters to a user, yes. The migration binds the fields on every tenant, but a
+tenant that has not applied the standard lists has nothing behind the binding and
+sees exactly the free-text boxes it saw yesterday. The screens change when the
+lists are loaded, which is a deliberate act.
 
 ### Managed lookup lists — built in B1
 
@@ -273,8 +377,20 @@ eroding, in both languages.
   than in B4 because a menu entry is the thing customers learn and link to, and
   moving one later is a change every customer notices for no benefit they can see.
 
-- **`LookupListsAdminController`** — the list of lists, the editor, and the narrow
-  deletion. Reached from Forms, never from the menu.
+- **`LookupListsAdminController`** — the list of lists, the editor, the narrow
+  deletion, and the **Check stored values** screen. Reached from Forms, never from
+  the menu; the reconciliation screen hangs off the editor, which is where
+  somebody who has just bound a list already is.
+
+  **The reconciliation screen defaults every row to "leave".** Pressing Apply
+  without choosing anything changes nothing, which is the behaviour a screen that
+  rewrites employee records had better have. Adding a value to the list touches no
+  record; mapping one rewrites it everywhere and is said to be irreversible before
+  the button rather than after it.
+
+  **It says where it looked.** A reader who sees nothing needs to tell "every
+  value matches" from "nothing is bound to this list" — which is the honest answer
+  for `job-title`.
 
   **Entry rows are added and removed by round trip, not by script**, like the
   placement split screen and for the reason it gives: these forms commit
@@ -505,10 +621,17 @@ can find.
 
 Two categories.
 
-Category `Forms`, one mandatory event: `LookupListChanged`, carrying the whole
-list before and after and the operation that changed it. **A second category
-rather than more events in the first**, because changing a lookup list changes
-what every record in the tenant may say, while changing an employee changes one —
+Category `Forms`, two mandatory events. `LookupListChanged` carries the whole list
+before and after and the operation that changed it. `LookupValuesRemapped` is the
+one operation here that changes **records** rather than configuration, and cannot
+be undone by repeating it: one entry for the whole remap, naming the list, the old
+value, the new code, how many rows changed and the first few employees — because
+four hundred `EmployeeChanged` entries saying the same thing would bury both the
+decision and everything around it.
+
+**A second category rather than more events in the `Employee` one**, because
+changing a lookup list changes what every record in the tenant may say, while
+changing an employee changes one —
 and an auditor asking "who retired the grade every report groups by" should not
 have to read a thousand employee events to find it. Slice B3's form definitions
 file here too, which is why the category is named for what will live in it rather
@@ -563,17 +686,29 @@ engine's `employee-assignments` and `unit-heads`.
 
 ### `lookup-lists`
 
-Lists by code, with their entries. Re-running is safe per ADR-0008, with two
-asymmetries worth knowing because neither is obvious:
+Lists by code, with their entries. Re-running is safe per ADR-0008 and its
+**lookup-list addendum**, which gives five outcomes rather than three:
 
-- **An entry the tenant holds and the file does not mention is not a
-  difference.** The ADR's rule is that comparison is scoped to what a row actually
-  states, and a list a customer has added their own entries to since a pack
-  shipped is exactly that case. Without this, every tenant that had ever used the
-  feature would be unable to re-run the recipe that built it.
-- **An entry the file states and the tenant does not hold *is* a difference, and
-  the step fails.** ADR-0008 applied literally: the row is making a claim the
-  tenant contradicts. The cost is real and is recorded under known limitations.
+| Tenant holds | Recipe states | Outcome |
+| --- | --- | --- |
+| nothing | the list | create |
+| the same entry, same names, active state and order | the entry | skip |
+| **no such entry** | the entry | **add it**, through the service, audited |
+| an entry whose names, active state or order differ | the entry | **fail**, naming the difference |
+| entries the recipe does not name | — | left alone |
+
+Both asymmetries are worth knowing because neither is obvious. **An entry the
+tenant holds and the file does not mention is not a difference** — comparison is
+scoped to what a row states, and a list a customer has extended is exactly that
+case. **An entry the file names and the tenant lacks is an absence rather than a
+divergence**, because ADR-0014 guarantees an entry is only ever retired, so one
+that is not there has never been there: there is no decision to overwrite. That
+is what makes a revised pack appliable to a tenant holding the old one.
+
+A fill goes through `ILookupListService.UpdateAsync`, so it is validated and
+audited exactly as an administrator's edit would be, and is reported in the run
+log — a recipe that changes a tenant without saying so is one an operator cannot
+review.
 
 `isActive` and `sortOrder` are nullable in the step model so that "absent" and
 "stated" are different things. An absent `isActive` means offered; an absent
@@ -641,6 +776,9 @@ because the join between them is a code resolved at import.
   taxonomy. Departs from specification section 5's field table, so it is accepted
   **pending second review**; read it before touching anything in the lookup list
   layer.
+- **ADR-0008's lookup-list addendum** — a missing entry is a gap the recipe fills,
+  not a difference it refuses. Also **pending second review**, because it widens
+  the original decision a second time.
 - **ADR-0003 and its addendum** — the bilingual field lives in
   `WorkMate.Platform`; English is required and Arabic is optional unless the
   tenant turns `RequireArabicNames` on. Asked here through `IBilingualNamePolicy`,
@@ -696,42 +834,29 @@ taken by accident.
 The constants and the call sites are in place so that settling the question is a
 change to one implementation rather than a hunt through every service.
 
-### A second version of a pack cannot add an entry to a list a tenant already has
+### `JobTitle` is not bound to the `job-title` list
 
-`lookup-lists` follows ADR-0008 exactly: a stated entry the tenant does not hold
-is the row making a claim the tenant contradicts, so the step fails naming it.
-The consequence is that shipping `grade` with a sixth entry to a tenant that has
-five means the operator adds the sixth through the screen; re-applying the file
-after that succeeds, because then every stated entry matches.
+The list ships; nothing offers it. `JobTitle` on the job details section is a
+`BilingualTextField`, not a text field, so a control binding it would have to
+post **two** values — English and Arabic — from one choice. That cannot be done
+without script, and the no-script alternative is to post a code and resolve it
+back to a pair of names in a display driver of our own, which means registering a
+driver for `BilingualTextField` and narrowing `WorkMate.Platform`'s existing one
+so the two do not both render the field. That is a real option, and it is a
+different decision from the one this slice took.
 
-Filling the gap in silently is the behaviour ADR-0008 exists to refuse, and the
-one case where it was allowed — the `employeeAttachableTypeCodes` addendum —
-turned on the model documenting empty as *an absence* rather than *an answer*. A
-list with entries in it has answered. If this proves painful in practice it is an
-addendum to ADR-0008 with a worked case behind it, not a quiet change here.
+It is also bound up with the undecided positions model: a code-keyed job title is
+a position by another name, and introducing one as a side-effect of a lookup list
+would settle that question by accident. So the list ships — a tenant wants it
+either way, and a later slice can bind it once the shape of a position is known.
 
-### Lookup lists are not cached yet
+### The demo tenants have no section data to reconcile
 
-Specification section 9 requires a per-tenant cache with tenant-prefixed keys for
-anything read on every request, which is what `WorkMate.Dimensions` does for
-structures and types through `ISignal` and `CacheAside`. In B1 a lookup list is
-read by two admin screens and nothing else, so the machinery would be cost with
-no benefit and one more thing to invalidate correctly. **Slice B2 is where it
-becomes necessary**, because that is when a bound field resolves a list on every
-employee editor render — and the cache arrives with the test that asserts the key
-contains the tenant name, as the dimension engine's does.
-
-### No lookup lists ship yet, and the demo tenants have no section data to reconcile
-
-The standard lists — job title, grade, employment type, nationality, document
-type, relationship, currency — are slice B2's, with the editor that binds a field
-to one. Until then a tenant has whatever lists it creates.
-
-Worth recording because it is the reason the binding is cheap: the `employees`
+Worth recording because it is the reason binding was cheap: the `employees`
 recipe step carries only the employee **core**, so no demo employee on Zenith or
 Crescent has a job detail, a document, a bank account, a qualification, a
-dependant or a contact. There is almost nothing to migrate, which makes this the
-cheapest moment the change will ever have.
+dependant or a contact. The only shipped field with values to reconcile is the
+core nationality, and the demo generator does not emit one.
 
 ### Two simultaneous creates can share a code
 

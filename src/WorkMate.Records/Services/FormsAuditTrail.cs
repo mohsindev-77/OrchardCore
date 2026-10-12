@@ -30,6 +30,17 @@ public static class FormsAuditTrail
 
     /// <summary>A lookup list was created, changed or deleted.</summary>
     public const string LookupListChanged = "LookupListChanged";
+
+    /// <summary>
+    /// A value records held was rewritten onto an entry of the list.
+    /// </summary>
+    /// <remarks>
+    /// Its own event rather than part of <see cref="LookupListChanged"/>, because it is the one
+    /// operation here that changes <em>records</em> rather than configuration — and it cannot be
+    /// undone by repeating it. An auditor asking "why does this employee's grade say G1 when the
+    /// file we loaded said Grade One" is asking about this and nothing else.
+    /// </remarks>
+    public const string LookupValuesRemapped = "LookupValuesRemapped";
 }
 
 /// <summary>
@@ -55,8 +66,42 @@ public sealed class FormsAuditTrailOptionsConfiguration : IConfigureOptions<Audi
                 S => S["Lookup list changed"],
                 S => S["A list of choices was created, renamed, or had entries added or retired."],
                 enableByDefault: true,
+                isMandatory: true)
+            .WithEvent(
+                FormsAuditTrail.LookupValuesRemapped,
+                S => S["Lookup values remapped"],
+                S => S["A value stored on employee records was rewritten onto an entry of a lookup list."],
+                enableByDefault: true,
                 isMandatory: true);
     }
+}
+
+/// <summary>The payload of a <see cref="FormsAuditTrail.LookupValuesRemapped"/> entry.</summary>
+public sealed class LookupValuesRemappedAuditEvent
+{
+    public string ListCode { get; set; } = string.Empty;
+
+    /// <summary>The value records held, exactly as it was stored.</summary>
+    public string FromValue { get; set; } = string.Empty;
+
+    /// <summary>The entry code they now hold.</summary>
+    public string ToCode { get; set; } = string.Empty;
+
+    /// <summary>How many stored values changed. More than one employee can hold several.</summary>
+    public int RowsChanged { get; set; }
+
+    /// <summary>How many employees were touched.</summary>
+    public int EmployeesChanged { get; set; }
+
+    /// <summary>
+    /// The first few of them, by code.
+    /// </summary>
+    /// <remarks>
+    /// Capped rather than complete, because an audit payload is read by a person: a list of four
+    /// hundred codes is not evidence, it is a wall. The count beside it is the number that matters,
+    /// and the codes are there so somebody can go and look at one.
+    /// </remarks>
+    public List<string> EmployeeCodes { get; set; } = [];
 }
 
 /// <summary>What a lookup list said, for the before-and-after on an audit entry.</summary>

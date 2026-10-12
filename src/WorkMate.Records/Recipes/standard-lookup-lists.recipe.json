@@ -1,0 +1,197 @@
+{
+  "name": "WorkMate.StandardLookupLists",
+  "displayName": "WorkMate standard lookup lists",
+  "description": "The managed lists a form field offers as choices: job title, grade, employment type, work location, document type, nationality, country, currency, relationship and contact type. Safe to apply to a tenant that already has them.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate"],
+  "tags": ["workmate", "lookup-lists"],
+
+  "$notes": [
+    "Applied by base.recipe.json on every new tenant, and applied by hand to a tenant created before slice B2. Those are the same file on purpose: a tenant that gets the lists at setup and one that gets them later must end up with the same lists, and two files would drift.",
+    "Re-running is safe and is the point. Per ADR-0008's lookup-list addendum: an entry this file names that the tenant does not hold is ADDED, an entry that exists and differs FAILS the step naming the difference, and entries the tenant has added of its own are left alone. So a later version of this file can add an entry without an administrator retyping it, and cannot quietly revert one they renamed.",
+    "Codes are the things records store, so they are chosen to be what a customer already recognises: ISO 3166-1 alpha-2 for countries and nationalities, ISO 4217 for currencies. Changing one later is not possible - an entry's code is immutable once saved - so they are worth getting right here.",
+    "Entries are deliberately a starting point rather than an exhaustive set. A customer adds their own through People > Forms > Lookup lists, and re-applying this file leaves those alone.",
+    "Arabic is present on every entry here because these are terms WorkMate ships and can translate. A customer's own entries may have English only; ADR-0003's addendum makes Arabic optional unless the tenant turns RequireArabicNames on."
+  ],
+
+  "steps": [
+    {
+      "name": "lookup-lists",
+      "lists": [
+        {
+          "code": "job-title",
+          "nameEn": "Job title",
+          "nameAr": "المسمى الوظيفي",
+          "$comment": "Shipped, and deliberately bound to nothing. JobTitle on the job details section is a bilingual text field rather than a code, so binding it is a different decision - see the module README and the positions question.",
+          "items": [
+            { "code": "ACCOUNTANT", "nameEn": "Accountant", "nameAr": "محاسب", "sortOrder": 10 },
+            { "code": "ADMIN-OFFICER", "nameEn": "Administrative officer", "nameAr": "موظف إداري", "sortOrder": 20 },
+            { "code": "CIVIL-ENGINEER", "nameEn": "Civil engineer", "nameAr": "مهندس مدني", "sortOrder": 30 },
+            { "code": "DRIVER", "nameEn": "Driver", "nameAr": "سائق", "sortOrder": 40 },
+            { "code": "ELEC-ENGINEER", "nameEn": "Electrical engineer", "nameAr": "مهندس كهربائي", "sortOrder": 50 },
+            { "code": "FOREMAN", "nameEn": "Foreman", "nameAr": "مشرف عمال", "sortOrder": 60 },
+            { "code": "HR-OFFICER", "nameEn": "HR officer", "nameAr": "موظف موارد بشرية", "sortOrder": 70 },
+            { "code": "LABOURER", "nameEn": "Labourer", "nameAr": "عامل", "sortOrder": 80 },
+            { "code": "MECH-ENGINEER", "nameEn": "Mechanical engineer", "nameAr": "مهندس ميكانيكي", "sortOrder": 90 },
+            { "code": "SITE-ENGINEER", "nameEn": "Site engineer", "nameAr": "مهندس موقع", "sortOrder": 100 },
+            { "code": "TECHNICIAN", "nameEn": "Technician", "nameAr": "فني", "sortOrder": 110 }
+          ]
+        },
+        {
+          "code": "grade",
+          "nameEn": "Grade",
+          "nameAr": "الدرجة",
+          "items": [
+            { "code": "G1", "nameEn": "Grade 1", "nameAr": "الدرجة ١", "sortOrder": 10 },
+            { "code": "G2", "nameEn": "Grade 2", "nameAr": "الدرجة ٢", "sortOrder": 20 },
+            { "code": "G3", "nameEn": "Grade 3", "nameAr": "الدرجة ٣", "sortOrder": 30 },
+            { "code": "G4", "nameEn": "Grade 4", "nameAr": "الدرجة ٤", "sortOrder": 40 },
+            { "code": "G5", "nameEn": "Grade 5", "nameAr": "الدرجة ٥", "sortOrder": 50 },
+            { "code": "G6", "nameEn": "Grade 6", "nameAr": "الدرجة ٦", "sortOrder": 60 }
+          ]
+        },
+        {
+          "code": "employment-type",
+          "nameEn": "Employment type",
+          "nameAr": "نوع التوظيف",
+          "items": [
+            { "code": "FT", "nameEn": "Full time", "nameAr": "دوام كامل", "sortOrder": 10 },
+            { "code": "PT", "nameEn": "Part time", "nameAr": "دوام جزئي", "sortOrder": 20 },
+            { "code": "FIXED-TERM", "nameEn": "Fixed term", "nameAr": "عقد محدد المدة", "sortOrder": 30 },
+            { "code": "PROBATION", "nameEn": "Probation", "nameAr": "تحت التجربة", "sortOrder": 40 },
+            { "code": "SECONDED", "nameEn": "Seconded", "nameAr": "معار", "sortOrder": 50 },
+            { "code": "CONTRACTOR", "nameEn": "Contractor", "nameAr": "متعاقد", "sortOrder": 60 }
+          ]
+        },
+        {
+          "code": "work-location",
+          "nameEn": "Work location",
+          "nameAr": "مكان العمل",
+          "$comment": "Deliberately short and generic. Where somebody works organisationally is a placement on a structure, not a field - this is the kind of office-or-site distinction a timesheet asks about.",
+          "items": [
+            { "code": "HEAD-OFFICE", "nameEn": "Head office", "nameAr": "المكتب الرئيسي", "sortOrder": 10 },
+            { "code": "BRANCH", "nameEn": "Branch", "nameAr": "فرع", "sortOrder": 20 },
+            { "code": "SITE", "nameEn": "Site", "nameAr": "موقع", "sortOrder": 30 },
+            { "code": "REMOTE", "nameEn": "Remote", "nameAr": "عن بُعد", "sortOrder": 40 }
+          ]
+        },
+        {
+          "code": "document-type",
+          "nameEn": "Document type",
+          "nameAr": "نوع الوثيقة",
+          "$comment": "These are the rows the document expiry alerts in prompt 6 are a query over, so the set matters more than most.",
+          "items": [
+            { "code": "PASSPORT", "nameEn": "Passport", "nameAr": "جواز سفر", "sortOrder": 10 },
+            { "code": "NATIONAL-ID", "nameEn": "National identity card", "nameAr": "بطاقة هوية وطنية", "sortOrder": 20 },
+            { "code": "RESIDENCE", "nameEn": "Residence permit", "nameAr": "تصريح إقامة", "sortOrder": 30 },
+            { "code": "WORK-PERMIT", "nameEn": "Work permit", "nameAr": "تصريح عمل", "sortOrder": 40 },
+            { "code": "VISA", "nameEn": "Visa", "nameAr": "تأشيرة", "sortOrder": 50 },
+            { "code": "DRIVING-LICENCE", "nameEn": "Driving licence", "nameAr": "رخصة قيادة", "sortOrder": 60 },
+            { "code": "HEALTH-CARD", "nameEn": "Health card", "nameAr": "بطاقة صحية", "sortOrder": 70 },
+            { "code": "SAFETY-CARD", "nameEn": "Safety card", "nameAr": "بطاقة سلامة", "sortOrder": 80 }
+          ]
+        },
+        {
+          "code": "nationality",
+          "nameEn": "Nationality",
+          "nameAr": "الجنسية",
+          "$comment": "ISO 3166-1 alpha-2 codes, which is what the employee core's NationalityCode field already holds and what its two-character maximum length implies. A starting set covering the Gulf and the countries the first customers recruit from; a customer adds the rest.",
+          "items": [
+            { "code": "BH", "nameEn": "Bahraini", "nameAr": "بحريني", "sortOrder": 10 },
+            { "code": "SA", "nameEn": "Saudi", "nameAr": "سعودي", "sortOrder": 20 },
+            { "code": "AE", "nameEn": "Emirati", "nameAr": "إماراتي", "sortOrder": 30 },
+            { "code": "KW", "nameEn": "Kuwaiti", "nameAr": "كويتي", "sortOrder": 40 },
+            { "code": "OM", "nameEn": "Omani", "nameAr": "عماني", "sortOrder": 50 },
+            { "code": "QA", "nameEn": "Qatari", "nameAr": "قطري", "sortOrder": 60 },
+            { "code": "EG", "nameEn": "Egyptian", "nameAr": "مصري", "sortOrder": 70 },
+            { "code": "JO", "nameEn": "Jordanian", "nameAr": "أردني", "sortOrder": 80 },
+            { "code": "LB", "nameEn": "Lebanese", "nameAr": "لبناني", "sortOrder": 90 },
+            { "code": "SY", "nameEn": "Syrian", "nameAr": "سوري", "sortOrder": 100 },
+            { "code": "SD", "nameEn": "Sudanese", "nameAr": "سوداني", "sortOrder": 110 },
+            { "code": "IN", "nameEn": "Indian", "nameAr": "هندي", "sortOrder": 120 },
+            { "code": "PK", "nameEn": "Pakistani", "nameAr": "باكستاني", "sortOrder": 130 },
+            { "code": "BD", "nameEn": "Bangladeshi", "nameAr": "بنغلاديشي", "sortOrder": 140 },
+            { "code": "LK", "nameEn": "Sri Lankan", "nameAr": "سريلانكي", "sortOrder": 150 },
+            { "code": "NP", "nameEn": "Nepali", "nameAr": "نيبالي", "sortOrder": 160 },
+            { "code": "PH", "nameEn": "Filipino", "nameAr": "فلبيني", "sortOrder": 170 },
+            { "code": "GB", "nameEn": "British", "nameAr": "بريطاني", "sortOrder": 180 }
+          ]
+        },
+        {
+          "code": "country",
+          "nameEn": "Country",
+          "nameAr": "الدولة",
+          "$comment": "ISO 3166-1 alpha-2 again, and deliberately a separate list from nationality: 'Bahrain' and 'Bahraini' are different words in both languages, and a qualification awarded in a country is not a nationality.",
+          "items": [
+            { "code": "BH", "nameEn": "Bahrain", "nameAr": "البحرين", "sortOrder": 10 },
+            { "code": "SA", "nameEn": "Saudi Arabia", "nameAr": "السعودية", "sortOrder": 20 },
+            { "code": "AE", "nameEn": "United Arab Emirates", "nameAr": "الإمارات", "sortOrder": 30 },
+            { "code": "KW", "nameEn": "Kuwait", "nameAr": "الكويت", "sortOrder": 40 },
+            { "code": "OM", "nameEn": "Oman", "nameAr": "عُمان", "sortOrder": 50 },
+            { "code": "QA", "nameEn": "Qatar", "nameAr": "قطر", "sortOrder": 60 },
+            { "code": "EG", "nameEn": "Egypt", "nameAr": "مصر", "sortOrder": 70 },
+            { "code": "JO", "nameEn": "Jordan", "nameAr": "الأردن", "sortOrder": 80 },
+            { "code": "LB", "nameEn": "Lebanon", "nameAr": "لبنان", "sortOrder": 90 },
+            { "code": "IN", "nameEn": "India", "nameAr": "الهند", "sortOrder": 100 },
+            { "code": "PK", "nameEn": "Pakistan", "nameAr": "باكستان", "sortOrder": 110 },
+            { "code": "BD", "nameEn": "Bangladesh", "nameAr": "بنغلاديش", "sortOrder": 120 },
+            { "code": "LK", "nameEn": "Sri Lanka", "nameAr": "سريلانكا", "sortOrder": 130 },
+            { "code": "PH", "nameEn": "Philippines", "nameAr": "الفلبين", "sortOrder": 140 },
+            { "code": "GB", "nameEn": "United Kingdom", "nameAr": "المملكة المتحدة", "sortOrder": 150 },
+            { "code": "US", "nameEn": "United States", "nameAr": "الولايات المتحدة", "sortOrder": 160 }
+          ]
+        },
+        {
+          "code": "currency",
+          "nameEn": "Currency",
+          "nameAr": "العملة",
+          "$comment": "ISO 4217. The bank account section's CurrencyCode is where a split salary - part paid locally, part remitted home - says which currency each account takes.",
+          "items": [
+            { "code": "BHD", "nameEn": "Bahraini dinar", "nameAr": "دينار بحريني", "sortOrder": 10 },
+            { "code": "SAR", "nameEn": "Saudi riyal", "nameAr": "ريال سعودي", "sortOrder": 20 },
+            { "code": "AED", "nameEn": "UAE dirham", "nameAr": "درهم إماراتي", "sortOrder": 30 },
+            { "code": "KWD", "nameEn": "Kuwaiti dinar", "nameAr": "دينار كويتي", "sortOrder": 40 },
+            { "code": "OMR", "nameEn": "Omani rial", "nameAr": "ريال عماني", "sortOrder": 50 },
+            { "code": "QAR", "nameEn": "Qatari riyal", "nameAr": "ريال قطري", "sortOrder": 60 },
+            { "code": "USD", "nameEn": "US dollar", "nameAr": "دولار أمريكي", "sortOrder": 70 },
+            { "code": "EUR", "nameEn": "Euro", "nameAr": "يورو", "sortOrder": 80 },
+            { "code": "GBP", "nameEn": "Pound sterling", "nameAr": "جنيه إسترليني", "sortOrder": 90 },
+            { "code": "INR", "nameEn": "Indian rupee", "nameAr": "روبية هندية", "sortOrder": 100 },
+            { "code": "PKR", "nameEn": "Pakistani rupee", "nameAr": "روبية باكستانية", "sortOrder": 110 },
+            { "code": "PHP", "nameEn": "Philippine peso", "nameAr": "بيزو فلبيني", "sortOrder": 120 }
+          ]
+        },
+        {
+          "code": "relationship",
+          "nameEn": "Relationship",
+          "nameAr": "صلة القرابة",
+          "$comment": "What a dependant is to the employee. Drives sponsorship, air tickets and medical cover, so it is a managed set rather than free text.",
+          "items": [
+            { "code": "SPOUSE", "nameEn": "Spouse", "nameAr": "زوج/زوجة", "sortOrder": 10 },
+            { "code": "SON", "nameEn": "Son", "nameAr": "ابن", "sortOrder": 20 },
+            { "code": "DAUGHTER", "nameEn": "Daughter", "nameAr": "ابنة", "sortOrder": 30 },
+            { "code": "FATHER", "nameEn": "Father", "nameAr": "أب", "sortOrder": 40 },
+            { "code": "MOTHER", "nameEn": "Mother", "nameAr": "أم", "sortOrder": 50 },
+            { "code": "BROTHER", "nameEn": "Brother", "nameAr": "أخ", "sortOrder": 60 },
+            { "code": "SISTER", "nameEn": "Sister", "nameAr": "أخت", "sortOrder": 70 },
+            { "code": "OTHER", "nameEn": "Other", "nameAr": "أخرى", "sortOrder": 80 }
+          ]
+        },
+        {
+          "code": "contact-type",
+          "nameEn": "Contact type",
+          "nameAr": "نوع جهة الاتصال",
+          "items": [
+            { "code": "HOME", "nameEn": "Home", "nameAr": "المنزل", "sortOrder": 10 },
+            { "code": "WORK", "nameEn": "Work", "nameAr": "العمل", "sortOrder": 20 },
+            { "code": "EMERGENCY", "nameEn": "Emergency", "nameAr": "الطوارئ", "sortOrder": 30 },
+            { "code": "HOME-COUNTRY", "nameEn": "Home country", "nameAr": "بلد الإقامة الأصلي", "sortOrder": 40 },
+            { "code": "NEXT-OF-KIN", "nameEn": "Next of kin", "nameAr": "أقرب الأقارب", "sortOrder": 50 }
+          ]
+        }
+      ]
+    }
+  ]
+}

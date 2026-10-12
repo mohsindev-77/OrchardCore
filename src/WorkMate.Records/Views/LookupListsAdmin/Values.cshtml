@@ -1,0 +1,136 @@
+@model LookupValuesViewModel
+
+<h1>@T["{0} — values not in this list", Model.NameEn ?? string.Empty]</h1>
+
+<div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+<p>
+    <a asp-action="Edit" asp-route-id="@Model.LookupListId" id="lookup-values-back">@T["Back to the list"]</a>
+</p>
+
+<p class="text-muted">
+    @T["These are values stored on employee records that this list has no entry for — typed in before the list existed, or imported from somewhere that spelt them differently. Nothing here has been changed: a value the list does not know is kept exactly as it is until somebody decides what it should be."]
+</p>
+
+@* Where the scan looked. A reader who has just bound a list and sees nothing needs to be able to
+   tell "no unmatched values" from "nothing is bound to this list". *@
+<div class="mb-3" id="lookup-values-locations">
+    @if (Model.BoundLocations.Count == 0)
+    {
+        <div class="alert alert-warning mb-0">
+            @T["No field on the employee record offers this list yet, so there is nothing to check. A list is offered by a field once it is bound to one."]
+        </div>
+    }
+    else
+    {
+        <span class="form-label d-block">@T["Checked"]</span>
+        <ul class="list-unstyled text-muted small mb-0">
+            @foreach (var location in Model.BoundLocations)
+            {
+                <li class="lookup-values-location">@location</li>
+            }
+        </ul>
+    }
+</div>
+
+@if (Model.WasTruncated)
+{
+    <div class="alert alert-warning" id="lookup-values-truncated">
+        @T["This check read the first {0} employee records and stopped. What is below is what those hold; there may be more.", Model.EmployeesScanned]
+    </div>
+}
+
+@if (Model.Rows.Count == 0)
+{
+    <p id="lookup-values-none">
+        @T["Every stored value matches an entry of this list. {0} employee record(s) checked.", Model.EmployeesScanned]
+    </p>
+}
+else
+{
+    <form asp-action="Values" asp-route-id="@Model.LookupListId" method="post" id="lookup-values-form">
+        <input type="hidden" asp-for="LookupListId" />
+
+        <table class="table align-middle" id="lookup-values-table">
+            <thead>
+                <tr>
+                    <th>@T["Value"]</th>
+                    <th class="text-end" style="width: 7rem;">@T["Records"]</th>
+                    <th>@T["What to do"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var index = 0; index < Model.Rows.Count; index++)
+                {
+                    var row = Model.Rows[index];
+
+                    <tr class="lookup-value-row" data-value="@row.Value">
+                        <td>
+                            <code>@row.Value</code>
+                            @if (!string.IsNullOrWhiteSpace(row.SampleEmployeeCodes))
+                            {
+                                <div class="text-muted small lookup-value-samples">
+                                    @T["on {0}", row.SampleEmployeeCodes]
+                                </div>
+                            }
+                        </td>
+                        <td class="text-end lookup-value-count">@row.Count</td>
+                        <td>
+                            <input type="hidden" asp-for="Rows[index].Value" />
+
+                            @* Radios rather than a dropdown: three mutually exclusive choices, one
+                               of which is the default, and a reader scanning twenty rows should be
+                               able to see what each is set to without opening anything. *@
+                            <div class="form-check">
+                                <input class="form-check-input lookup-value-leave" type="radio"
+                                       id="lookup-value-leave-@index"
+                                       name="Rows[@index].Action" value="@UnmatchedValueActions.Leave"
+                                       checked="@(row.Action == UnmatchedValueActions.Leave)" />
+                                <label class="form-check-label" for="lookup-value-leave-@index">
+                                    @T["Leave it"]
+                                </label>
+                            </div>
+
+                            <div class="form-check">
+                                <input class="form-check-input lookup-value-add" type="radio"
+                                       id="lookup-value-add-@index"
+                                       name="Rows[@index].Action" value="@UnmatchedValueActions.Add"
+                                       checked="@(row.Action == UnmatchedValueActions.Add)" />
+                                <label class="form-check-label" for="lookup-value-add-@index">
+                                    @T["Add it to the list"]
+                                </label>
+                            </div>
+
+                            <div class="form-check d-flex align-items-center gap-2">
+                                <input class="form-check-input lookup-value-map mt-0" type="radio"
+                                       id="lookup-value-map-@index"
+                                       name="Rows[@index].Action" value="@UnmatchedValueActions.Map"
+                                       checked="@(row.Action == UnmatchedValueActions.Map)" />
+                                <label class="form-check-label" for="lookup-value-map-@index">
+                                    @T["Map it to"]
+                                </label>
+                                <select class="form-select form-select-sm w-auto lookup-value-target"
+                                        asp-for="Rows[index].MapTo">
+                                    <option value="">@T["— choose —"]</option>
+                                    @foreach (var target in Model.Targets)
+                                    {
+                                        <option value="@target.Code">@target.Label</option>
+                                    }
+                                </select>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @* Said before the button, not after. Adding an entry touches no record and is undone by
+           retiring it; mapping rewrites records and repeating it does not put them back. *@
+        <div class="alert alert-warning" id="lookup-values-warning">
+            @T["Adding a value to the list changes no record. Mapping one rewrites it on every record that holds it, is recorded in the audit trail, and cannot be undone automatically."]
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="lookup-values-apply">@T["Apply"]</button>
+        <a asp-action="Edit" asp-route-id="@Model.LookupListId" class="btn btn-link">@T["Cancel"]</a>
+    </form>
+}

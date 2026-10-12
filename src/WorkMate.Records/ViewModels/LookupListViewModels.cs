@@ -172,6 +172,79 @@ public sealed class LookupListDeleteViewModel
 }
 
 /// <summary>
+/// The "Check stored values" screen: what records hold that the list has no entry for.
+/// </summary>
+public sealed class LookupValuesViewModel
+{
+    public string? LookupListId { get; set; }
+
+    public string? Code { get; set; }
+
+    public string? NameEn { get; set; }
+
+    /// <summary>Where this list's values are stored, in words a reader recognises.</summary>
+    /// <remarks>
+    /// Shown because a reader who has just bound a list needs to know the scan looked where they
+    /// expect. An empty list here is the answer to "why did it find nothing".
+    /// </remarks>
+    public List<string> BoundLocations { get; set; } = [];
+
+    public int EmployeesScanned { get; set; }
+
+    public bool WasTruncated { get; set; }
+
+    /// <summary>The entries a value may be mapped onto: the active ones.</summary>
+    public List<LookupValueTargetViewModel> Targets { get; set; } = [];
+
+    public List<UnmatchedValueRowViewModel> Rows { get; set; } = [];
+}
+
+/// <summary>One entry offered as a mapping target.</summary>
+public sealed class LookupValueTargetViewModel
+{
+    public string? Code { get; set; }
+
+    public string? Label { get; set; }
+}
+
+/// <summary>One unmatched value, and what the reader has chosen to do with it.</summary>
+public sealed class UnmatchedValueRowViewModel
+{
+    public string? Value { get; set; }
+
+    public int Count { get; set; }
+
+    public string? SampleEmployeeCodes { get; set; }
+
+    /// <summary>
+    /// <c>leave</c>, <c>add</c> or <c>map</c>. Defaults to leave, so a reader who presses Apply
+    /// without choosing anything changes nothing.
+    /// </summary>
+    public string? Action { get; set; } = UnmatchedValueActions.Leave;
+
+    /// <summary>The entry code to map onto, when <see cref="Action"/> is <c>map</c>.</summary>
+    public string? MapTo { get; set; }
+}
+
+/// <summary>What a reader may do with one unmatched value.</summary>
+/// <remarks>
+/// Constants rather than an enum because they are posted as form values and read in a view: an
+/// enum would be bound by name anyway, and three strings used in three places are clearer named
+/// once than parsed twice.
+/// </remarks>
+public static class UnmatchedValueActions
+{
+    /// <summary>Do nothing. The default, and a supported permanent state.</summary>
+    public const string Leave = "leave";
+
+    /// <summary>Add the value to the list as a new entry. Touches no record.</summary>
+    public const string Add = "add";
+
+    /// <summary>Rewrite the value on every record holding it. The one irreversible action.</summary>
+    public const string Map = "map";
+}
+
+/// <summary>
 /// The Forms screen: the one new admin menu entry, and what is reachable from it.
 /// </summary>
 /// <remarks>

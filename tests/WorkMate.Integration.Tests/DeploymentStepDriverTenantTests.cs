@@ -249,7 +249,12 @@ public sealed class DeploymentStepDriverTenantTests
                     "a plan and the sources it is made of must write the same file, or the round-trip "
                     + "tests are proving something no operator can produce");
 
+                // The order an operator has to be able to apply, which is why it is asserted rather
+                // than merely counted. lookup-lists is first because a stored value has to resolve
+                // against a list that already exists; employees before the dimension engine's two
+                // people steps, which name people by code.
                 StepNamesIn(viaPlan).Should().Equal(
+                    "lookup-lists",
                     "employees",
                     "dimension-types",
                     "structures",

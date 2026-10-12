@@ -69,6 +69,11 @@ public sealed class Migrations : DataMigration
         await CreateSectionTypesAsync();
         await CreateEmployeeTypeAsync();
 
+        // The standard bindings, so a brand-new tenant gets the current definition in one pass.
+        // UpdateFrom4Async carries the same change to a tenant created before it; see that step for
+        // why a definition change is stated in both places and a table creation is not.
+        await BindStandardLookupFieldsAsync();
+
         return 1;
     }
 
@@ -406,6 +411,67 @@ public sealed class Migrations : DataMigration
         }
 
         return 4;
+    }
+
+    /// <summary>
+    /// Binds the standard section fields to the lookup lists WorkMate ships.
+    /// </summary>
+    /// <remarks>
+    /// <b>A migration rather than a recipe step, because a binding is schema.</b> It is part of the
+    /// content definition, it is the same on every tenant, and it must reach tenants that already
+    /// exist — which a recipe cannot do, because a recipe is applied once at setup and a later edit
+    /// to it never arrives anywhere. The same reasoning the module manifest's dependency list
+    /// carries for <c>OrchardCore.Flows</c>, and the reason that one was a defect when it was only
+    /// in the base recipe.
+    ///
+    /// <b>Stated here and in <see cref="CreateSectionTypesAsync"/> both</b>, which is ADR-0009's
+    /// shape for a definition change rather than duplication: altering a definition is idempotent,
+    /// so a brand-new tenant can get the current shape in one pass from <see cref="CreateAsync"/>
+    /// and this step can carry the same change to a tenant that ran it before the binding existed.
+    /// <see cref="UpdateFrom2Async"/> did exactly this for the <c>Creatable</c> setting; creating a
+    /// table is the case where that does not work, which is why
+    /// <see cref="CreateLookupListIndexAsync"/> is in one place and this is in two.
+    ///
+    /// <b>Binding changes no stored data and takes nothing away.</b> Each field keeps its type and
+    /// its stored string; what changes is the editor that renders it. On a tenant that has not
+    /// applied the standard lists there is nothing in the list behind the binding, and
+    /// <c>ILookupChoiceProvider</c> falls back to the free-text box the screen has always shown —
+    /// so this step is invisible until the lists arrive.
+    /// </remarks>
+    public async Task<int> UpdateFrom4Async()
+    {
+        await BindStandardLookupFieldsAsync();
+
+        return 5;
+    }
+
+    /// <summary>
+    /// Sets the lookup editor and the list code on every field in
+    /// <see cref="StandardLookupLists.Bindings"/>.
+    /// </summary>
+    /// <remarks>
+    /// Grouped by part, because <c>AlterPartDefinitionAsync</c> rewrites the part's definition and
+    /// two calls for two fields on one part would make the second read whatever the first left.
+    ///
+    /// <c>WithSettings</c> on a field builder merges into the field's settings rather than
+    /// replacing them, so the display name and description
+    /// <see cref="CreateSectionTypesAsync"/> set survive. <c>RenderedLabelTenantTests</c> is the
+    /// existing guard that a section field still renders its label.
+    /// </remarks>
+    private async Task BindStandardLookupFieldsAsync()
+    {
+        foreach (var part in StandardLookupLists.Bindings.GroupBy(binding => binding.PartName, StringComparer.Ordinal))
+        {
+            await _contentDefinitionManager.AlterPartDefinitionAsync(part.Key, builder =>
+            {
+                foreach (var binding in part)
+                {
+                    builder.WithField(binding.FieldName, field => field
+                        .WithEditor(LookupFieldEditor.Name)
+                        .WithSettings(new LookupFieldSettings { ListCode = binding.ListCode }));
+                }
+            });
+        }
     }
 
     /// <summary>

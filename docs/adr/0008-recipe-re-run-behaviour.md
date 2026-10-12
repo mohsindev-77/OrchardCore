@@ -237,3 +237,98 @@ be — it is not a direct document write — and it changes nothing except the o
 
 `DimensionsRecipeStepsTenantTests` covers all four outcomes, including the one that matters most:
 a tenant whose structure already names a *different* set still fails, writing nothing.
+
+---
+
+## Addendum — a lookup list's missing entry is a gap to fill, not a difference (2026-10-12)
+
+**Status:** accepted, **pending second review** — this widens the original decision a second time,
+along the line the `employeeAttachableTypeCodes` addendum already drew.
+
+### Context
+
+Slice B1 shipped `lookup-lists` with the original rule applied literally, and the module README
+recorded the cost as a known limitation:
+
+> A stated entry the tenant does not hold is the row making a claim the tenant contradicts, so the
+> step fails naming it. The consequence is that shipping `grade` with a sixth entry to a tenant
+> that has five means the operator adds the sixth through the screen.
+
+Slice B2 is what makes that unaffordable. The standard lists — job title, grade, employment type,
+document type, nationality, country, currency, relationship, contact type — now ship as a recipe,
+and they are the kind of reference data that grows: a new document type when a country changes its
+visa regime, a grade when a customer adds a band, a nationality that was simply missed. Under the
+original rule the second version of that recipe cannot be applied to any tenant that has the
+first, and the only path is an administrator retyping entries from a file they are holding.
+
+Worse, the failure is total rather than partial: a step that fails writes nothing, so one missing
+entry blocks every other list in the same file.
+
+### What makes an entry different from an attribute value
+
+The original decision refuses to overwrite because "the step cannot tell whether a divergent row in
+the tenant is the thing the recipe is trying to establish or a change someone made deliberately
+since". That reasoning is exactly right for a value that exists, and it says nothing about one that
+does not.
+
+An entry the tenant does not hold is not a divergence. There is no decision to overwrite, no
+administrator's edit to discard, and nothing stored anywhere that names it — ADR-0014 guarantees
+the last of those, because an entry cannot be removed, only retired. So an entry absent from a
+tenant's list has never been in it, which is the same shape of reasoning the
+`employeeAttachableTypeCodes` addendum used: the state is an absence rather than an answer.
+
+The inverse is still a real answer and is still refused. A tenant whose `G3` reads "Grade three"
+when the file says "Grade 3", or whose `G9` is retired when the file says it is offered, has made a
+decision; silently reverting it is the behaviour this ADR exists to prevent.
+
+### Decision
+
+**For `lookup-lists`, an entry the recipe names and the tenant's existing list does not hold is
+added. An entry that exists and differs still fails the step, naming what differs.**
+
+Five outcomes for a list the tenant already has:
+
+| Tenant holds | Recipe states | Outcome |
+| --- | --- | --- |
+| the same entry, same names, same active state, same order | the entry | skip |
+| **no such entry** | the entry | **add it**, and say so |
+| an entry whose names, active state or order differ | the entry | **fail**, naming the entry and the difference |
+| entries the recipe does not name | — | left alone; not a difference |
+| a different list name | a name | **fail**, naming both |
+
+The list's own bilingual name is unchanged by this addendum: it is a value that exists, so a
+difference in it still fails.
+
+**The fill goes through `ILookupListService.UpdateAsync`**, so it is validated and audited exactly
+as an administrator's own edit on the lookup list screen would be — it is not a direct document
+write. One `LookupListChanged` entry per list the step fills, carrying the before and after, which
+is what makes "where did this entry come from" answerable.
+
+**The step says what it filled.** A recipe that silently changes a tenant is the thing an operator
+cannot review; the added entries are reported through the recipe execution so that applying a pack
+and reading what it did are the same action.
+
+### Why not simply let the recipe state the whole list
+
+The obvious alternative — treat the file as the desired state and make the tenant match it — was
+rejected for the reason ADR-0014 gives for refusing removal at all. Entries cannot be removed, so a
+"whole list" semantic could only ever add and amend, and amending is precisely the half this
+addendum keeps refusing. What would be gained is the ability to rename an entry from a recipe,
+which is not something a pack should do to a customer who has renamed it themselves.
+
+### Consequences
+
+`lookup-lists` joins `structures` as a step that can write to a row it did not create. Its contract
+is now "create, fill a gap, skip, or fail", and the module README's known limitation is removed
+rather than reworded, because the limitation is gone.
+
+A pack can be revised and re-applied, which is what the starter lists need in order to be
+maintainable at all. A customer's own entries beside the shipped ones are untouched either way.
+
+**If a reviewer disagrees that a missing entry is an absence**, this addendum is the thing to
+overturn, and `LookupListsRecipeStep.DifferencesFrom` together with its `MissingEntries` companion
+is the one place that implements it.
+
+`LookupListsRecipeStepTenantTests` covers all five outcomes, including the two that matter most: a
+tenant that already holds an extra entry of its own has nothing added and nothing fail, and a
+tenant whose entry genuinely differs still fails with nothing written.

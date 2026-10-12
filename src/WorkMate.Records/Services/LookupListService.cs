@@ -2,9 +2,12 @@ using Microsoft.Extensions.Localization;
 using OrchardCore.AuditTrail.Services;
 using OrchardCore.AuditTrail.Services.Models;
 using IIdGenerator = OrchardCore.Entities.IIdGenerator;
+using OrchardCore.Environment.Cache;
+using OrchardCore.Environment.Shell;
 using WorkMate.Core;
 using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
+using WorkMate.Records.Internal;
 using WorkMate.Records.Models;
 using YesSql;
 
@@ -19,6 +22,15 @@ internal sealed class LookupListService : ILookupListService
     private readonly IBilingualNamePolicy _namePolicy;
     private readonly IAuditTrailManager _auditTrailManager;
     private readonly IIdGenerator _idGenerator;
+
+    /// <summary>
+    /// Invalidates the cached lookup list reads after every write. See
+    /// <see cref="CachedLookupListLookup"/> for the mechanism and <see cref="RecordsCacheKeys"/>
+    /// for why one signal covers every list in the tenant rather than one signal per list.
+    /// </summary>
+    private readonly ISignal _signal;
+
+    private readonly ShellSettings _shellSettings;
     private readonly IStringLocalizer S;
 
     public LookupListService(
@@ -28,6 +40,8 @@ internal sealed class LookupListService : ILookupListService
         IBilingualNamePolicy namePolicy,
         IAuditTrailManager auditTrailManager,
         IIdGenerator idGenerator,
+        ISignal signal,
+        ShellSettings shellSettings,
         IStringLocalizer<LookupListService> stringLocalizer)
     {
         _session = session;
@@ -36,8 +50,17 @@ internal sealed class LookupListService : ILookupListService
         _namePolicy = namePolicy;
         _auditTrailManager = auditTrailManager;
         _idGenerator = idGenerator;
+        _signal = signal;
+        _shellSettings = shellSettings;
         S = stringLocalizer;
     }
+
+    /// <remarks>
+    /// Signalled after the write rather than before it, so that a reader racing the write refills
+    /// the cache from the committed state rather than from the state the write is about to replace.
+    /// </remarks>
+    private Task InvalidateCacheAsync() =>
+        _signal.SignalTokenAsync(RecordsCacheKeys.LookupListsSignal(_shellSettings.Name));
 
     /// <inheritdoc />
     public async Task<LookupListDocument?> GetAsync(
@@ -150,6 +173,7 @@ internal sealed class LookupListService : ILookupListService
         await _session.SaveCheckedAsync(document, cancellationToken);
 
         await RecordAsync(document, before: null, after: LookupListState.Of(document), operation: "Created");
+        await InvalidateCacheAsync();
 
         return RecordResult.Success(document);
     }
@@ -194,6 +218,7 @@ internal sealed class LookupListService : ILookupListService
         await _session.SaveCheckedAsync(document, cancellationToken);
 
         await RecordAsync(document, before, LookupListState.Of(document), operation: "Updated");
+        await InvalidateCacheAsync();
 
         return RecordResult.Success(document);
     }
@@ -239,6 +264,7 @@ internal sealed class LookupListService : ILookupListService
         _session.Delete(document);
 
         await RecordAsync(document, before, after: null, operation: "Deleted");
+        await InvalidateCacheAsync();
 
         return RecordResult.Success(document);
     }

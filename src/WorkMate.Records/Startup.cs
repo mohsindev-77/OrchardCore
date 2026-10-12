@@ -50,6 +50,19 @@ public sealed class Startup : StartupBase
         services.AddIndexProvider<LookupListIndexProvider>();
         services.AddScoped<ILookupListService, LookupListService>();
 
+        // The read side, cached per tenant. The concrete uncached lookup is registered as itself
+        // so the decorator can take it, exactly as WorkMate.Dimensions registers its own pair —
+        // and so that a write path, which must not read through a cache, has something to take.
+        services.AddScoped<LookupListLookup>();
+        services.AddScoped<ILookupListLookup, CachedLookupListLookup>();
+
+        // What a bound field offers, asked by the tag helper, the alternate editor view and the
+        // reconciliation screen alike.
+        services.AddScoped<ILookupChoiceProvider, LookupChoiceProvider>();
+
+        // Finding the values records hold that are in no list, and mapping them.
+        services.AddScoped<ILookupValueReconciliation, LookupValueReconciliation>();
+
         // This module's answer to the dimension engine's question "who is this employee". Declared
         // there, implemented here, because that module needs the answer and must not depend on the
         // module that holds it — the same shape as IDimensionDeletionBlockerProvider.

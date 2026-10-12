@@ -120,3 +120,18 @@
     <button type="submit" class="btn btn-primary" id="lookup-list-save">@T["Save"]</button>
     <a asp-action="Index" class="btn btn-link">@T["Cancel"]</a>
 </form>
+
+@if (!Model.IsNew)
+{
+    @* The way in to the reconciliation screen, from where somebody who has just bound a list
+       already is. Its own screen rather than part of this form because it reads every employee
+       record in the tenant, which is not a cost to pay on every edit. *@
+    <hr class="my-4" />
+
+    <h2 class="h5">@T["Stored values"]</h2>
+    <p class="text-muted">
+        @T["Records may hold values from before this list existed. Checking reads every employee record, so it is done when you ask rather than on every visit."]
+    </p>
+    <a class="btn btn-outline-secondary" id="lookup-list-check-values"
+       asp-action="Values" asp-route-id="@Model.LookupListId">@T["Check stored values"]</a>
+}

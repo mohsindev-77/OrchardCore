@@ -16,6 +16,10 @@ configuration held in the tenant, never code.
 - /docs/product-specification.md         what the product is and how it is packaged
 - /docs/prompt-library.md                the sequenced briefs; find the one for this slice
 - /docs/adr/                              decisions already taken; do not reopen them silently
+- /docs/requirements/                     product owner FRS documents. Where an FRS conflicts
+                                          with the specs, architecture or an ADR, the FRS wins on
+                                          WHAT is built; flag the conflict, propose how to reconcile
+                                          it (new or amended ADR) and stop before changing course.
 
 ## The working pattern (mandatory)
 1. Read the relevant spec section and the module README if it exists.
@@ -112,6 +116,14 @@ Indexes, Models, Services, ViewModels, Views, Recipes.
 - The employee record holds no department or cost-centre field. Placement is an
   assignment row.
 - No secrets in recipes, settings or pipeline files.
+- Extend Orchard Core, never change it. Orchard Core is consumed only as the
+  pinned NuGet packages. Never edit, fork, patch, copy-and-modify or vendor
+  Orchard source, and never reference the local OrchardCore checkout. Add
+  behaviour only from WorkMate modules through Orchard's extension points
+  (parts, fields, editors, display drivers, handlers, filters, recipe and
+  deployment steps, permissions, navigation providers, services registered
+  in Startup). If a requirement seems to need changing Orchard itself,
+  propose the alternative and stop.
 
 ## Coding standards
 Warnings as errors. Nullable enabled. File-scoped namespaces. record types for

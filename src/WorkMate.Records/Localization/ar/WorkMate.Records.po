@@ -1103,3 +1103,155 @@ msgstr "تغيّرت قائمة اختيار"
 #: Services/FormsAuditTrail.cs
 msgid "A list of choices was created, renamed, or had entries added or retired."
 msgstr "أُنشئت قائمة خيارات أو أُعيدت تسميتها أو أُضيفت إليها مدخلات أو أُحيلت مدخلاتها إلى التقاعد."
+
+#. ---- binding a field to a list: the shared control -----------------------------------------
+
+#: Components/LookupTagHelper.cs
+msgid "— none —"
+msgstr "— بلا —"
+
+#: Components/LookupTagHelper.cs
+msgid "not in the list"
+msgstr "غير موجود في القائمة"
+
+#: Components/LookupTagHelper.cs
+msgid "retired"
+msgstr "متقاعد"
+
+#: Components/LookupTagHelper.cs
+msgid "This record holds a value that is not in the list. It is kept exactly as it is until somebody changes it here, or maps it on the lookup list's \"Check stored values\" screen."
+msgstr "يحمل هذا السجل قيمة غير موجودة في القائمة. تبقى كما هي تماماً إلى أن يغيّرها أحد من هنا، أو يربطها من شاشة «فحص القيم المخزَّنة» الخاصة بقائمة الاختيار."
+
+#. ---- the lookup list editor's way in to the stored values ---------------------------------
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Stored values"
+msgstr "القيم المخزَّنة"
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Records may hold values from before this list existed. Checking reads every employee record, so it is done when you ask rather than on every visit."
+msgstr "قد تحمل السجلات قيماً سابقة لوجود هذه القائمة. ويقرأ الفحص كل سجل موظف، لذا يُجرى عند طلبك لا في كل زيارة."
+
+#: Views/LookupListsAdmin/Edit.cshtml
+msgid "Check stored values"
+msgstr "فحص القيم المخزَّنة"
+
+#. ---- the reconciliation screen ------------------------------------------------------------
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "{0} — values not in this list"
+msgstr "{0} — قيم غير موجودة في هذه القائمة"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "These are values stored on employee records that this list has no entry for — typed in before the list existed, or imported from somewhere that spelt them differently. Nothing here has been changed: a value the list does not know is kept exactly as it is until somebody decides what it should be."
+msgstr "هذه قيم مخزَّنة على سجلات الموظفين لا تقابلها مدخلات في هذه القائمة — كُتبت قبل وجود القائمة، أو استُوردت من مصدر يكتبها بصيغة أخرى. ولم يتغيّر شيء هنا: القيمة التي لا تعرفها القائمة تبقى كما هي تماماً إلى أن يقرّر أحد ما ينبغي أن تكون."
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Checked"
+msgstr "ما جرى فحصه"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "No field on the employee record offers this list yet, so there is nothing to check. A list is offered by a field once it is bound to one."
+msgstr "لا يعرض أي حقل في سجل الموظف هذه القائمة بعد، فلا شيء لفحصه. وتُعرض القائمة من حقل بمجرد ربطها به."
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "This check read the first {0} employee records and stopped. What is below is what those hold; there may be more."
+msgstr "قرأ هذا الفحص أول {0} من سجلات الموظفين ثم توقّف. وما يظهر أدناه هو ما تحمله تلك السجلات، وقد يكون هناك المزيد."
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Every stored value matches an entry of this list. {0} employee record(s) checked."
+msgstr "كل قيمة مخزَّنة تطابق مدخلاً في هذه القائمة. عدد سجلات الموظفين التي فُحصت: {0}."
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Value"
+msgstr "القيمة"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Records"
+msgstr "السجلات"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "What to do"
+msgstr "الإجراء"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "on {0}"
+msgstr "لدى {0}"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Leave it"
+msgstr "تركها كما هي"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Add it to the list"
+msgstr "إضافتها إلى القائمة"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Map it to"
+msgstr "ربطها بـ"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "— choose —"
+msgstr "— اختر —"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Adding a value to the list changes no record. Mapping one rewrites it on every record that holds it, is recorded in the audit trail, and cannot be undone automatically."
+msgstr "إضافة قيمة إلى القائمة لا تغيّر أي سجل. أما ربطها فيعيد كتابتها على كل سجل يحملها، ويُسجَّل ذلك في سجل التدقيق، ولا يمكن التراجع عنه تلقائياً."
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Apply"
+msgstr "تطبيق"
+
+#: Views/LookupListsAdmin/Values.cshtml
+msgid "Back to the list"
+msgstr "العودة إلى القائمة"
+
+#. ---- the reconciliation screen's messages and rules ---------------------------------------
+
+#: Controllers/LookupListsAdminController.cs
+msgid "Nothing was changed."
+msgstr "لم يتغيّر شيء."
+
+#: Controllers/LookupListsAdminController.cs
+msgid "{0} entry/entries added, and {1} stored value(s) rewritten."
+msgstr "أُضيف {0} من المدخلات، وأُعيدت كتابة {1} من القيم المخزَّنة."
+
+#: Controllers/LookupListsAdminController.cs
+msgid "The employee record's nationality"
+msgstr "جنسية الموظف في السجل"
+
+#: Controllers/LookupListsAdminController.cs
+msgid "{0} — {1}"
+msgstr "{0} — {1}"
+
+#: Services/LookupValueReconciliation.cs
+msgid "There is no lookup list with the code '{0}' in this tenant."
+msgstr "لا توجد قائمة اختيار بالرمز «{0}» في هذا المستأجر."
+
+#: Services/LookupValueReconciliation.cs
+msgid "There is no value to map."
+msgstr "لا توجد قيمة لربطها."
+
+#: Services/LookupValueReconciliation.cs
+msgid "'{0}' is not an entry of the list '{1}', so nothing can be mapped onto it."
+msgstr "«{0}» ليس مدخلاً في القائمة «{1}»، فلا يمكن ربط أي شيء به."
+
+#: Services/LookupValueReconciliation.cs
+msgid "'{0}' is already an entry of this list, so the records holding it are not unmatched and are left alone."
+msgstr "«{0}» مدخل في هذه القائمة بالفعل، فالسجلات التي تحمله ليست غير مطابقة وتُترك كما هي."
+
+#. ---- the lookup-lists step's gap filling (ADR-0008 addendum) ------------------------------
+
+#: Recipes/LookupListsRecipeStep.cs
+msgid "Lookup list '{0}' could not be given the entries it was missing."
+msgstr "تعذّر إضافة المدخلات الناقصة إلى قائمة الاختيار «{0}»."
+
+#. ---- the audit trail's remap event --------------------------------------------------------
+
+#: Services/FormsAuditTrail.cs
+msgid "Lookup values remapped"
+msgstr "أُعيد ربط قيم قائمة اختيار"
+
+#: Services/FormsAuditTrail.cs
+msgid "A value stored on employee records was rewritten onto an entry of a lookup list."
+msgstr "أُعيدت كتابة قيمة مخزَّنة على سجلات الموظفين لتصبح مدخلاً في قائمة اختيار."

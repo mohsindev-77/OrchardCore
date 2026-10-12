@@ -200,7 +200,26 @@
     },
 
     {
-      "$comment": "Step 5 of 6. Create the standard content types every tenant has.",
+      "$comment": [
+        "Step 5 of 6. The managed lists a form field offers as choices: job title, grade,",
+        "employment type, work location, document type, nationality, country, currency,",
+        "relationship and contact type.",
+        "Applied by reference rather than inline, deliberately. The same lists have to reach a",
+        "tenant created today and one created before slice B2, and the second can only get them by",
+        "applying the file by hand from Configuration > Recipes - so there is one file and this",
+        "names it, rather than two copies that drift. ADR-0008's lookup-list addendum is what makes",
+        "applying it to a tenant that already has the lists safe: a missing entry is added, an",
+        "entry that differs fails naming the difference, and a customer's own entries are left",
+        "alone.",
+        "Before form-definitions because a field binding names a list by code, and the list should",
+        "exist before anything offers it."
+      ],
+      "name": "recipes",
+      "Values": [{ "Name": "WorkMate.StandardLookupLists" }]
+    },
+
+    {
+      "$comment": "Step 5 of 6, continued. Create the standard content types every tenant has.",
       "$stub": { "module": "WorkMate.Records", "prompt": 4, "step": "form-definitions" },
       "name": "form-definitions"
     },

@@ -1,0 +1,46 @@
+@using OrchardCore.ContentFields.ViewModels
+@using OrchardCore.ContentManagement.Metadata.Models
+@using WorkMate.Records.Models
+@model EditTextFieldViewModel
+
+@*
+    The alternate editor Orchard renders for a TextField whose Editor setting is "WorkMateLookup".
+
+    WHY THERE IS NO DRIVER BEHIND THIS
+
+    Orchard's own TextFieldDisplayDriver asks for the shape GetEditorShapeType(context) names, which
+    for a field with Editor = "WorkMateLookup" is TextField_Edit__WorkMateLookup — this file. That
+    is the same mechanism Orchard's PredefinedList text editor uses, and taking it means this module
+    registers no field driver at all for TextField.
+
+    That matters more than it sounds. OrchardCore.ContentFields already registers a display driver
+    for TextField, and ContentFieldDisplayDriverResolver.GetEditorDrivers returns *every* driver
+    whose editor predicate matches — so a second driver registered here for this editor name would
+    render the field twice, and the only way to stop it would be to reach into another module's
+    registration and narrow its predicate, in an order neither module controls.
+
+    The driver's UpdateAsync binds m.Text, so the control below posting {Prefix}.Text is what makes
+    a chosen value — or an unmatched one carried through untouched — arrive back on the field.
+*@
+
+@{
+    var settings = Model.PartFieldDefinition.GetSettings<LookupFieldSettings>();
+    var name = $"{ViewData.TemplateInfo.HtmlFieldPrefix}.Text";
+    var label = Model.PartFieldDefinition.DisplayName();
+    var hint = Model.PartFieldDefinition.Settings["ContentPartFieldSettings"]?["Description"]?.ToString();
+}
+
+<div class="mb-3" data-lookup-field="@Model.PartFieldDefinition.Name">
+    <workmate-lookup name="@name"
+                     value="@Model.Field.Text"
+                     list-code="@settings.ListCode"
+                     label="@label" />
+
+    @if (!string.IsNullOrWhiteSpace(hint))
+    {
+        @* The field's own description, which the standard editor shows and which a reader would
+           otherwise lose by the field being bound. Tenant-authored text, so it is written as text
+           rather than as markup. *@
+        <div class="form-text">@hint</div>
+    }
+</div>

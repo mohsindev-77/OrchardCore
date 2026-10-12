@@ -2,8 +2,10 @@ using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Localization;
+using Microsoft.Extensions.Localization;
 using OrchardCore.Admin;
 using OrchardCore.DisplayManagement.Notify;
+using WorkMate.Records.Models;
 using WorkMate.Records.Services;
 using WorkMate.Records.ViewModels;
 
@@ -39,19 +41,25 @@ public sealed class LookupListsAdminController : Controller
     private const int SortOrderStep = 10;
 
     private readonly ILookupListService _lookupLists;
+    private readonly ILookupValueReconciliation _reconciliation;
     private readonly IAuthorizationService _authorizationService;
     private readonly INotifier _notifier;
+    private readonly IStringLocalizer S;
     private readonly IHtmlLocalizer H;
 
     public LookupListsAdminController(
         ILookupListService lookupLists,
+        ILookupValueReconciliation reconciliation,
         IAuthorizationService authorizationService,
         INotifier notifier,
+        IStringLocalizer<LookupListsAdminController> stringLocalizer,
         IHtmlLocalizer<LookupListsAdminController> htmlLocalizer)
     {
         _lookupLists = lookupLists;
+        _reconciliation = reconciliation;
         _authorizationService = authorizationService;
         _notifier = notifier;
+        S = stringLocalizer;
         H = htmlLocalizer;
     }
 
@@ -301,6 +309,188 @@ public sealed class LookupListsAdminController : Controller
 
         return RedirectToAction(nameof(Index));
     }
+
+    /// <summary>
+    /// The values records hold that this list has no entry for.
+    /// </summary>
+    /// <remarks>
+    /// Its own screen rather than part of the editor, because it is a different question answered
+    /// at a different cost: the editor is a form, and this reads every employee record in the
+    /// tenant. Reached by a button on the editor, which is where somebody who has just bound a list
+    /// already is.
+    /// </remarks>
+    public async Task<IActionResult> Values(string id, CancellationToken cancellationToken)
+    {
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var document = await _lookupLists.GetAsync(id, cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        return View(await ValuesViewModelAsync(document, cancellationToken));
+    }
+
+    /// <summary>
+    /// Applies the reader's choices: adds entries, maps values, and leaves everything else alone.
+    /// </summary>
+    /// <remarks>
+    /// <b>Adds first, then maps.</b> A reader can legitimately add one value as an entry and map
+    /// another onto it in the same press, and doing it the other way round would refuse the map
+    /// because its target did not exist yet.
+    ///
+    /// <b>Every row defaults to leave.</b> Pressing Apply without choosing anything changes
+    /// nothing, which is the behaviour a screen that rewrites records had better have.
+    /// </remarks>
+    [HttpPost]
+    [ActionName(nameof(Values))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ValuesPost(
+        string id,
+        LookupValuesViewModel model,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await IsAuthorisedAsync())
+        {
+            return Forbid();
+        }
+
+        var document = await _lookupLists.GetAsync(id, cancellationToken);
+
+        if (document is null)
+        {
+            return NotFound();
+        }
+
+        var rows = model.Rows ?? [];
+
+        var toAdd = rows
+            .Where(row => row.Action == UnmatchedValueActions.Add && !string.IsNullOrWhiteSpace(row.Value))
+            .ToList();
+
+        var toMap = rows
+            .Where(row => row.Action == UnmatchedValueActions.Map &&
+                !string.IsNullOrWhiteSpace(row.Value) &&
+                !string.IsNullOrWhiteSpace(row.MapTo))
+            .ToList();
+
+        if (toAdd.Count == 0 && toMap.Count == 0)
+        {
+            await _notifier.InformationAsync(H["Nothing was changed."]);
+
+            return RedirectToAction(nameof(Values), new { id });
+        }
+
+        if (toAdd.Count > 0)
+        {
+            // One write for every added entry at once: the list is stated whole, so adding four
+            // values is one update rather than four, and four audit entries saying the same thing.
+            var added = await _lookupLists.UpdateAsync(
+                document.LookupListId,
+                document.Name,
+                [
+                    .. document.Items,
+                    .. toAdd.Select((row, ordinal) => new LookupListItem(
+                        row.Value!.Trim(),
+                        // The value becomes the English name as well as the code, because that is
+                        // all the tenant has ever recorded about it. Somebody renames it afterwards
+                        // if they want to; inventing a different name here would be guessing.
+                        new WorkMate.Core.BilingualText(row.Value!.Trim(), string.Empty),
+                        IsActive: true,
+                        SortOrder: NextSortOrder(document) + (ordinal * SortOrderStep))),
+                ],
+                cancellationToken);
+
+            if (!added.Succeeded)
+            {
+                AddErrors(added.Errors);
+
+                return View(await ValuesViewModelAsync(document, cancellationToken));
+            }
+        }
+
+        var mapped = 0;
+
+        foreach (var row in toMap)
+        {
+            var result = await _reconciliation.MapAsync(
+                document.Code, row.Value!, row.MapTo!, cancellationToken);
+
+            if (!result.IsAuthorised)
+            {
+                return Forbid();
+            }
+
+            if (!result.Succeeded)
+            {
+                AddErrors(result.Errors);
+
+                return View(await ValuesViewModelAsync(document, cancellationToken));
+            }
+
+            mapped += result.Value;
+        }
+
+        await _notifier.SuccessAsync(H[
+            "{0} entry/entries added, and {1} stored value(s) rewritten.", toAdd.Count, mapped]);
+
+        return RedirectToAction(nameof(Values), new { id });
+    }
+
+    /// <summary>The next free sort order, so an added entry lands at the end of the list.</summary>
+    private static int NextSortOrder(Models.LookupListDocument document) =>
+        document.Items.Count == 0 ? SortOrderStep : document.Items.Max(item => item.SortOrder) + SortOrderStep;
+
+    private async Task<LookupValuesViewModel> ValuesViewModelAsync(
+        Models.LookupListDocument document,
+        CancellationToken cancellationToken)
+    {
+        var scan = await _reconciliation.ScanAsync(document.Code, cancellationToken);
+        var locations = await _reconciliation.BoundLocationsAsync(document.Code, cancellationToken);
+
+        return new LookupValuesViewModel
+        {
+            LookupListId = document.LookupListId,
+            Code = document.Code,
+            NameEn = document.Name.En,
+            BoundLocations = [.. locations.Select(Describe)],
+            EmployeesScanned = scan.EmployeesScanned,
+            WasTruncated = scan.WasTruncated,
+            Targets =
+            [
+                .. document.Items
+                    .Where(item => item.IsActive)
+                    .Select(item => new LookupValueTargetViewModel
+                    {
+                        Code = item.Code,
+                        Label = $"{WorkMate.Core.BilingualText.Display(item.Name.En, item.Name.Ar)} ({item.Code})",
+                    }),
+            ],
+            Rows =
+            [
+                .. scan.Values.Select(value => new UnmatchedValueRowViewModel
+                {
+                    Value = value.Value,
+                    Count = value.Count,
+                    SampleEmployeeCodes = string.Join(", ", value.SampleEmployeeCodes),
+                    Action = UnmatchedValueActions.Leave,
+                }),
+            ],
+        };
+    }
+
+    /// <summary>Where a bound value lives, in words rather than in definition names.</summary>
+    private string Describe(LookupBoundLocation location) =>
+        location.FieldName == LookupValueReconciliation.CoreNationality
+            ? S["The employee record's nationality"].Value
+            : S["{0} — {1}", location.SectionName, location.FieldName].Value;
 
     /// <summary>
     /// Adds or removes an entry row, returning the model to redraw, or null when the press was Save.

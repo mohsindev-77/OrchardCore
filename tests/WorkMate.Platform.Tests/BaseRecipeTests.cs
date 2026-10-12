@@ -199,8 +199,11 @@ public sealed class BaseRecipeTests
     {
         // A step that does nothing and does not say so is the one that gets forgotten.
         // dimension-types and structures became real in prompt 3: the base recipe now seeds the
-        // CostCentre type and an empty primary Organisation structure.
-        string[] implemented = ["Feature", "themes", "Roles", "Settings", "dimension-types", "structures"];
+        // CostCentre type and an empty primary Organisation structure. "recipes" became real in
+        // prompt 4 slice B2: it applies WorkMate.StandardLookupLists, which is a file of its own
+        // so that a tenant created before that slice can be given the same lists by hand.
+        string[] implemented =
+            ["Feature", "themes", "Roles", "Settings", "dimension-types", "structures", "recipes"];
 
         foreach (var step in Steps)
         {

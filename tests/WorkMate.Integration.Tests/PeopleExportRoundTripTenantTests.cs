@@ -106,10 +106,12 @@ public sealed class PeopleExportRoundTripTenantTests : IAsyncLifetime, IDisposab
 
         var recipe = await ExportAsync(_source);
 
-        // People first, then the organisation, then the two steps that join them. That order is the
-        // operator's to choose on the plan — and it is the only order that applies, because an
-        // assignment names its employee by a code the employees step has to have created.
+        // Lists, then people, then the organisation, then the two steps that join them. That order
+        // is the operator's to choose on the plan — and it is the only order that applies, because
+        // an assignment names its employee by a code the employees step has to have created, and a
+        // stored value names a lookup entry the lists step has to have created.
         recipe["steps"]!.AsArray().Select(step => (string)step!["name"]!).Should().Equal(
+            "lookup-lists",
             "employees",
             "dimension-types",
             "structures",

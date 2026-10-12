@@ -67,6 +67,9 @@ public enum RecordRule
     /// <summary>There is no lookup list with that id or code in this tenant.</summary>
     UnknownLookupList,
 
+    /// <summary>The list has no entry with that code.</summary>
+    UnknownLookupItem,
+
     /// <summary>
     /// Something that already holds data was removed or had its type changed.
     /// </summary>
