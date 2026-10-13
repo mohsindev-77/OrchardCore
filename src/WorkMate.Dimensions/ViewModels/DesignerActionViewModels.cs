@@ -47,6 +47,12 @@ public sealed class AddUnitViewModel : DesignerActionViewModel
 
     public string NameAr { get; set; } = string.Empty;
 
+    /// <summary>The short label the dimension's list and tree show beside the name. Optional.</summary>
+    public string? AliasEn { get; set; }
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string? AliasAr { get; set; }
+
     /// <summary>The custom attributes the chosen dimension type declares, in schema order.</summary>
     public List<UnitAttributeInputViewModel> Attributes { get; set; } = [];
 
@@ -64,6 +70,8 @@ public sealed class AddUnitViewModel : DesignerActionViewModel
     public IReadOnlyList<DimensionTypeChoiceViewModel> PermittedTypes { get; set; } = [];
 
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
+
+    public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);
 
     public IReadOnlyList<DimensionAttributeValue> ToAttributeValues() =>
         [.. Attributes.Select(attribute => new DimensionAttributeValue(

@@ -21,6 +21,12 @@ public class DimensionRecordPartViewModel
 
     public string NameAr { get; set; } = string.Empty;
 
+    /// <summary>The short label the dimension's list and tree show beside the name. Optional.</summary>
+    public string AliasEn { get; set; } = string.Empty;
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string AliasAr { get; set; } = string.Empty;
+
     public DateTime? EffectiveFrom { get; set; }
 
     public DateTime? EffectiveTo { get; set; }

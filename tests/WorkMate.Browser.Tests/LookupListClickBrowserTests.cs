@@ -262,22 +262,16 @@ public sealed class LookupListClickBrowserTests
     /// <summary>
     /// Expands the People group if the theme has it collapsed, so the links inside can be clicked.
     /// </summary>
-    private static async Task OpenPeopleGroupAsync(IPage page)
-    {
-        var link = page.Locator("a[href*='/Admin/Forms/Index']").First;
-
-        if (await link.IsVisibleAsync())
-        {
-            return;
-        }
-
-        var group = page.GetByRole(AriaRole.Button, new() { NameString = "People" }).First;
-
-        if (await group.CountAsync() > 0 && await group.IsVisibleAsync())
-        {
-            await group.ClickAsync();
-        }
-    }
+    /// <remarks>
+    /// <b>This is where the intermittent failure lived.</b> It used to ask
+    /// <c>link.IsVisibleAsync()</c> and then <c>group.CountAsync() &gt; 0 &amp;&amp;
+    /// group.IsVisibleAsync()</c>, none of which retries — so on a loaded machine, before the
+    /// sidebar had rendered, both were false, it clicked nothing, returned, and left the caller's
+    /// next line waiting for a link inside a group that was still collapsed. <see cref="AdminMenu"/>
+    /// has the full account.
+    /// </remarks>
+    private static Task OpenPeopleGroupAsync(IPage page) =>
+        AdminMenu.OpenGroupAsync(page, "People", "Forms");
 
     /// <summary>
     /// Opens the admin in one culture, with the People group expanded.
@@ -285,6 +279,17 @@ public sealed class LookupListClickBrowserTests
     /// <remarks>
     /// The culture cookie is set the way the admin's own picker sets it, then the page is loaded —
     /// the order matters, because the middleware reads it on the request rather than afterwards.
+    /// </remarks>
+    /// <remarks>
+    /// <b>It no longer expands the group, and that is a fix.</b> It used to call the helper above,
+    /// whose English group caption cannot match in the Arabic pass — so in Arabic it quietly did
+    /// nothing, and the tests passed because a collapsed group's links are in the DOM anyway, which
+    /// is all these two read. Naming the group here would also mean asserting in English about the
+    /// very thing the Arabic pass exists to measure.
+    ///
+    /// What replaces it is the wait that was missing: the menu has to be <em>attached</em> before
+    /// anything reads it. Attached rather than visible, because visible is a claim about the group
+    /// being open and that is not this test's question.
     /// </remarks>
     private static async Task OpenAdminInAsync(IPage page, string culture)
     {
@@ -295,6 +300,6 @@ public sealed class LookupListClickBrowserTests
 
         await page.ReloadAsync();
 
-        await OpenPeopleGroupAsync(page);
+        await Assertions.Expect(page.Locator("a[href^='/Admin/Forms']").First).ToBeAttachedAsync();
     }
 }

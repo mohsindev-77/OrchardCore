@@ -164,4 +164,17 @@ public enum DimensionRule
     /// <summary>The parent is not effective for the whole period the child is. Warned, not blocked,
     /// because customers legitimately pre-build future structures.</summary>
     ParentNotEffectiveWhenChildIs,
+
+    /// <summary>
+    /// A field's value breaks a rule about its shape that is not about a code — today, an alias
+    /// longer than its column.
+    /// </summary>
+    /// <remarks>
+    /// <b>Appended rather than slotted in beside <see cref="CodeFormat"/>.</b> This enum is
+    /// serialised into audit entries, and <c>System.Text.Json</c> writes an enum as its numeric
+    /// value unless it is told otherwise — so inserting a member anywhere but the end renumbers
+    /// every member after it and silently changes what every entry already written means. The
+    /// grouping comments above are for a reader; the order is a contract.
+    /// </remarks>
+    InvalidValue,
 }

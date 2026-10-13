@@ -1630,14 +1630,6 @@ msgid "Every structure"
 msgstr "كل الهياكل"
 
 #: Views/DimensionRecordsAdmin/Index.cshtml
-msgid "Decides which structure the parent, the headcount and \"Within\" are about."
-msgstr "يحدد الهيكل الذي تخصه الوحدة الأعلى وعدد الموظفين وعامل التصفية \"ضمن\"."
-
-#: Views/DimensionRecordsAdmin/Index.cshtml
-msgid "Active and retired"
-msgstr "النشط والمتقاعد"
-
-#: Views/DimensionRecordsAdmin/Index.cshtml
 msgid "Filter"
 msgstr "تصفية"
 
@@ -1674,16 +1666,8 @@ msgid "Not placed"
 msgstr "غير مُسند"
 
 #: Views/DimensionRecordsAdmin/Index.cshtml
-msgid "Retired"
-msgstr "متقاعد"
-
-#: Views/DimensionRecordsAdmin/Index.cshtml
 msgid "from {0}"
 msgstr "من {0}"
-
-#: Views/DimensionRecordsAdmin/Index.cshtml
-msgid "Flagged inactive"
-msgstr "مُعلَّم كغير نشط"
 
 #: Views/DimensionRecordsAdmin/Index.cshtml
 msgid "Move"
@@ -1822,3 +1806,132 @@ msgstr "عرض الوحدات"
 #: Views/DimensionRecordsAdmin/Index.cshtml
 msgid "{0} units"
 msgstr "وحدات من نوع {0}"
+
+#. ---- FRS v2.5 slice F1: the alias, and a dimension's own tree view -----------------------
+
+#. The short label a unit is known by, beside what it is formally called. FRS v2.5 §4.1 names it as
+#. a column on every dimension's list and tree. Bilingual like every other name field, with the
+#. Arabic half optional since ADR-0003's addendum.
+#: Views/DimensionRecordPart.Edit.cshtml
+#: Views/DimensionRecordPart.cshtml
+#: Views/DimensionRecordsAdmin/Index.cshtml
+#: Views/DimensionRecordsAdmin/Create.cshtml
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+#: Views/OrganisationDesignerAdmin/AddUnit.cshtml
+msgid "Alias"
+msgstr "الاسم المختصر"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Alias (English)"
+msgstr "الاسم المختصر (بالإنجليزية)"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Alias (Arabic)"
+msgstr "الاسم المختصر (بالعربية)"
+
+#: Views/DimensionRecordPart.Edit.cshtml
+msgid "Optional. A short label this unit is known by."
+msgstr "اختياري. تسمية قصيرة تُعرف بها هذه الوحدة."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+#: Views/OrganisationDesignerAdmin/AddUnit.cshtml
+msgid "Optional. Shown beside the name on this dimension's list and tree."
+msgstr "اختياري. يظهر بجانب الاسم في قائمة هذا البُعد وشجرته."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Optional. Shown beside the name on this dimension's list and tree. Not dated: changing it changes what every report shows, including past ones."
+msgstr "اختياري. يظهر بجانب الاسم في قائمة هذا البُعد وشجرته. وهو غير مؤرَّخ: تغييره يغيّر ما تعرضه كل التقارير، بما فيها السابقة."
+
+#: Handlers/DimensionRecordPartHandler.cs
+msgid "An alias may be up to {0} characters."
+msgstr "لا يزيد الاسم المختصر عن {0} حرفاً."
+
+#. The tree/list toggle, top right. FRS v2.5 §4.1: the same values and the same columns, two
+#. layouts, and the toggle changes nothing but the arrangement.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Tree"
+msgstr "شجرة"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "List"
+msgstr "قائمة"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "View"
+msgstr "العرض"
+
+#. The five toolbar controls FRS v2.5 §4.1 puts in this corner.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Add"
+msgstr "إضافة"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Refresh"
+msgstr "تحديث"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Apply"
+msgstr "تطبيق"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Select"
+msgstr "تحديد"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Collapse {0}"
+msgstr "طيّ {0}"
+
+#. The status badge. FRS v2.5 §4.1.2 names the two states Active and Inactive, which is the
+#. record's own effective range read on the date the screen is about.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Inactive"
+msgstr "غير نشط"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Active and inactive"
+msgstr "النشط وغير النشط"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Not offered in pickers"
+msgstr "غير معروض في أدوات الاختيار"
+
+#. A dimension used by several axes has several trees, and the screen refuses to pick one for the
+#. same reason it refuses to pick one for the Parent column.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "{0} is used by more than one structure, so it has more than one tree. Choose a structure above to see one."
+msgstr "{0} مستخدم في أكثر من هيكل، فله أكثر من شجرة. اختر هيكلاً أعلاه لعرض إحداها."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "This dimension has {0} values and the tree shows the first {1}. Use the list view, or search, to reach the rest."
+msgstr "هذا البُعد يحتوي {0} قيمة، والشجرة تعرض أول {1}. استخدم عرض القائمة أو البحث للوصول إلى البقية."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "A filter is applied, so a value whose parent it excludes is shown at the top level."
+msgstr "هناك مرشّح مطبَّق، لذا تظهر القيمة التي استبعد المرشّح أصلها في المستوى الأعلى."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Decides which structure the parent, the tree, the headcount and \"Within\" are about."
+msgstr "يحدّد الهيكل الذي يعنيه الأصل والشجرة وعدد الموظفين و\"ضمن\"."
+
+#. Pressing a toolbar action with no row ticked. A sentence beats a 404 on an empty id.
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Choose a unit first, then press Edit."
+msgstr "اختر وحدة أولاً ثم اضغط تعديل."
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Choose a unit first, then press Delete."
+msgstr "اختر وحدة أولاً ثم اضغط حذف."
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Choose a structure before deleting a unit."
+msgstr "اختر هيكلاً قبل حذف وحدة."
+
+#. Slice F1 puts the control the FRS asks for on the screen and says what it does; ADR-0025's
+#. "a value nothing has ever used is really deleted" lands in slice F9.
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Deleting a unit that is in use is not available yet. This screen ends it on a date instead: it stops being offered, and every report for a period before that date still resolves it."
+msgstr "حذف وحدة قيد الاستخدام غير متاح بعد. هذه الشاشة تُنهيها في تاريخ محدّد بدلاً من ذلك: تتوقف عن الظهور، ويظل كل تقرير عن فترة سابقة لذلك التاريخ قادراً على حلّها."
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Delete"
+msgstr "حذف"

@@ -384,6 +384,125 @@ public sealed class DimensionsMigrationUpgradeTenantTests
 
 
     /// <summary>
+    /// A tenant that predates the alias columns catches up, and they become usable.
+    /// </summary>
+    /// <remarks>
+    /// The third of the append-only upgrade tests, and the same shape as the two above it: roll the
+    /// recorded version back, put the schema into the state a tenant at that version really had,
+    /// let the application catch up, and then do the real operation through the real service rather
+    /// than checking that a column exists.
+    ///
+    /// <b>What a tenant at version 9 actually looks like.</b> It has
+    /// <c>DimensionRecordPartIndex</c> — <c>UpdateFrom1Async</c> created it — and does not have
+    /// <c>AliasEn</c> or <c>AliasAr</c>, because nothing before <c>UpdateFrom9Async</c> creates
+    /// them. That is also exactly where a brand-new tenant arrives, which is why that step adds the
+    /// columns unguarded by the "is this a fresh tenant or an upgrading one" question
+    /// <c>UpdateFrom3Async</c> and <c>UpdateFrom4Async</c> both have to ask.
+    ///
+    /// The operation at the end is the one that would throw <c>SQLite Error 1: 'table
+    /// DimensionRecordPartIndex has no column named AliasEn'</c> on a tenant the migration had
+    /// missed — the same failure, on the same table, that ADR-0009 exists because of.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantStuckBeforeTheAliasColumnsUpgradesCleanlyAndCanStoreAnAlias()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+            var head = migration.Version;
+
+            head.Should().BeGreaterThanOrEqualTo(
+                10, "this test's premise is a schema that already includes the alias columns");
+
+            migration.Version = 9;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            await DropAliasColumnsAsync(services);
+
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+
+            var after = (await session.Query<DataMigrationRecord>().FirstOrDefaultAsync())!
+                .DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            after.Version.Should().Be(head, "the upgrade runs every step the tenant had not reached");
+        });
+
+        // A second scope, because the migration above committed its schema change in the first one
+        // and the record has to be written through a session that opened after it.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var records = services.GetRequiredService<IDimensionService>();
+
+            var type = await types.CreateAsync(
+                "upgrade-alias-division", new BilingualText("Upgrade Alias Division", "قسم"), [], allowsSelfNesting: false);
+
+            type.Succeeded.Should().BeTrue(string.Join("; ", type.Errors.Select(e => e.Message.Value)));
+
+            var created = await records.CreateAsync(
+                type.Value!.DimensionTypeId,
+                "upgrade-alias-div-1",
+                new BilingualText("Upgrade Alias Division One", "القسم الأول"),
+                new EffectiveRange(new DateOnly(2024, 1, 1), null),
+                batch: null,
+                sortOrder: null,
+                new BilingualText("Head Office", "المكتب الرئيسي"));
+
+            created.Succeeded.Should().BeTrue(string.Join("; ", created.Errors.Select(e => e.Message.Value)));
+
+            // Read back through the index, which is the path that needs the columns: GetByCodeAsync
+            // resolves a record from DimensionRecordPartIndex without loading the content item.
+            var reread = await records.GetByCodeAsync("upgrade-alias-div-1");
+
+            reread.Should().NotBeNull();
+            reread!.AliasEn.Should().Be("Head Office");
+            reread.AliasAr.Should().Be("المكتب الرئيسي");
+        });
+    }
+
+    /// <summary>
+    /// Puts <c>DimensionRecordPartIndex</c> back into the state a tenant recorded at version 9 was
+    /// in: the table, without the two alias columns.
+    /// </summary>
+    private static async Task DropAliasColumnsAsync(IServiceProvider services)
+    {
+        var store = services.GetRequiredService<IStore>();
+        var connection = store.Configuration.ConnectionFactory.CreateConnection();
+
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            var tableName = store.Configuration.TablePrefix
+                + store.Configuration.TableNameConvention.GetIndexTable(
+                    typeof(DimensionRecordPartIndex), string.Empty);
+
+            foreach (var column in new[]
+            {
+                nameof(DimensionRecordPartIndex.AliasEn),
+                nameof(DimensionRecordPartIndex.AliasAr),
+            })
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"ALTER TABLE {tableName} DROP COLUMN {column}";
+                await command.ExecuteNonQueryAsync();
+            }
+        }
+        finally
+        {
+            await connection.CloseAsync();
+            await connection.DisposeAsync();
+        }
+    }
+
+    /// <summary>
     /// The index tables this module creates, and the schema version each one first appears at.
     /// </summary>
     /// <remarks>

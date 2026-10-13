@@ -11,6 +11,10 @@
         ? Model.NameAr
         : Model.NameEn;
 
+    // The reader's language, falling back to the other rather than to a blank — the same rule
+    // BilingualText.Display applies everywhere else a name is shown.
+    var alias = BilingualText.Display(Model.AliasEn, Model.AliasAr);
+
     var from = Model.EffectiveFrom?.ToShortDateString() ?? string.Empty;
 
     var effective = Model.EffectiveTo is null
@@ -24,6 +28,14 @@
 
     <dt class="col-sm-3">@T["Name"]</dt>
     <dd class="col-sm-9">@name</dd>
+
+    @* Only when there is one. An alias is optional, and an empty row would say the unit has no
+       short name in a place where the reader would read it as the unit having none recorded. *@
+    @if (!string.IsNullOrWhiteSpace(alias))
+    {
+        <dt class="col-sm-3">@T["Alias"]</dt>
+        <dd class="col-sm-9">@alias</dd>
+    }
 
     <dt class="col-sm-3">@T["Effective"]</dt>
     <dd class="col-sm-9">@effective</dd>

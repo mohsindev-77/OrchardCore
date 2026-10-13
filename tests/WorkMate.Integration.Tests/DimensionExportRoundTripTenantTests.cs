@@ -150,18 +150,22 @@ public sealed class DimensionExportRoundTripTenantTests : IAsyncLifetime, IDispo
 
             var structureId = structure.Value!.StructureId;
 
-            async Task<string> RecordAsync(string code, string typeId)
+            async Task<string> RecordAsync(string code, string typeId, BilingualText? alias = null)
             {
                 var created = await records.CreateAsync(
-                    typeId, code, new BilingualText(code, $"{code}-ar"), new EffectiveRange(Opened, null));
+                    typeId, code, new BilingualText(code, $"{code}-ar"), new EffectiveRange(Opened, null),
+                    batch: null, sortOrder: null, alias);
 
                 created.Succeeded.Should().BeTrue(Why(created.Errors));
 
                 return created.Value!.RecordId;
             }
 
-            var headOffice = await RecordAsync("rt-head", division);
-            var network = await RecordAsync("rt-network", division);
+            // Three alias shapes, because the export states the pair only when the record has one:
+            // both halves, English only, and none at all. A round trip that dropped the field would
+            // pass with every record aliased and with none, and fail only on the mixture.
+            var headOffice = await RecordAsync("rt-head", division, new BilingualText("HQ", "الرئيسي"));
+            var network = await RecordAsync("rt-network", division, new BilingualText("The Network", string.Empty));
             var credit = await RecordAsync("rt-credit", department);
             var punjab = await RecordAsync("rt-punjab", region);
             var lahore = await RecordAsync("rt-lahore", branch);
@@ -397,6 +401,10 @@ public sealed class DimensionExportRoundTripTenantTests : IAsyncLifetime, IDispo
 
                 records.Add(
                     $"{record.Code} | {typeCodeById.GetValueOrDefault(record.DimensionTypeId, "?")} | {record.NameEn} | {record.NameAr} | "
+                    // On the record's own line for the same reason the attributes are: an alias
+                    // lost in the trip fails as a difference in that record, not as a separate
+                    // list somebody has to match up against it.
+                    + $"@{record.AliasEn}/{record.AliasAr} | "
                     + $"{record.EffectiveRange.From:yyyy-MM-dd}..{record.EffectiveRange.To:yyyy-MM-dd} | [{attributes}] | "
                     // Sort order is what sibling order on the chart is made of. An import that
                     // renumbered from its own tenant's highest would reproduce the same tree in a

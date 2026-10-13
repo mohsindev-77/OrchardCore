@@ -36,6 +36,38 @@ public class DimensionRecordPart : ContentPart
     /// <summary>The Arabic name.</summary>
     public string NameAr { get; set; } = string.Empty;
 
+    /// <summary>
+    /// A short label a customer recognises the unit by, in English. Optional.
+    /// </summary>
+    /// <remarks>
+    /// FRS v2.5 §4.1: every dimension's list and tree carry Code, Name, Alias and Status. The
+    /// examples in its figures are what an alias is for — <em>Head Office</em> against KKT Cayman,
+    /// <em>Hiring Team</em> against Recruitment, <em>Band E1 — reports to Board</em> against Chief
+    /// Executive Officer. It is how people in the business talk about the unit, next to what it is
+    /// formally called.
+    ///
+    /// <b>Not a name, and deliberately not dated.</b> The bilingual name carries a dated history
+    /// (<c>DimensionNameDocument</c>) because "what was this called last March" changes what a
+    /// historical report prints, and because a rename is two different operations — substantive or
+    /// corrective — that the engine has to be told apart. None of that is true of an alias: nothing
+    /// resolves it as at a date, no report groups by it, and "was this nickname different last
+    /// March" is a question nobody asks. Dating it would mean a second parallel history, with its
+    /// own storage and its own two kinds of rename, to answer a question that does not exist.
+    ///
+    /// So it sits here with <see cref="CostCentreCode"/> and <see cref="GlAccountRef"/>: a plain
+    /// field on the record, changed by <c>IDimensionService.SetAliasAsync</c>, which takes no
+    /// effective date because there is nothing to date.
+    ///
+    /// <b>Bilingual, where the FRS mock shows one box.</b> CLAUDE.md rule 7 — every name field is
+    /// bilingual — and an alias is a name whatever else it is. The Arabic half is optional like
+    /// every other Arabic half since ADR-0003's addendum, so a tenant that never fills it in sees
+    /// exactly the single box the mock draws.
+    /// </remarks>
+    public string AliasEn { get; set; } = string.Empty;
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string AliasAr { get; set; } = string.Empty;
+
     /// <summary>Which dimension type this is a record of. Set on create and never changed.</summary>
     public string DimensionTypeId { get; set; } = string.Empty;
 

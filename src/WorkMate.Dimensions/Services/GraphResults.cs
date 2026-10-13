@@ -41,6 +41,12 @@ public enum DimensionRecordStatus
 /// Distance from whatever the query was anchored on: zero for the node itself, one for a parent
 /// or a child. Zero on a result that has no natural distance, such as a lookup by code.
 /// </param>
+/// <param name="AliasEn">
+/// The short label the dimension list and tree show beside the name (FRS v2.5 §4.1). Optional, and
+/// last in the parameter list with a default so that adding it broke no positional caller — every
+/// existing one passes <paramref name="Depth"/> and stops.
+/// </param>
+/// <param name="AliasAr">The Arabic half of <paramref name="AliasEn"/>. Optional.</param>
 public sealed record DimensionNodeRef(
     string RecordId,
     string Code,
@@ -50,8 +56,13 @@ public sealed record DimensionNodeRef(
     EffectiveRange EffectiveRange,
     bool IsActive,
     int SortOrder,
-    int Depth = 0)
+    int Depth = 0,
+    string AliasEn = "",
+    string AliasAr = "")
 {
+    /// <summary>The alias to show the reader, falling back to the other language rather than blank.</summary>
+    public string Alias => BilingualText.Display(AliasEn, AliasAr);
+
     /// <summary>The name to show in <paramref name="culture"/>, falling back rather than to nothing.</summary>
     public string ForCulture(string? culture)
     {
@@ -79,7 +90,10 @@ public sealed record DimensionNodeRef(
                 EffectiveDates.FromColumn(row.EffectiveFrom),
                 EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
             row.IsActive,
-            row.SortOrder);
+            row.SortOrder,
+            Depth: 0,
+            row.AliasEn,
+            row.AliasAr);
     }
 }
 

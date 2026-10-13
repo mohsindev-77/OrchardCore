@@ -55,6 +55,12 @@ public sealed class WorkMateDimensionsResourceManifest : IConfigureOptions<Resou
             .SetUrl("~/WorkMate.Dimensions/js/structures.js")
             .SetVersion("1.0.0");
 
+        // Collapsing a branch of a dimension's own tree, and the Filter disclosure. Both are
+        // enhancements: the screen adds, edits, filters, pages and switches view with no script.
+        manifest.DefineScript("workmate-dimension-records")
+            .SetUrl("~/WorkMate.Dimensions/js/dimension-records.js")
+            .SetVersion("1.0.0");
+
         // The unit picker's search. It depends on WorkMate.Platform's combobox, which is the same
         // control the employee picker drives: naming the dependency is what makes Orchard put the
         // two on the page in the order they have to be in.

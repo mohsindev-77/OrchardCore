@@ -42,13 +42,14 @@ contracted in section 4 of `/docs/technical-specification.md`.
   build if any other code path saves one of those types directly.
 
 ### Record layer — built
-- **`DimensionRecordPart`** — the eleven standard fields every generated
-  dimension content type carries. It has **no parent and no structure field**,
-  deliberately: a record sits on several axes at once, and a single parent
-  field would collapse them into one tree. `DimensionRecordPartTests` asserts
-  that no such field appears.
-- **`DimensionRecordPartIndex`** — code lookup, type filtering and dated
-  resolution without loading the content item.
+- **`DimensionRecordPart`** — the standard fields every generated dimension
+  content type carries: the eleven specification section 4 names, plus the
+  bilingual **alias** FRS v2.5 §4.1 adds. It has **no parent and no structure
+  field**, deliberately: a record sits on several axes at once, and a single
+  parent field would collapse them into one tree. `DimensionRecordPartTests`
+  asserts that no such field appears, and that the alias gained no date of its own.
+- **`DimensionRecordPartIndex`** — code lookup, type filtering, the alias column
+  the list draws, and dated resolution without loading the content item.
 - **`DimensionRecordPartHandler` / `DimensionRecordHandler`** — the chokepoint.
   The generated types are creatable, so the admin screens, the API, GraphQL, a
   recipe and an import can all produce a record; these two are the only point
@@ -1035,13 +1036,13 @@ Three things survive that withdrawal and are worth knowing about:
   the menu, so reading it now would be reading a field a customer can no longer
   correct.
 
-The list shows code, bilingual name, parent (the full path, per structure),
-status with its dates, the headcount as a link into the employee list, and the
-type's attributes as **optional** columns — off by default, because a type with
-eight attributes makes an unreadable table and which of them matter is the
-reader's question. It searches code and both names, filters by structure, by
+The list shows code, bilingual name, **alias**, parent (the full path, per
+structure), status with its dates, the headcount as a link into the employee
+list, and the type's attributes as **optional** columns — off by default, because
+a type with eight attributes makes an unreadable table and which of them matter is
+the reader's question. It searches code and both names, filters by structure, by
 `Within` (the unit picker again, narrowing to a subtree through the closure
-index) and by active/retired, and it pages.
+index) and by active/inactive, and it pages.
 
 **Creating is one operation.** The form's "Place under" is the unit picker in its
 parent-choosing mode: the options come from `SearchPermittedParentsAsync`, which
@@ -1053,13 +1054,104 @@ that is an option with its own words rather than an empty box. Saving calls
 `DimensionLink` together; there is no create-then-move and no second set of
 validation messages.
 
-**Editing covers names and attributes, and nothing else.** A rename is dated and
-comes in two kinds — substantive or corrective — and the form asks which, because
-the two answer "what was this called last March" differently and nothing
-downstream can infer it. Moving and retiring are links to the designer's own
-dated screens: a move rewrites what every historical report under the unit
-resolves to, which is why it has its own permission and its own dry run, and a
-second way to do it is the last thing it needs.
+**Editing covers names, the alias and attributes, and nothing else.** A rename is
+dated and comes in two kinds — substantive or corrective — and the form asks
+which, because the two answer "what was this called last March" differently and
+nothing downstream can infer it. The alias sits below that whole block and asks
+nothing, because it has no periods to choose between. Moving and retiring are
+links to the designer's own dated screens: a move rewrites what every historical
+report under the unit resolves to, which is why it has its own permission and its
+own dry run, and a second way to do it is the last thing it needs.
+
+### Two views, five controls, and an alias — FRS v2.5 §4.1 (slice F1)
+
+The FRS gives every dimension its own screen with a **Tree** view and a **List**
+view, the columns Code / Name / Alias / Status, and Filter, Add, Edit, Delete and
+Refresh in the top-right corner. This screen is where that lands.
+
+**The alias is a plain field, not a second name.** `DimensionRecordPart.AliasEn` /
+`AliasAr`, indexed so the list can draw fifty rows without loading fifty content
+items, written by `IDimensionService.SetAliasAsync`. It is **undated**, and that is
+a decision rather than an omission: the bilingual name carries a dated history
+because "what was this called last March" changes what a historical report prints
+and because a rename is two different operations the engine has to be told apart.
+None of that is true of a nickname — nothing resolves it as at a date and no report
+groups by it — so dating it would mean a second parallel history, with its own
+storage and its own two kinds of rename, to answer a question nobody asks.
+`DimensionRecordPartTests.TheAliasCarriesNoDateOfItsOwn` is what stops that being
+undone by somebody adding `AliasEffectiveFrom` in good faith while making one
+screen consistent with the name field beside it.
+
+`SetAliasAsync` is its own method rather than a parameter on `UpdateAsync` for a
+reason worth knowing: `UpdateAsync` states every unmanaged field at once — cost
+centre, GL account, sort order, the active flag and the retired `HeadEmployeeId` —
+so a screen wanting to change only the alias would have to read the rest and post
+them back. A form that round-trips fields it does not show silently rewrites
+whatever changed underneath it between the read and the write, and
+`HeadEmployeeId` is precisely the field nothing may rewrite (ADR-0012 retired it
+without deleting it). It also writes **nothing at all** when the value is
+unchanged, because the editor posts every field it shows whether or not anybody
+touched it.
+
+Bilingual where the FRS's mock draws one box: CLAUDE.md rule 7, and an alias is a
+name whatever else it is. The Arabic half is optional like every other one since
+ADR-0003's addendum, so a tenant that never fills it in sees exactly the single box
+the mock draws.
+
+**The tree is the dimension's own, and only its own.** Rule 2: *"a tree view only
+shows the values that belong to that one dimension."* A Department sits under a
+Division on the organisation chart and under *HR* on the Department screen, so a
+value's parent here is the **nearest ancestor of the same dimension type**, and a
+value whose chain has none is a root however deep it sits on the chart. That comes
+from `GetAncestorPathsAsync`, which already answers it for the whole page in two
+queries and already returns each chain root-first with depths — which is why the
+nearest same-type ancestor is the *last* match rather than the first. Asking for
+children per node would be a query per row, on the screen most likely to have many.
+
+Three things the tree says out loud rather than leaving a reader to infer:
+
+| | |
+| --- | --- |
+| **A dimension on several structures** | has several trees, because parentage is scoped to a structure (ADR-0005). The screen refuses to pick one, exactly as it already refuses to pick one for the Parent column and the headcount, and says so. |
+| **A capped tree** | tree view loads up to `TreeCap` (500) values at once and never pages, because a value whose parent is on another page would be drawn as a root — a wrong shape rather than a partial one. Over the cap it says so and points at the list. |
+| **A filtered tree** | same hazard, same answer: a filter that excludes a parent lifts its children to the top, and the screen says a filter is applied. |
+
+**The five controls, and the one that is not finished.** Filter is a `<details>`
+disclosure, Add is the existing New, Refresh re-issues the query — which is not
+cosmetic on a screen somebody leaves open while a recipe runs. Edit and Delete act
+on the row the reader ticked: one radio per row inside a GET form, with the buttons
+outside it joined by the HTML `form` attribute, so a selection works with no script
+and the chosen row is visible on the page rather than held somewhere only the
+browser knows. Pressing either with nothing ticked says so rather than 404ing on an
+empty id.
+
+**Delete is the control the FRS asks for and not yet the behaviour D4 describes.**
+ADR-0025 gives it two outcomes — a value nothing has ever used is really deleted,
+one that is or was used is made inactive with the reason on screen — and the second
+half already exists in full as the dated retirement screen, which previews what is
+still attached and will not commit until somebody has said what happens to the
+units underneath. The first half does not: a real delete is the one operation in
+this module that destroys a record, and it needs its own audit event, its own
+confirmation and its own second review. **That lands in slice F9.** Until then the
+button opens the retirement screen and says so on the way, rather than being held
+back for four slices or labelled with a word the product owner has already answered
+the other way.
+
+**What needs the browser, and what does not.** `dimension-records.js` does two
+things: collapses a branch, and opens the filter panel. Everything else — adding,
+editing, deleting, filtering, paging and switching between tree and list — is a
+link or a form the server rendered. Without the script every row is visible and the
+filter panel is open, which is a longer screen and not a broken one. The script
+never recomputes the tree: each row carries its own id, its parent's, its depth and
+its child count from the server, and the script only hides and shows — so the two
+cannot disagree about what the tree is, which is ADR-0010's "two readings of one
+rule" reached through a different door.
+
+**Status reads Active / Inactive**, which is the FRS's own wording for this column
+(§4.1.2), and it is the record's effective range read on the date the screen is
+about. The row's **Retire** action keeps its own name because it is a dated
+operation with its own screen, its own dry run and its own vocabulary throughout
+the module; the badge describes a state and the button names an act.
 
 ### Orchard's generic content screens are not a second way in
 
@@ -1144,6 +1236,24 @@ the generated content type, as section 4 requires — and `MoveCancelled`, the
 only one of the four that carries a free-text reason, because cancelling a
 move is the one record-level operation this module requires one for.
 
+`DimensionRecordChanged` carries the record-level operations, and
+`DimensionRecordOperation.AliasChanged` is the one member of that enum whose
+`EffectiveFrom` is **not** a date somebody chose. An alias is undated, so there is
+no effective date to record and the field carries the day the change was *made*
+instead. That is stated on the enum member rather than left for a reader to infer
+from a date that looks like every other one, and the alias on either side travels
+as four plain strings rather than two `DimensionRecordNameState`s — that type's
+properties are `NameEn` and `NameAr`, and an auditor reading a serialised entry
+whose `NameEn` held an alias would have no way to tell which fact they were
+looking at.
+
+**`DimensionRule` is appended to, never inserted into.** The enum is serialised
+into audit entries and `System.Text.Json` writes an enum as its numeric value
+unless told otherwise, so a member slotted in beside a related one renumbers every
+member after it and silently changes what every entry already written means. The
+grouping comments in that file are for a reader; the order is a contract.
+`InvalidValue` is therefore at the end rather than beside `CodeFormat`.
+
 ## Recipe steps
 `dimension-types`, `structures`, `dimension-records`, `employee-assignments` and
 `unit-heads`, all in `Recipes/`. A recipe lists them in that order: a structure
@@ -1166,6 +1276,23 @@ it carries no allocation and no primary flag, and the employee need not be place
 at the unit at all. A row that carried both would be two things wearing one shape,
 and the half that was absent would have to be expressed by nulls that mean
 different things in each direction.
+
+**`aliasEn` / `aliasAr` are nullable in `dimension-records`' step model**, so that
+*absent* and *stated as empty* are different things — the same reason `sortOrder`
+is, and the same reason the lookup-list step's `isActive` and `sortOrder` are. A
+row written before aliases existed says nothing about one, and ADR-0008's
+comparison is scoped to what a row actually states, so re-running such a recipe
+against a tenant whose units have since been given aliases **skips** rather than
+refusing. A row that states `""` is claiming the unit has none, and a tenant where
+it has one is a difference the step reports by name.
+
+The export goes the other way and states the pair **only when the record has one**
+— the judgement Arabic names already get, and the opposite of `sortOrder`'s. An
+absent alias and an empty one mean the same thing to the importer, so writing
+`"aliasEn": ""` against every unit in a tenant that uses no aliases would be noise
+in every exported file for no fact gained. A unit that does have one carries both
+halves, including an empty Arabic half, because there the two are genuinely
+different answers.
 
 ### Export (ADR-0011)
 
@@ -1226,7 +1353,25 @@ fresh tenant; and compares the answers on dates either side of every change.
 ### The demo recipes
 
 `organisation-designer-demo` is the small three-level example the designer tests
-run against. Two worked company examples sit beside it:
+run against.
+
+**Two of its records carry an alias and the rest do not**, which is the shape the
+FRS's own figures show and the shape a list has to read well in: `demo-div-sales`
+states both halves, `demo-dept-retail` states only the English one, so the display
+fallback is exercised by seeded data rather than only by a unit test.
+
+**`demo-section` nests inside itself**, and `demo-sec-counter` sits inside
+`demo-sec-instore`. That is what gives one dimension's own tree view a branch to
+collapse — without it every value is a root of its own tree, which is Rule 2
+working correctly and demonstrating nothing. **Section rather than Department,
+deliberately**: adding a unit under a parent that permits two kinds of unit makes
+the designer's Add-unit form ask which kind, and the browser tests add departments
+under divisions and sections under departments. Section is the one level nothing in
+the suite adds beneath, so it is the one that can carry the diagonal without
+changing another test's journey. That is worth remembering before giving a second
+demo type a diagonal.
+
+Two worked company examples sit beside it:
 
 - **`organisation-designer-zenith`** — two kinds of unit at one level. Under a
   Division sits either a Department or a Project; a Project contains Teams.
@@ -1412,6 +1557,36 @@ with different content.
   the shared tenant stuck below head, so every later test in the collection fails
   too. `TablesByVersion` in that file is the one place that knowledge lives; add a
   row to it.
+
+- **FRS v2.5, slice F1** — the alias columns. `Migrations.UpdateFrom9Async`
+  (schema version 10) adds `DimensionRecordPartIndex.AliasEn` and `AliasAr`.
+
+  **It does not also edit the step that creates the table, and that is the point.**
+  `DimensionRecordPartIndex` is created by `UpdateFrom1Async`, which has shipped.
+  ADR-0009's exception — "`CreateAsync`, or whichever step currently plays that
+  role for a table, keeps being updated to match the latest schema" — exists only
+  because a brand-new tenant must reach the current schema in one pass, and it does
+  not apply here: a brand-new tenant runs `CreateAsync` and then every
+  `UpdateFromNAsync` in order, so it arrives at this step with the table and
+  *without* these two columns, which is exactly where a tenant upgrading from
+  version 9 arrives. Both states are the same state, so the column is simply added
+  and the shipped step is left alone. That is `UpdateFrom5Async`'s reasoning for a
+  whole table, applied to a column: what forced `UpdateFrom3Async` and
+  `UpdateFrom4Async` to inspect the database first was that *their* column is also
+  produced by a step the fresh tenant has already run.
+
+  It is still guarded by `ColumnExistsAsync` — not because a fresh tenant might
+  have the columns, but because the step has to tolerate a table that already does:
+  that is the state a tenant rolled back for an upgrade test reaches, and the state
+  a catch-up that failed after this step and was retried would reach. `AddColumn`
+  on an existing column throws on both providers, and when it throws here the whole
+  catch-up fails and the tenant is left stuck below head.
+  `DimensionsMigrationUpgradeTenantTests.ATenantStuckBeforeTheAliasColumnsUpgrades
+  CleanlyAndCanStoreAnAlias` rolls a tenant back to version 9, drops both columns,
+  upgrades, and then writes and reads an alias through the real service — the
+  operation that would throw "no column named AliasEn" on a tenant the migration
+  had missed, which is the same failure on the same table that ADR-0009 exists
+  because of.
 
 ## Open questions this module is waiting on
 

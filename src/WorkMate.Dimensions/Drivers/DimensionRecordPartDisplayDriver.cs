@@ -56,6 +56,8 @@ public sealed class DimensionRecordPartDisplayDriver : ContentPartDisplayDriver<
         part.Code = model.Code?.Trim() ?? string.Empty;
         part.NameEn = model.NameEn?.Trim() ?? string.Empty;
         part.NameAr = model.NameAr?.Trim() ?? string.Empty;
+        part.AliasEn = model.AliasEn?.Trim() ?? string.Empty;
+        part.AliasAr = model.AliasAr?.Trim() ?? string.Empty;
         part.IsActive = model.IsActive;
         part.SortOrder = model.SortOrder;
         part.CostCentreCode = model.CostCentreCode?.Trim() ?? string.Empty;
@@ -80,6 +82,8 @@ public sealed class DimensionRecordPartDisplayDriver : ContentPartDisplayDriver<
         model.Code = part.Code;
         model.NameEn = part.NameEn;
         model.NameAr = part.NameAr;
+        model.AliasEn = part.AliasEn;
+        model.AliasAr = part.AliasAr;
         model.DimensionTypeId = part.DimensionTypeId;
         model.IsActive = part.IsActive;
         model.SortOrder = part.SortOrder;

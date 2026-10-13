@@ -39,6 +39,13 @@
         </div>
     </div>
 
+    @* Below the dated rename block on purpose: everything above it is about the name's history and
+       none of it applies here. An alias has no periods, so there is no date to apply it from and no
+       question about which kind of change is meant — it simply is what it is from now on. *@
+    @{ var aliasHint = T["Optional. Shown beside the name on this dimension's list and tree. Not dated: changing it changes what every report shows, including past ones."].Value; }
+    <workmate-bilingual for-en="AliasEn" for-ar="AliasAr" label="@T["Alias"]"
+                        hint="@aliasHint" max-length="255" />
+
     @if (Model.Attributes.Count > 0)
     {
         <h2 class="fs-5 mt-4">@T["Details"]</h2>

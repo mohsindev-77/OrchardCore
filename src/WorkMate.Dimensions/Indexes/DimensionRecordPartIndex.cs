@@ -35,6 +35,19 @@ public sealed class DimensionRecordPartIndex : MapIndex
     /// <summary>Carried so a picker can show the Arabic name without loading the items either.</summary>
     public string NameAr { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The short label the dimension list and tree show beside the name (FRS v2.5 §4.1).
+    /// </summary>
+    /// <remarks>
+    /// On the index rather than read from the content item, for the reason every other column here
+    /// is: the list draws fifty rows a page and must not load fifty content items to fill one
+    /// column. Added by <c>Migrations.UpdateFrom9Async</c>.
+    /// </remarks>
+    public string AliasEn { get; set; } = string.Empty;
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string AliasAr { get; set; } = string.Empty;
+
     public bool IsActive { get; set; }
 
     public int SortOrder { get; set; }
@@ -92,6 +105,8 @@ public sealed class DimensionRecordPartIndexProvider : IndexProvider<ContentItem
                     DimensionTypeId = part.DimensionTypeId,
                     NameEn = part.NameEn,
                     NameAr = part.NameAr,
+                    AliasEn = part.AliasEn,
+                    AliasAr = part.AliasAr,
                     IsActive = part.IsActive,
                     SortOrder = part.SortOrder,
                     EffectiveFrom = EffectiveDates.ToColumn(part.EffectiveFrom),

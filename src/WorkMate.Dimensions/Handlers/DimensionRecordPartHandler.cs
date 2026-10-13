@@ -48,6 +48,17 @@ namespace WorkMate.Dimensions.Handlers;
 /// </remarks>
 public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRecordPart>
 {
+    /// <summary>
+    /// How long an alias may be, matching the indexed column <c>Migrations.UpdateFrom9Async</c>
+    /// creates.
+    /// </summary>
+    /// <remarks>
+    /// The same bound the names carry, and for the same reason: the column is indexed, several
+    /// providers refuse to index a column wider than a page, and a short label that needs more than
+    /// this is a description.
+    /// </remarks>
+    internal const int AliasLength = 255;
+
     private readonly IDimensionTypeService _dimensionTypeService;
 
     /// <summary>
@@ -125,6 +136,21 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
                 nameof(part.NameAr));
         }
 
+        // The alias is optional in both languages — it is a nickname, and the FRS's own figures
+        // show units with one and units without — so the only rule is the one the column imposes.
+        // Checked here rather than left to the database because a provider truncates or throws
+        // depending on which one it is, and a silently shortened alias is a wrong answer that looks
+        // like a right one.
+        if (part.AliasEn.Length > AliasLength)
+        {
+            context.Fail(TooLongAlias(), nameof(part.AliasEn));
+        }
+
+        if (part.AliasAr.Length > AliasLength)
+        {
+            context.Fail(TooLongAlias(), nameof(part.AliasAr));
+        }
+
         // No defaulting on a write, per specification section 2 rule 3. A record saved with no
         // effective date would resolve from 0001-01-01, which is silently wrong rather than
         // loudly wrong.
@@ -148,4 +174,11 @@ public sealed class DimensionRecordPartHandler : ContentPartHandler<DimensionRec
                 nameof(part.DimensionTypeId));
         }
     }
+
+    /// <summary>
+    /// One sentence, used for both halves of the alias, so the two cannot drift into saying the
+    /// same thing differently.
+    /// </summary>
+    private LocalizedString TooLongAlias() =>
+        S["An alias may be up to {0} characters.", AliasLength];
 }

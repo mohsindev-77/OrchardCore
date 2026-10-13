@@ -75,6 +75,7 @@ internal sealed class DimensionService : IDimensionService
         EffectiveRange effectiveRange,
         DimensionValidationBatch? batch = null,
         int? sortOrder = null,
+        BilingualText? aliasName = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -119,6 +120,8 @@ internal sealed class DimensionService : IDimensionService
             part.Code = code;
             part.NameEn = name.En;
             part.NameAr = name.Ar;
+            part.AliasEn = aliasName?.En ?? string.Empty;
+            part.AliasAr = aliasName?.Ar ?? string.Empty;
             part.DimensionTypeId = dimensionTypeId;
             part.SortOrder = order;
             part.EffectiveFrom = effectiveRange.From;
@@ -151,7 +154,8 @@ internal sealed class DimensionService : IDimensionService
         await _graph.EnsureSelfPairsAsync(item.ContentItemId, dimensionTypeId, effectiveRange, cancellationToken);
         await StartNameHistoryAsync(item.ContentItemId, name, effectiveRange.From, cancellationToken);
 
-        return DimensionResult.Success(ToNodeRef(item.ContentItemId, code, name, dimensionTypeId, effectiveRange, order));
+        return DimensionResult.Success(
+            ToNodeRef(item.ContentItemId, code, name, dimensionTypeId, effectiveRange, order, aliasName));
     }
 
     /// <summary>
@@ -196,6 +200,7 @@ internal sealed class DimensionService : IDimensionService
         DateOnly effectiveFrom,
         IReadOnlyList<DimensionAttributeValue>? attributes = null,
         int? sortOrder = null,
+        BilingualText? aliasName = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -238,7 +243,8 @@ internal sealed class DimensionService : IDimensionService
             return DimensionResult.Failed<DimensionNodeRef>(errors);
         }
 
-        var created = await CreateAsync(dimensionTypeId, code, name, range, batch: null, sortOrder, cancellationToken);
+        var created = await CreateAsync(
+            dimensionTypeId, code, name, range, batch: null, sortOrder, aliasName, cancellationToken);
 
         if (!created.Succeeded)
         {
@@ -327,6 +333,90 @@ internal sealed class DimensionService : IDimensionService
         });
 
         await _contentManager.UpdateAsync(item);
+
+        return DimensionResult.Success((await GetAsync(recordId, null, cancellationToken))!);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <b>Writes nothing when nothing changed.</b> Saving an unchanged alias would publish a new
+    /// version of the content item and write an audit entry saying somebody changed something, on a
+    /// form opened to change a name. The editor posts every field it shows whether or not the reader
+    /// touched any of them, so this is the ordinary case rather than a corner of it — the same
+    /// reason <c>DimensionRecordsAdminController</c> only renames when <c>NameChanged</c>.
+    /// </remarks>
+    public async Task<DimensionResult<DimensionNodeRef>> SetAliasAsync(
+        string recordId,
+        BilingualText aliasName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(aliasName);
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<DimensionNodeRef>();
+        }
+
+        var item = await _contentManager.GetAsync(recordId);
+
+        if (item is null)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(UnknownRecord(recordId));
+        }
+
+        // TryGet, not As: As<TPart> is obsolete in 3.0.1, and GetOrCreate would weld an empty part
+        // onto a content item that is not a dimension record at all rather than reporting it.
+        if (!item.TryGet<DimensionRecordPart>(out var part))
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(UnknownRecord(recordId));
+        }
+
+        var before = new BilingualText(part.AliasEn, part.AliasAr);
+        var after = new BilingualText(aliasName.En?.Trim() ?? string.Empty, aliasName.Ar?.Trim() ?? string.Empty);
+
+        if (string.Equals(before.En, after.En, StringComparison.Ordinal) &&
+            string.Equals(before.Ar, after.Ar, StringComparison.Ordinal))
+        {
+            return DimensionResult.Success((await GetAsync(recordId, null, cancellationToken))!);
+        }
+
+        item.Alter<DimensionRecordPart>(stored =>
+        {
+            stored.AliasEn = after.En;
+            stored.AliasAr = after.Ar;
+        });
+
+        // The handler's rules run here, as they do on every other write path into a record: the
+        // alias length is one of them, so a hand-made post carrying three hundred characters is
+        // refused in the same words a recipe row would be.
+        var validated = await _contentManager.ValidateAsync(item);
+
+        if (!validated.Succeeded)
+        {
+            return DimensionResult.Failed<DimensionNodeRef>(
+            [
+                .. validated.Errors.Select(error => new DimensionError(
+                    DimensionRule.InvalidValue,
+                    part.Code,
+                    new LocalizedString(error.ErrorMessage ?? string.Empty, error.ErrorMessage ?? string.Empty))),
+            ]);
+        }
+
+        await _contentManager.UpdateAsync(item);
+
+        await RecordRecordChangeAsync(new DimensionRecordAuditEvent
+        {
+            RecordId = recordId,
+            Code = part.Code,
+            Operation = DimensionRecordOperation.AliasChanged,
+            // The day it was recorded, not a date anybody chose: an alias is undated. See the
+            // remark on DimensionRecordOperation.AliasChanged.
+            EffectiveFrom = await _authorisation.TodayAsync(),
+            AliasEnBefore = before.En,
+            AliasArBefore = before.Ar,
+            AliasEnAfter = after.En,
+            AliasArAfter = after.Ar,
+        });
 
         return DimensionResult.Success((await GetAsync(recordId, null, cancellationToken))!);
     }
@@ -1466,8 +1556,10 @@ internal sealed class DimensionService : IDimensionService
         BilingualText name,
         string dimensionTypeId,
         EffectiveRange range,
-        int sortOrder) =>
-        new(recordId, code, name.En, name.Ar, dimensionTypeId, range, IsActive: true, sortOrder);
+        int sortOrder,
+        BilingualText? aliasName = null) =>
+        new(recordId, code, name.En, name.Ar, dimensionTypeId, range, IsActive: true, sortOrder,
+            Depth: 0, aliasName?.En ?? string.Empty, aliasName?.Ar ?? string.Empty);
 
     private DimensionError UnknownRecord(string recordId) => new(
         DimensionRule.UnknownReference,

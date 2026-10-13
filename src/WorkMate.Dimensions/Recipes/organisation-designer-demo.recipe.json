@@ -12,7 +12,10 @@
     "Not applied automatically by any tenant provisioning flow. An operator runs it deliberately, from the Recipes admin screen or the recipe execution API, against a tenant already running WorkMate.Dimensions.",
     "Exercises the three recipe steps prompt 3 adds: dimension-types, structures, dimension-records. Steps run in that order because structures reference types by code and records reference both types and structures by code, resolved at import — see WorkMate.Dimensions/Recipes.",
     "Every type, structure and record is validated as one batch before anything is written; a single bad row would leave nothing from that step behind, not even the rows before it.",
-    "demo-dept-unassigned carries no placement on purpose: it is what a record created outside the designer looks like, and it is what the designer's unplaced-records panel is for."
+    "demo-dept-unassigned carries no placement on purpose: it is what a record created outside the designer looks like, and it is what the designer's unplaced-records panel is for.",
+    "Three records carry an alias and the rest do not, which is the shape FRS v2.5's own figures show: an alias is optional, and a dimension's list has to read well with the column half empty. demo-div-sales states both halves and demo-dept-retail states only the English one, so the display fallback is exercised by real seeded data rather than only by a unit test.",
+    "demo-section allows self-nesting, and demo-sec-counter sits inside demo-sec-instore. That is the FRS's own Department -> HR -> Recruitment shape, and it is what gives one dimension's own tree view a branch to collapse — without it every value is a root of its own tree, which is Rule 2 working correctly and demonstrating nothing. The diagonal is derived from allowsSelfNesting because this structure is still described as a chain; ADR-0010's addendum makes it a cell of the containment grid for a structure described explicitly.",
+    "Section rather than Department, deliberately: adding a unit under a parent that permits two kinds of unit makes the designer's Add-unit form ask which kind, and the browser tests add departments under divisions and sections under departments. Section is the one level nothing in the suite adds beneath, so giving it the diagonal changes no existing journey."
   ],
 
   "steps": [
@@ -21,7 +24,7 @@
       "types": [
         { "code": "demo-division", "nameEn": "Division", "nameAr": "قسم", "allowsSelfNesting": false },
         { "code": "demo-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
-        { "code": "demo-section", "nameEn": "Section", "nameAr": "شعبة", "allowsSelfNesting": false }
+        { "code": "demo-section", "nameEn": "Section", "nameAr": "شعبة", "allowsSelfNesting": true }
       ]
     },
     {
@@ -46,6 +49,8 @@
           "typeCode": "demo-division",
           "nameEn": "Sales",
           "nameAr": "المبيعات",
+          "aliasEn": "Revenue",
+          "aliasAr": "الإيرادات",
           "effectiveFrom": "2024-01-01",
           "placements": [
             { "structureCode": "demo-org", "parentCode": null, "effectiveFrom": "2024-01-01" }
@@ -67,6 +72,7 @@
           "typeCode": "demo-department",
           "nameEn": "Retail",
           "nameAr": "البيع بالتجزئة",
+          "aliasEn": "Shops",
           "effectiveFrom": "2024-01-01",
           "placements": [
             { "structureCode": "demo-org", "parentCode": "demo-div-sales", "effectiveFrom": "2024-01-01" }
@@ -111,6 +117,17 @@
           "effectiveFrom": "2024-01-01",
           "placements": [
             { "structureCode": "demo-org", "parentCode": "demo-dept-retail", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "demo-sec-counter",
+          "typeCode": "demo-section",
+          "nameEn": "Counter",
+          "nameAr": "الكاونتر",
+          "aliasEn": "Front of House",
+          "effectiveFrom": "2024-01-01",
+          "placements": [
+            { "structureCode": "demo-org", "parentCode": "demo-sec-instore", "effectiveFrom": "2024-01-01" }
           ]
         },
         {

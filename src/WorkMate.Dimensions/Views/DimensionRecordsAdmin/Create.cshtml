@@ -79,6 +79,14 @@
 
     <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" max-length="200" />
 
+    @* FRS v2.5 figure 7 puts Alias directly under the name, and that is where it belongs: it is
+       what people call the unit, read next to what it is formally called. Optional in both
+       languages, and undated — there is no "alias from" date because nothing resolves an alias as
+       at a date. *@
+    @{ var aliasHint = T["Optional. Shown beside the name on this dimension's list and tree."].Value; }
+    <workmate-bilingual for-en="AliasEn" for-ar="AliasAr" label="@T["Alias"]"
+                        hint="@aliasHint" max-length="255" />
+
     <div class="mb-3" style="max-width: 16rem;">
         <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
         <input class="form-control" type="date" asp-for="EffectiveFrom" id="record-create-effective-from" required />

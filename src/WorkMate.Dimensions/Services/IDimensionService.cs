@@ -24,6 +24,13 @@ public interface IDimensionService
     /// record already in the tenant, so records come out in the order they were created — which
     /// for an import is the order the recipe lists them in.
     /// </param>
+    /// <param name="aliasName">
+    /// The short label the dimension's list and tree show beside the name (FRS v2.5 §4.1). Optional
+    /// in both halves, and undated — see <see cref="SetAliasAsync"/>.
+    ///
+    /// Called <c>aliasName</c> rather than <c>alias</c> because <c>Alias</c> is a reserved word in
+    /// Visual Basic, and CA1716 refuses it on an interface member.
+    /// </param>
     Task<DimensionResult<DimensionNodeRef>> CreateAsync(
         string dimensionTypeId,
         string code,
@@ -31,6 +38,7 @@ public interface IDimensionService
         EffectiveRange effectiveRange,
         DimensionValidationBatch? batch = null,
         int? sortOrder = null,
+        BilingualText? aliasName = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -74,6 +82,34 @@ public interface IDimensionService
         DateOnly effectiveFrom,
         IReadOnlyList<Models.DimensionAttributeValue>? attributes = null,
         int? sortOrder = null,
+        BilingualText? aliasName = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the record's alias — the short label its list and tree show beside the name.
+    /// </summary>
+    /// <remarks>
+    /// <b>No effective date, and that is the point.</b> Every other write on this interface takes
+    /// one, because the thing it changes is dated: a name has a history, a placement has a history,
+    /// existence itself has a range. An alias has none — nothing resolves it as at a date and no
+    /// report groups by it — so asking for a date would be asking the caller to supply an answer
+    /// nothing will ever read, and the first screen to default it would have invented a dated fact
+    /// nobody stated. <c>DimensionRecordPart.AliasEn</c> sets out the full argument.
+    ///
+    /// <b>Its own method rather than a parameter on a general update.</b>
+    /// <see cref="UpdateAsync"/> states every unmanaged field at once — cost centre, GL account,
+    /// sort order, the active flag and the retired <c>HeadEmployeeId</c> — so a screen that wanted
+    /// to change only the alias would have to read the rest and post them back unchanged. A form
+    /// that round-trips fields it does not show is a form that silently rewrites whatever changed
+    /// underneath it between the read and the write, and <c>HeadEmployeeId</c> is exactly the field
+    /// that must not be rewritten by anything (ADR-0012 retired it without deleting it).
+    ///
+    /// Gated by <see cref="Permissions.ManageDimensionRecords"/>: an alias is ordinary record
+    /// upkeep, not a reorganisation, and it changes nothing any historical report resolves.
+    /// </remarks>
+    Task<DimensionResult<DimensionNodeRef>> SetAliasAsync(
+        string recordId,
+        BilingualText aliasName,
         CancellationToken cancellationToken = default);
 
     /// <summary>Changes the fields that are not the name and not the placement.</summary>

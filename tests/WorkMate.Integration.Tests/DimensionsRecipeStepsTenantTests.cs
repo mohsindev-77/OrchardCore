@@ -513,6 +513,81 @@ public sealed class DimensionsRecipeStepsTenantTests
         });
     }
 
+    /// <summary>
+    /// A row's alias is imported, and ADR-0008's "comparison is scoped to what the row states"
+    /// covers it in both directions.
+    /// </summary>
+    /// <remarks>
+    /// Three outcomes in one test because they are one rule seen from three sides, and the middle
+    /// one is the one that is easy to get wrong:
+    ///
+    /// <list type="bullet">
+    /// <item>a row stating an alias creates the record with it;</item>
+    /// <item>a row stating <em>no</em> alias against a record that has one is <b>not</b> a
+    /// difference — that is a recipe written before aliases existed, and refusing it would make
+    /// every pre-F1 recipe file unappliable to a tenant whose units have since been named;</item>
+    /// <item>a row stating a <em>different</em> alias is a difference, and fails naming it rather
+    /// than overwriting what the customer has since changed.</item>
+    /// </list>
+    /// </remarks>
+    [Fact]
+    public async Task AnAliasIsImportedAndComparedOnlyWhenTheRowStatesOne()
+    {
+        const string withAlias = """
+            { "steps": [
+              { "name": "dimension-types", "types": [
+                { "code": "alias-division", "nameEn": "Alias Division", "nameAr": "قسم", "allowsSelfNesting": false }
+              ] },
+              { "name": "dimension-records", "records": [
+                { "code": "alias-div-1", "typeCode": "alias-division", "nameEn": "Alias One", "nameAr": "واحد",
+                  "aliasEn": "Head Office", "aliasAr": "المكتب الرئيسي", "effectiveFrom": "2024-01-01" }
+              ] }
+            ] }
+            """;
+
+        const string silentAboutAlias = """
+            { "steps": [ { "name": "dimension-records", "records": [
+                { "code": "alias-div-1", "typeCode": "alias-division", "nameEn": "Alias One", "nameAr": "واحد",
+                  "effectiveFrom": "2024-01-01" }
+            ] } ] }
+            """;
+
+        const string differentAlias = """
+            { "steps": [ { "name": "dimension-records", "records": [
+                { "code": "alias-div-1", "typeCode": "alias-division", "nameEn": "Alias One", "nameAr": "واحد",
+                  "aliasEn": "Somewhere Else", "effectiveFrom": "2024-01-01" }
+            ] } ] }
+            """;
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            (await ExecuteRecipeAsync(services, withAlias)).Succeeded.Should().BeTrue();
+
+            var records = services.GetRequiredService<IDimensionService>();
+            var created = await records.GetByCodeAsync("alias-div-1");
+
+            created.Should().NotBeNull();
+            created!.AliasEn.Should().Be("Head Office");
+            created.AliasAr.Should().Be("المكتب الرئيسي");
+
+            (await ExecuteRecipeAsync(services, silentAboutAlias)).Succeeded.Should().BeTrue(
+                "a row that states no alias is not claiming the record has none");
+
+            (await records.GetByCodeAsync("alias-div-1"))!.AliasEn.Should().Be(
+                "Head Office", "and it must not clear what it said nothing about");
+
+            var refused = await ExecuteRecipeAsync(services, differentAlias);
+
+            refused.Succeeded.Should().BeFalse();
+            refused.Errors.Should().ContainSingle(error =>
+                error.Contains("alias-div-1", StringComparison.Ordinal) &&
+                error.Contains("alias", StringComparison.OrdinalIgnoreCase));
+
+            (await records.GetByCodeAsync("alias-div-1"))!.AliasEn.Should().Be(
+                "Head Office", "a mismatch must never silently overwrite the tenant's data");
+        });
+    }
+
     [Fact]
     public async Task AStructureWithTheSameCodeButDifferentLevelsFailsNamingTheDifference()
     {

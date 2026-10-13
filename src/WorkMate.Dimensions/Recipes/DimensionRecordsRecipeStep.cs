@@ -176,7 +176,11 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                     // Stated, or the order the recipe lists them in: records are created here in
                     // list order and an unstated sort order is assigned from the tenant's highest,
                     // so "Engineering, Projects, Corporate" in the file is what the chart shows.
-                    record.SortOrder);
+                    record.SortOrder,
+                    // An unstated alias is no alias, which is what an empty one is too — the
+                    // difference between the two matters only to the comparison above, where
+                    // "absent" must not read as a claim.
+                    new BilingualText(record.AliasEn ?? string.Empty, record.AliasAr ?? string.Empty));
 
                 if (!created.Succeeded)
                 {
@@ -349,6 +353,19 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
             differences.Add($"the sort order is {existing.SortOrder} in the tenant but {sortOrder} in the recipe");
         }
 
+        // The same rule, for the same reason. A row from before aliases existed states neither
+        // half, and must not refuse a re-run against a tenant whose units have since been given
+        // one. A row that states an empty alias is making a claim, and is compared.
+        if (record.AliasEn is { } aliasEn && !RecipeNameComparison.Same(existing.AliasEn, aliasEn))
+        {
+            differences.Add(RecipeNameComparison.Describe("alias", existing.AliasEn, aliasEn));
+        }
+
+        if (record.AliasAr is { } aliasAr && !RecipeNameComparison.Same(existing.AliasAr, aliasAr))
+        {
+            differences.Add(RecipeNameComparison.Describe("Arabic alias", existing.AliasAr, aliasAr));
+        }
+
         return differences;
     }
 
@@ -414,6 +431,23 @@ internal sealed class DimensionRecordStepEntry
     public string NameEn { get; set; } = string.Empty;
 
     public string NameAr { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The short label the dimension's list and tree show beside the name (FRS v2.5 §4.1).
+    /// </summary>
+    /// <remarks>
+    /// <b>Nullable, so that "absent" and "stated as empty" are different things</b> — the same
+    /// reason <see cref="SortOrder"/> is, and the same reason <c>isActive</c> and
+    /// <c>sortOrder</c> are nullable on the lookup-list step. A row written before aliases existed
+    /// says nothing about one, and ADR-0008's comparison is scoped to what a row actually states,
+    /// so re-running such a recipe against a tenant whose units have since been given aliases must
+    /// skip rather than refuse. A row that states <c>""</c> is claiming the unit has no alias, and
+    /// a tenant where it has one is a difference the step reports.
+    /// </remarks>
+    public string? AliasEn { get; set; }
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string? AliasAr { get; set; }
 
     public DateOnly EffectiveFrom { get; set; }
 

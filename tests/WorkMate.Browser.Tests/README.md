@@ -84,3 +84,28 @@ failed requests and asserts there were none. A script that throws while loading
 leaves the page looking completely correct and every control inert — which is
 the failure this project exists for, and it is worth catching directly rather
 than only through the symptom.
+
+### Reach the admin menu through `AdminMenu`, and never through `IsVisibleAsync`
+
+`IsVisibleAsync` and `CountAsync` are Playwright's **immediate** checks: they
+answer about the instant they are called and never retry, unlike every
+`Assertions.Expect` in this suite. Asking either of them "is this menu group
+already open?" before the sidebar has rendered gets `false` for a reason that has
+nothing to do with the group, and acting on that answer is a race that fires only
+under load.
+
+Three classes had their own copy of exactly that, and one of them could click
+nothing and return, leaving the caller's next line — an auto-waiting click on a
+link inside a still-collapsed group — to wait thirty seconds for an element that
+would never appear. It showed up as a single unnamed browser test failing in one
+full-suite run out of three. `AdminMenu.ClickAsync` / `OpenGroupAsync` is the one
+copy now: it waits for either the entry or the group button to be visible before
+asking anything, and then asserts the group really did open, so a failure says
+*the People group did not open* rather than *timed out waiting for a link*.
+
+**A test that reads the menu rather than clicking it should not expand anything.**
+A collapsed group's links are already in the DOM, and expanding means naming the
+group — whose caption is in the reader's language, which is the very thing the
+Arabic passes exist to measure. Those tests wait for the link to be **attached**
+instead: attached rather than visible, because visible is a claim about the group
+being open and that is not their question.

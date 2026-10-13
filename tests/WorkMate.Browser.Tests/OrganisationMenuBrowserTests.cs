@@ -125,9 +125,18 @@ public sealed class OrganisationMenuBrowserTests
     /// <remarks>
     /// The culture cookie is set the way the admin's own picker sets it, then the page is loaded —
     /// the order matters, because the middleware reads it on the request rather than afterwards.
-    /// The group is expanded if it is closed, because a collapsed group's links are in the DOM but
-    /// the markup this reads is the same either way; expanding only keeps the page honest for
-    /// anybody debugging a failure with the browser open.
+    ///
+    /// <b>The group is no longer expanded, and that is a fix rather than a removal.</b> It used to
+    /// try, with Playwright's non-retrying <c>CountAsync</c> and <c>IsVisibleAsync</c> against a
+    /// sidebar that may not have rendered yet — see <see cref="AdminMenu"/> for the race that was.
+    /// Expanding was never needed here: these tests read the rendered menu out of the DOM, and a
+    /// collapsed group's links are already in it. Worse, expanding means naming the group, and the
+    /// group's caption is in the reader's language — so the helper would have been asserting in
+    /// English about the very thing the Arabic pass exists to measure.
+    ///
+    /// What replaces it is the wait that was actually missing: the menu has to be <em>attached</em>
+    /// before anything reads it. Attached rather than visible, because visible is a claim about the
+    /// group being open, which is not this test's question.
     /// </remarks>
     private static async Task OpenAdminInAsync(IPage page, string culture)
     {
@@ -138,16 +147,6 @@ public sealed class OrganisationMenuBrowserTests
 
         await page.ReloadAsync();
 
-        var group = page.GetByRole(AriaRole.Button, new() { NameString = "Organisation" }).First;
-
-        if (await group.CountAsync() > 0 && await group.IsVisibleAsync())
-        {
-            var first = page.Locator("a[href*='/Dimensions/']").First;
-
-            if (!await first.IsVisibleAsync())
-            {
-                await group.ClickAsync();
-            }
-        }
+        await Assertions.Expect(page.Locator("a[href*='/Dimensions/']").First).ToBeAttachedAsync();
     }
 }

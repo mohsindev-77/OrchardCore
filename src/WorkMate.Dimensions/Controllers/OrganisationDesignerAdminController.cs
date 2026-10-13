@@ -364,6 +364,7 @@ public sealed class OrganisationDesignerAdminController : Controller
             // No sort order from the form: a unit added here belongs after the siblings that were
             // already there, which is what the service's default does.
             sortOrder: null,
+            model.Alias,
             cancellationToken);
 
         if (!result.Succeeded)

@@ -34,6 +34,47 @@ public sealed class DimensionRecordListViewModel
     /// </remarks>
     public string TypeName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Tree or list. FRS v2.5 §4.1: the same values, the same columns, two layouts, and a toggle in
+    /// the top-right corner that changes nothing but the arrangement.
+    /// </summary>
+    public DimensionRecordView View { get; set; } = DimensionRecordView.List;
+
+    /// <summary>
+    /// The rows in tree order, each carrying its depth, when <see cref="View"/> is
+    /// <see cref="DimensionRecordView.Tree"/>. Empty in list view.
+    /// </summary>
+    /// <remarks>
+    /// Flattened on the server rather than rendered as nested lists, because the columns the FRS
+    /// asks for — Code, Name, Alias, Status — are a table, and a table cannot nest. The indentation
+    /// is <see cref="DimensionRecordRowViewModel.Depth"/> applied to the first cell, and the
+    /// parent-child relationship travels on the row as data attributes so the collapse script can
+    /// find a node's descendants without a second shape to keep in step.
+    /// </remarks>
+    public IReadOnlyList<DimensionRecordRowViewModel> TreeRows { get; set; } = [];
+
+    /// <summary>
+    /// True when the tree was built from a capped slice of a dimension with more values than that.
+    /// </summary>
+    /// <remarks>
+    /// A tree and a page are incompatible: a value whose parent is on another page would be drawn
+    /// as a root, which is a wrong answer rather than a partial one. So tree view loads up to
+    /// <c>DimensionRecordsAdminController.TreeCap</c> values at once and says so when it stopped
+    /// early, rather than quietly showing a shape that is not the tenant's.
+    /// </remarks>
+    public bool TreeTruncated { get; set; }
+
+    /// <summary>
+    /// True when tree view was asked for and the screen cannot say what the tree is, because this
+    /// type is on several structures and none has been chosen.
+    /// </summary>
+    /// <remarks>
+    /// Parentage is scoped to a structure (ADR-0005), so a type used by two axes genuinely has two
+    /// trees. Picking one would be the guess <see cref="DimensionRecordsAdminController"/> already
+    /// refuses to make for the Parent column and the headcount.
+    /// </remarks>
+    public bool TreeNeedsAStructure { get; set; }
+
     public string? Search { get; set; }
 
     /// <summary>
@@ -87,6 +128,16 @@ public sealed class DimensionRecordListViewModel
         [.. AttributeColumns.Where(column => column.IsShown)];
 }
 
+/// <summary>Which of the two layouts FRS v2.5 §4.1 asks for the screen is showing.</summary>
+public enum DimensionRecordView
+{
+    /// <summary>Flat, one row per value, in sort order. §4.1.2.</summary>
+    List,
+
+    /// <summary>Indented under its own dimension's parent values, with expand controls. §4.1.1.</summary>
+    Tree,
+}
+
 /// <summary>One structure this type is a level of.</summary>
 public sealed record StructureChoiceViewModel(string StructureId, string Code, string Name);
 
@@ -104,8 +155,26 @@ public sealed class DimensionRecordRowViewModel
 
     public string NameAr { get; set; } = string.Empty;
 
+    public string AliasEn { get; set; } = string.Empty;
+
+    public string AliasAr { get; set; } = string.Empty;
+
     /// <summary>Where it sits, one entry per structure the screen is reporting on.</summary>
     public IReadOnlyList<DimensionRecordPlacementViewModel> Placements { get; set; } = [];
+
+    /// <summary>
+    /// How deep this value sits in its own dimension's tree. Zero in list view and for every root.
+    /// </summary>
+    public int Depth { get; set; }
+
+    /// <summary>
+    /// The value of this same dimension that this one sits under, or null when it is a root of the
+    /// dimension's own tree. Set in tree view only.
+    /// </summary>
+    public string? ParentRecordId { get; set; }
+
+    /// <summary>How many values of this dimension sit directly under this one. Tree view only.</summary>
+    public int ChildCount { get; set; }
 
     /// <summary>Whether the record's own effective range covers the date the screen is about.</summary>
     public bool IsEffective { get; set; }
@@ -132,6 +201,9 @@ public sealed class DimensionRecordRowViewModel
     public IReadOnlyList<string> AttributeValues { get; set; } = [];
 
     public string Name => BilingualText.Display(NameEn, NameAr);
+
+    /// <summary>The alias in the reader's language, falling back rather than to a blank.</summary>
+    public string Alias => BilingualText.Display(AliasEn, AliasAr);
 }
 
 /// <summary>Where one record sits on one structure.</summary>
@@ -193,6 +265,12 @@ public sealed class DimensionRecordCreateViewModel
 
     public string? NameAr { get; set; }
 
+    /// <summary>The short label the list and tree show beside the name. Optional in both halves.</summary>
+    public string? AliasEn { get; set; }
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string? AliasAr { get; set; }
+
     /// <summary>ISO-8601 on the wire, always. <c>IsoDate</c> says why.</summary>
     public string? EffectiveFrom { get; set; }
 
@@ -216,6 +294,8 @@ public sealed class DimensionRecordCreateViewModel
     public bool HasAnywhereToGo { get; set; }
 
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
+
+    public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);
 
     public IReadOnlyList<DimensionAttributeValue> ToAttributeValues() =>
         [.. Attributes.Select(attribute => new DimensionAttributeValue(
@@ -260,6 +340,26 @@ public sealed class DimensionRecordEditViewModel
     [BindNever]
     public string CurrentNameAr { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The short label the list and tree show beside the name. Optional, and undated.
+    /// </summary>
+    /// <remarks>
+    /// Edited on this form and written by <c>IDimensionService.SetAliasAsync</c>, which takes no
+    /// effective date — unlike the name beside it, which has a dated history and two kinds of
+    /// rename. The form does not ask which kind of alias change is meant, because there is only
+    /// one kind.
+    /// </remarks>
+    public string? AliasEn { get; set; }
+
+    /// <inheritdoc cref="AliasEn"/>
+    public string? AliasAr { get; set; }
+
+    [BindNever]
+    public string CurrentAliasEn { get; set; } = string.Empty;
+
+    [BindNever]
+    public string CurrentAliasAr { get; set; } = string.Empty;
+
     /// <summary>The date a substantive rename takes effect from. Ignored by a correction.</summary>
     public string? EffectiveFrom { get; set; }
 
@@ -280,10 +380,24 @@ public sealed class DimensionRecordEditViewModel
 
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
+    public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);
+
     /// <summary>Whether either half of the name differs from what is stored.</summary>
     public bool NameChanged =>
         !string.Equals(Name.En, CurrentNameEn?.Trim() ?? string.Empty, StringComparison.Ordinal) ||
         !string.Equals(Name.Ar, CurrentNameAr?.Trim() ?? string.Empty, StringComparison.Ordinal);
+
+    /// <summary>Whether either half of the alias differs from what is stored.</summary>
+    /// <remarks>
+    /// Asked for the same reason <see cref="NameChanged"/> is: the form posts every field it shows
+    /// whether or not the reader touched any of them, and a write that happened anyway would
+    /// publish a new version of the record and leave an audit entry saying somebody changed the
+    /// alias on a form they opened to fix a cost centre. The service checks again, so this is the
+    /// screen being honest rather than the rule.
+    /// </remarks>
+    public bool AliasChanged =>
+        !string.Equals(Alias.En, CurrentAliasEn?.Trim() ?? string.Empty, StringComparison.Ordinal) ||
+        !string.Equals(Alias.Ar, CurrentAliasAr?.Trim() ?? string.Empty, StringComparison.Ordinal);
 
     public IReadOnlyList<DimensionAttributeValue> ToAttributeValues() =>
         [.. Attributes.Select(attribute => new DimensionAttributeValue(

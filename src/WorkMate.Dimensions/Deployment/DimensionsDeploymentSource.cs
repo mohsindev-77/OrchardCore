@@ -493,6 +493,18 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
             entry["effectiveTo"] = Iso(retiredOn);
         }
 
+        // The alias, only when the record has one. The opposite judgement from sortOrder above, and
+        // the same one Arabic names get: an absent alias and an empty one mean the same thing to
+        // the importer — the unit has none — so writing `"aliasEn": ""` against every unit in a
+        // tenant that uses no aliases would be noise in every exported file for no fact gained.
+        // A unit that does have one carries both halves, including an empty Arabic half, because
+        // there the two are genuinely different answers.
+        if (!string.IsNullOrEmpty(record.AliasEn) || !string.IsNullOrEmpty(record.AliasAr))
+        {
+            entry["aliasEn"] = record.AliasEn;
+            entry["aliasAr"] = record.AliasAr;
+        }
+
         // The record's own custom fields. Undated, because they are: an attribute is a field on
         // the record's content part with no effective range of its own, unlike its name, its
         // placement and its existence. Omitted entirely when the record has none, so a type with

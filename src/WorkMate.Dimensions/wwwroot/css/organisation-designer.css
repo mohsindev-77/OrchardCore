@@ -544,3 +544,66 @@
 .designer-list .designer-card-head {
     display: none;
 }
+
+/*
+    ------------------------------------------------------------------------------------------
+    A dimension's own list and tree (FRS v2.5 §4.1), on DimensionRecordsAdmin/Index.
+    ------------------------------------------------------------------------------------------
+
+    In this module's stylesheet rather than one of its own because it is one screen's worth of
+    rules, and a second stylesheet is a second file every view has to remember to ask for. The
+    designer's stylesheet is already the module's.
+*/
+
+/*
+    The indentation IS the tree. A logical property, not margin-left, so the whole table mirrors
+    under dir="rtl" with no second rule — the same reason every rule in the chart above uses them.
+    The depth travels as a custom property set on the cell, so one rule serves every level rather
+    than one class per depth that runs out at whatever number somebody guessed.
+*/
+.record-code-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding-inline-start: calc(var(--record-depth, 0) * 1.25rem);
+}
+
+/*
+    The expand control, and the gap where a leaf's would be. Without the spacer every leaf's code
+    sits one control-width to the start of its siblings', which reads as a different depth.
+*/
+.record-toggle,
+.record-toggle-spacer {
+    display: inline-block;
+    inline-size: 1.25rem;
+    text-align: center;
+    flex: 0 0 auto;
+}
+
+.record-toggle {
+    text-decoration: none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+/* A row the script has collapsed. Nothing hides without the script, which is the point. */
+.record-row[hidden] {
+    display: none;
+}
+
+.record-select-column {
+    inline-size: 2.5rem;
+}
+
+/*
+    The filter panel's own marker is removed because the Filter button above it is the control.
+    Without script the <details> is open and the button does nothing, which is one redundant
+    button rather than a hidden filter.
+*/
+#record-filter-panel > summary {
+    list-style: none;
+}
+
+#record-filter-panel > summary::-webkit-details-marker {
+    display: none;
+}

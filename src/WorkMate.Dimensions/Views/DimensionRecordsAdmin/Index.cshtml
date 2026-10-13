@@ -1,116 +1,199 @@
 @model DimensionRecordListViewModel
 @*
-    One dimension type's records, as a list. The organisation designer answers "what sits under
-    what"; this answers "show me the departments and let me add one", which is the shape every
-    other list in the product has and the shape the chart is the wrong screen for.
+    One dimension's values, as a tree or as a list — FRS v2.5 §4.1. The organisation designer
+    answers "what sits under what" across every dimension at once; this answers "show me the
+    departments and let me add one", which is the shape every other list in the product has.
 
-    Driven entirely by the type: the heading, the New button and the optional columns all come from
+    Driven entirely by the type: the heading, the Add button and the optional columns all come from
     the tenant's own configuration, so a Cost centre added on Tuesday has this screen on Tuesday.
+
+    Rule 2 — "a tree view only shows the values that belong to that one dimension". A Department
+    sits under a Division on the chart; on this screen it sits under HR, or at the top.
 *@
-<div class="d-flex justify-content-between align-items-center mb-3">
-    @* "Department units", not "Departments". A stored plural was maintained by the dimension type
-       editor until the per-type menu it existed for was withdrawn; reading it now would be reading
-       a field nobody can correct. A whole sentence is translated as one, and no rule has to guess
-       how an English or an Arabic noun pluralises. *@
-    <h1 id="record-list-heading">@T["{0} units", Model.TypeName]</h1>
-    @if (Model.CanEdit)
-    {
-        <a class="btn btn-primary" id="record-new"
-           asp-action="Create"
+@{
+    // Every control that re-opens this screen carries the whole filter, spelled out on each link,
+    // so a toggle, a Refresh and a Next page all come back to the list the reader was looking at
+    // rather than to a reset one.
+    var isTree = Model.View == DimensionRecordView.Tree;
+    var filtersApplied = !string.IsNullOrWhiteSpace(Model.Search) || !string.IsNullOrEmpty(Model.Within)
+        || Model.Status != DimensionRecordStatus.Active;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    @* "Department units", not "Departments". A stored plural exists on the dimension type and is
+       read by nothing — reviving it is slice F2's job, with an authored plural in both languages
+       rather than a rule that turns Branch into Branchs. A whole sentence is translated as one. *@
+    <h1 id="record-list-heading" class="mb-0">@T["{0} units", Model.TypeName]</h1>
+
+    <div class="d-flex align-items-center gap-2" id="record-toolbar">
+        @* The tree/list toggle, top right, as the FRS draws it. Two ordinary links rather than a
+           script-driven switch: the view is on the query string, so each state is a URL somebody
+           can bookmark and send, and the toggle works with no JavaScript at all. *@
+        <div class="btn-group btn-group-sm" role="group" aria-label="@T["View"]">
+            <a class="btn @(isTree ? "btn-primary" : "btn-outline-secondary")" id="record-view-tree"
+               aria-current="@(isTree ? "true" : null)"
+               asp-action="Index"
+               asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-search="@Model.Search"
+               asp-route-structureId="@Model.StructureId"
+               asp-route-within="@Model.Within"
+               asp-route-status="@Model.Status"
+               asp-route-asAt="@Model.AsAtIso"
+               asp-route-view="@DimensionRecordView.Tree">@T["Tree"]</a>
+            <a class="btn @(isTree ? "btn-outline-secondary" : "btn-primary")" id="record-view-list"
+               aria-current="@(isTree ? null : "true")"
+               asp-action="Index"
+               asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-search="@Model.Search"
+               asp-route-structureId="@Model.StructureId"
+               asp-route-within="@Model.Within"
+               asp-route-status="@Model.Status"
+               asp-route-asAt="@Model.AsAtIso"
+               asp-route-view="@DimensionRecordView.List">@T["List"]</a>
+        </div>
+
+        @* Filter, Add, Edit, Delete, Refresh — the five the FRS puts in this corner. Edit and
+           Delete submit the selection form below, which is why they carry `form` and `formaction`
+           rather than being links: a row has to be chosen first, and a GET form with a radio per
+           row is how that is done without any script. *@
+        <button class="btn btn-sm btn-outline-secondary" id="record-filter-toggle"
+                type="button" aria-controls="record-filter-panel"
+                aria-expanded="@(filtersApplied ? "true" : "false")">@T["Filter"]</button>
+
+        @if (Model.CanEdit)
+        {
+            <a class="btn btn-sm btn-primary" id="record-new"
+               asp-action="Create"
+               asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-structureId="@Model.StructureId">@T["Add"]</a>
+
+            <button class="btn btn-sm btn-outline-secondary" id="record-edit-selected"
+                    type="submit" form="record-selection"
+                    formaction="@Url.Action("Edit")">@T["Edit"]</button>
+
+            <button class="btn btn-sm btn-outline-danger" id="record-delete-selected"
+                    type="submit" form="record-selection"
+                    formaction="@Url.Action("Delete")">@T["Delete"]</button>
+        }
+
+        <a class="btn btn-sm btn-outline-secondary" id="record-refresh"
+           asp-action="Index"
            asp-route-dimensionTypeId="@Model.DimensionTypeId"
-           asp-route-structureId="@Model.StructureId">@T["New {0}", Model.TypeName]</a>
-    }
+           asp-route-search="@Model.Search"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-within="@Model.Within"
+           asp-route-status="@Model.Status"
+           asp-route-asAt="@Model.AsAtIso"
+           asp-route-view="@Model.View"
+           asp-route-skip="@Model.Skip"
+           asp-route-take="@Model.Take">@T["Refresh"]</a>
+    </div>
 </div>
 
-@* A GET form, so a filtered list is a URL somebody can bookmark, share and come back to. *@
-<form method="get" class="row g-2 align-items-end mb-3" id="record-filter">
-    <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
-    <input type="hidden" name="asAt" value="@Model.AsAtIso" />
+@* A GET form, so a filtered list is a URL somebody can bookmark, share and come back to. Open
+   when a filter is already applied, closed otherwise — a <details> rather than script, so the
+   Filter button above works whether or not anything loaded. *@
+<details id="record-filter-panel" class="mb-3" open="@(filtersApplied ? "open" : null)">
+    <summary class="visually-hidden">@T["Filter"]</summary>
+    <form method="get" class="row g-2 align-items-end" id="record-filter">
+        <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        <input type="hidden" name="asAt" value="@Model.AsAtIso" />
+        <input type="hidden" name="view" value="@Model.View" />
 
-    <div class="col-sm-4">
-        <label class="form-label" for="record-search">@T["Search"]</label>
-        <input class="form-control" id="record-search" type="search" name="search" value="@Model.Search"
-               placeholder="@T["Code or name, in either language"]" />
-    </div>
+        <div class="col-sm-4">
+            <label class="form-label" for="record-search">@T["Search"]</label>
+            <input class="form-control" id="record-search" type="search" name="search" value="@Model.Search"
+                   placeholder="@T["Code or name, in either language"]" />
+        </div>
 
-    @if (Model.Structures.Count > 1)
-    {
+        @if (Model.Structures.Count > 1)
+        {
+            <div class="col-sm-3">
+                <label class="form-label" for="record-structure">@T["Structure"]</label>
+                <select class="form-select" id="record-structure" name="structureId">
+                    <option value="">@T["Every structure"]</option>
+                    @foreach (var structure in Model.Structures)
+                    {
+                        <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                            @structure.Name (@structure.Code)
+                        </option>
+                    }
+                </select>
+                @* Which structures a record is on is a property of its type, so this never changes
+                   which rows appear — only what is said about them, and which tree they form. Said
+                   out loud, because a filter that changed a column and not the row count would read
+                   as broken. *@
+                <div class="form-text">@T["Decides which structure the parent, the tree, the headcount and \"Within\" are about."]</div>
+            </div>
+        }
+        else
+        {
+            <input type="hidden" name="structureId" value="@Model.StructureId" />
+        }
+
         <div class="col-sm-3">
-            <label class="form-label" for="record-structure">@T["Structure"]</label>
-            <select class="form-select" id="record-structure" name="structureId">
-                <option value="">@T["Every structure"]</option>
-                @foreach (var structure in Model.Structures)
-                {
-                    <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
-                        @structure.Name (@structure.Code)
-                    </option>
-                }
+            <label class="form-label" for="record-status">@T["Status"]</label>
+            <select class="form-select" id="record-status" name="status">
+                <option value="@DimensionRecordStatus.Active" selected="@(Model.Status == DimensionRecordStatus.Active)">@T["Active"]</option>
+                <option value="@DimensionRecordStatus.Retired" selected="@(Model.Status == DimensionRecordStatus.Retired)">@T["Inactive"]</option>
+                <option value="@DimensionRecordStatus.All" selected="@(Model.Status == DimensionRecordStatus.All)">@T["Active and inactive"]</option>
             </select>
-            @* Which structures a record is on is a property of its type, so this never changes
-               which rows appear — only what is said about them. Said out loud, because a filter
-               that changed a column and not the row count would read as broken. *@
-            <div class="form-text">@T["Decides which structure the parent, the headcount and \"Within\" are about."]</div>
         </div>
-    }
-    else
-    {
-        <input type="hidden" name="structureId" value="@Model.StructureId" />
-    }
 
-    <div class="col-sm-3">
-        <label class="form-label" for="record-status">@T["Status"]</label>
-        <select class="form-select" id="record-status" name="status">
-            <option value="@DimensionRecordStatus.Active" selected="@(Model.Status == DimensionRecordStatus.Active)">@T["Active"]</option>
-            <option value="@DimensionRecordStatus.Retired" selected="@(Model.Status == DimensionRecordStatus.Retired)">@T["Retired"]</option>
-            <option value="@DimensionRecordStatus.All" selected="@(Model.Status == DimensionRecordStatus.All)">@T["Active and retired"]</option>
-        </select>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-secondary" id="record-filter-submit">@T["Apply"]</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.StructureId))
+        {
+            @* The same control the placement screens use, narrowing to a container's subtree through
+               the closure index. Rendered only when a structure is settled, because "within" has no
+               meaning until there is a tree to be within. *@
+            <div class="col-sm-6">
+                @* Built here rather than inline on the attribute: a localiser call inside a Razor
+                   attribute value needs its own quotes, and nesting them is a parse error. *@
+                @{ var anywhere = T["— anywhere in this structure —"]; }
+                <workmate-unit-picker for="Within" label="@T["Within"]"
+                                      structure-id="@Model.StructureId"
+                                      as-at="@Model.AsAtIso"
+                                      allow-within="false"
+                                      allow-none="true"
+                                      none-label="@anywhere" />
+            </div>
+        }
+
+        @if (Model.AttributeColumns.Count > 0)
+        {
+            <div class="col-12">
+                <fieldset>
+                    <legend class="form-label">@T["Extra columns"]</legend>
+                    @* The type's own attribute schema, off by default: a type with eight attributes
+                       would make an unreadable table, and which of them matter is the reader's
+                       question rather than ours. *@
+                    @foreach (var column in Model.AttributeColumns)
+                    {
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input record-column" type="checkbox"
+                                   id="@($"record-column-{column.Name}")" name="columns"
+                                   value="@column.Name" checked="@column.IsShown" />
+                            <label class="form-check-label" for="@($"record-column-{column.Name}")">@column.Label</label>
+                        </div>
+                    }
+                </fieldset>
+            </div>
+        }
+    </form>
+</details>
+
+@if (Model.TreeNeedsAStructure)
+{
+    @* Parentage is scoped to a structure, so a dimension used by two axes genuinely has two trees.
+       Picking one would be the guess this screen already refuses to make for the Parent column. *@
+    <div class="alert alert-info" id="record-tree-needs-structure">
+        @T["{0} is used by more than one structure, so it has more than one tree. Choose a structure above to see one.", Model.TypeName]
     </div>
-
-    <div class="col-sm-2">
-        <button type="submit" class="btn btn-secondary" id="record-filter-submit">@T["Filter"]</button>
-    </div>
-
-    @if (!string.IsNullOrEmpty(Model.StructureId))
-    {
-        @* The same control the placement screens use, narrowing to a container's subtree through
-           the closure index. Rendered only when a structure is settled, because "within" has no
-           meaning until there is a tree to be within. *@
-        <div class="col-sm-6">
-            @* Built here rather than inline on the attribute: a localiser call inside a Razor
-               attribute value needs its own quotes, and nesting them is a parse error. *@
-            @{ var anywhere = T["— anywhere in this structure —"]; }
-            <workmate-unit-picker for="Within" label="@T["Within"]"
-                                  structure-id="@Model.StructureId"
-                                  as-at="@Model.AsAtIso"
-                                  allow-within="false"
-                                  allow-none="true"
-                                  none-label="@anywhere" />
-        </div>
-    }
-
-    @if (Model.AttributeColumns.Count > 0)
-    {
-        <div class="col-12">
-            <fieldset>
-                <legend class="form-label">@T["Extra columns"]</legend>
-                @* The type's own attribute schema, off by default: a type with eight attributes
-                   would make an unreadable table, and which of them matter is the reader's
-                   question rather than ours. *@
-                @foreach (var column in Model.AttributeColumns)
-                {
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input record-column" type="checkbox"
-                               id="@($"record-column-{column.Name}")" name="columns"
-                               value="@column.Name" checked="@column.IsShown" />
-                        <label class="form-check-label" for="@($"record-column-{column.Name}")">@column.Label</label>
-                    </div>
-                }
-            </fieldset>
-        </div>
-    }
-</form>
-
-@if (Model.Rows.Count == 0)
+}
+else if (Model.Rows.Count == 0)
 {
     <p id="record-list-empty">
         @if (string.IsNullOrWhiteSpace(Model.Search) && string.IsNullOrEmpty(Model.Within))
@@ -125,147 +208,215 @@
 }
 else
 {
-    <table class="table table-striped align-middle" id="record-list">
-        <thead>
-            <tr>
-                <th>@T["Code"]</th>
-                <th>@T["Name"]</th>
-                <th>@T["Parent"]</th>
-                <th>@T["Status"]</th>
-                <th class="text-end">@T["Employees"]</th>
-                @foreach (var column in Model.ShownColumns)
+    var rows = isTree ? Model.TreeRows : Model.Rows;
+
+    @if (isTree && Model.TreeTruncated)
+    {
+        <div class="alert alert-warning" id="record-tree-truncated">
+            @T["This dimension has {0} values and the tree shows the first {1}. Use the list view, or search, to reach the rest.", Model.Total, rows.Count]
+        </div>
+    }
+    else if (isTree && filtersApplied)
+    {
+        @* A filtered tree is a different shape from the tenant's, because a value whose parent the
+           filter excluded is drawn at the top. Saying so beats letting it read as the real tree. *@
+        <div class="alert alert-info" id="record-tree-filtered">
+            @T["A filter is applied, so a value whose parent it excludes is shown at the top level."]
+        </div>
+    }
+
+    @* The selection form the toolbar's Edit and Delete submit. A GET form with one radio per row:
+       no script, one round trip, and the chosen row is visible on the page rather than held in
+       something only the browser knows about. *@
+    <form method="get" id="record-selection">
+        <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        <input type="hidden" name="structureId" value="@Model.StructureId" />
+        <input type="hidden" name="asAt" value="@Model.AsAtIso" />
+
+        <table class="table table-striped align-middle @(isTree ? "record-tree" : null)" id="record-list">
+            <thead>
+                <tr>
+                    @if (Model.CanEdit)
+                    {
+                        <th scope="col" class="record-select-column"><span class="visually-hidden">@T["Select"]</span></th>
+                    }
+                    <th scope="col">@T["Code"]</th>
+                    <th scope="col">@T["Name"]</th>
+                    <th scope="col">@T["Alias"]</th>
+                    <th scope="col">@T["Parent"]</th>
+                    <th scope="col">@T["Status"]</th>
+                    <th scope="col" class="text-end">@T["Employees"]</th>
+                    @foreach (var column in Model.ShownColumns)
+                    {
+                        <th scope="col">@column.Label</th>
+                    }
+                    <th scope="col" class="text-end">@T["Actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
                 {
-                    <th>@column.Label</th>
-                }
-                <th class="text-end">@T["Actions"]</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in Model.Rows)
-            {
-                <tr class="record-row" data-record-code="@row.Code">
-                    <td><code>@row.Code</code></td>
-                    <td>
-                        <div dir="ltr" lang="en" class="record-name d-inline">@row.NameEn</div>
-                        @* Only when there is Arabic to show: it is optional since ADR-0003's
-                           addendum, so an untranslated row would otherwise carry a blank line. *@
-                        @if (!string.IsNullOrWhiteSpace(row.NameAr))
+                    <tr class="record-row" data-record-code="@row.Code" data-record-id="@row.RecordId"
+                        data-depth="@row.Depth" data-parent-record-id="@row.ParentRecordId"
+                        data-child-count="@row.ChildCount">
+                        @if (Model.CanEdit)
                         {
-                            <div dir="rtl" lang="ar" class="text-muted small">@row.NameAr</div>
+                            <td class="record-select-column">
+                                <input class="form-check-input record-select" type="radio" name="id"
+                                       value="@row.RecordId" id="@($"record-select-{row.RecordId}")" />
+                                <label class="visually-hidden" for="@($"record-select-{row.RecordId}")">@row.Name</label>
+                            </td>
                         }
-                    </td>
-                    <td class="record-parent">
-                        @foreach (var placement in row.Placements)
-                        {
-                            <div class="record-placement" data-structure-id="@placement.StructureId">
-                                @if (Model.Structures.Count > 1)
+                        <td>
+                            @* The indentation is the tree. CSS logical padding rather than a margin,
+                               so the whole thing mirrors under dir="rtl" with no second rule. *@
+                            <span class="record-code-cell" style="--record-depth: @row.Depth">
+                                @if (isTree && row.ChildCount > 0)
                                 {
-                                    <span class="text-muted small">@placement.StructureName:</span>
+                                    <button type="button" class="btn btn-sm btn-link record-toggle p-0"
+                                            aria-expanded="true"
+                                            aria-label="@T["Collapse {0}", row.Name]">−</button>
                                 }
-                                @if (placement.State == DimensionRecordPlacementState.Placed)
+                                else if (isTree)
                                 {
-                                    <span>@placement.Path</span>
+                                    <span class="record-toggle-spacer" aria-hidden="true"></span>
                                 }
-                                else if (placement.State == DimensionRecordPlacementState.TopLevel)
-                                {
-                                    <span class="text-muted">@T["Top level"]</span>
-                                }
-                                else
-                                {
-                                    @* Not the same as having no parent. A unit nothing has placed
-                                       is invisible to every roll-up, which is what the designer's
-                                       unplaced panel exists to reveal. *@
-                                    <span class="text-warning">@T["Not placed"]</span>
-                                }
-                            </div>
-                        }
-                    </td>
-                    <td class="record-status">
-                        @if (row.IsEffective)
-                        {
-                            <span class="badge text-bg-success">@T["Active"]</span>
-                        }
-                        else
-                        {
-                            <span class="badge text-bg-secondary">@T["Retired"]</span>
-                        }
-                        <div class="text-muted small">
-                            @if (row.To is null)
+                                <code>@row.Code</code>
+                            </span>
+                        </td>
+                        <td>
+                            <div dir="ltr" lang="en" class="record-name d-inline">@row.NameEn</div>
+                            @* Only when there is Arabic to show: it is optional since ADR-0003's
+                               addendum, so an untranslated row would otherwise carry a blank line. *@
+                            @if (!string.IsNullOrWhiteSpace(row.NameAr))
                             {
-                                @T["from {0}", BilingualDisplay.Date(row.From)]
+                                <div dir="rtl" lang="ar" class="text-muted small">@row.NameAr</div>
+                            }
+                        </td>
+                        <td class="record-alias text-muted">@row.Alias</td>
+                        <td class="record-parent">
+                            @foreach (var placement in row.Placements)
+                            {
+                                <div class="record-placement" data-structure-id="@placement.StructureId">
+                                    @if (Model.Structures.Count > 1)
+                                    {
+                                        <span class="text-muted small">@placement.StructureName:</span>
+                                    }
+                                    @if (placement.State == DimensionRecordPlacementState.Placed)
+                                    {
+                                        <span>@placement.Path</span>
+                                    }
+                                    else if (placement.State == DimensionRecordPlacementState.TopLevel)
+                                    {
+                                        <span class="text-muted">@T["Top level"]</span>
+                                    }
+                                    else
+                                    {
+                                        @* Not the same as having no parent. A unit nothing has placed
+                                           is invisible to every roll-up, which is what the designer's
+                                           unplaced panel exists to reveal. *@
+                                        <span class="text-warning">@T["Not placed"]</span>
+                                    }
+                                </div>
+                            }
+                        </td>
+                        <td class="record-status">
+                            @* FRS v2.5 §4.1.2 names the two states Active and Inactive. Here that is
+                               the record's own effective range read on the date the screen is about:
+                               a value that has ended, or has not started, is not in use. *@
+                            @if (row.IsEffective)
+                            {
+                                <span class="badge text-bg-success">@T["Active"]</span>
                             }
                             else
                             {
-                                @T["{0} to {1}", BilingualDisplay.Date(row.From), BilingualDisplay.Date(row.To)]
+                                <span class="badge text-bg-secondary">@T["Inactive"]</span>
                             }
-                        </div>
-                        @if (!row.IsActive)
-                        {
-                            @* A different fact from existing on a date, and both are shown: a unit
-                               can be flagged "do not use for new transactions" without being
-                               closed, and merging the two would answer neither question. *@
-                            <div class="text-muted small">@T["Flagged inactive"]</div>
-                        }
-                    </td>
-                    <td class="text-end record-employees">
-                        @if (row.EmployeeCount is { } count && count > 0 && Model.CanViewEmployees && !string.IsNullOrEmpty(Model.StructureId))
-                        {
-                            <a asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
-                               asp-route-structureId="@Model.StructureId"
-                               asp-route-recordId="@row.RecordId"
-                               asp-route-asAt="@Model.AsAtIso">@count</a>
-                        }
-                        else if (row.EmployeeCount is { } shown)
-                        {
-                            @shown
-                        }
-                        else
-                        {
-                            @* Blank rather than a zero. A dash or a zero on every row of a tenant
-                               with no employees yet is noise, not information. *@
-                            <span class="text-muted"></span>
-                        }
-                    </td>
-                    @foreach (var value in row.AttributeValues)
-                    {
-                        <td class="record-attribute">@value</td>
-                    }
-                    <td class="text-end">
-                        @if (Model.CanEdit)
-                        {
-                            <div class="btn-group btn-group-sm">
-                                <a class="btn btn-outline-secondary record-edit"
-                                   asp-action="Edit" asp-route-id="@row.RecordId"
-                                   asp-route-structureId="@Model.StructureId">@T["Edit"]</a>
-                                @if (!string.IsNullOrEmpty(Model.StructureId))
+                            <div class="text-muted small">
+                                @if (row.To is null)
                                 {
-                                    @* Moving and retiring are the designer's own dated screens.
-                                       A move rewrites what every historical report under the unit
-                                       resolves to, which is why it has its own permission and its
-                                       own dry run; reimplementing it here would be a second way to
-                                       do the one thing that most needs one way. *@
-                                    <a class="btn btn-outline-secondary record-move"
-                                       asp-controller="OrganisationDesignerAdmin" asp-action="Move"
-                                       asp-route-structureId="@Model.StructureId"
-                                       asp-route-recordId="@row.RecordId"
-                                       asp-route-asAt="@Model.AsAtIso">@T["Move"]</a>
-                                    <a class="btn btn-outline-secondary record-retire"
-                                       asp-controller="OrganisationDesignerAdmin" asp-action="Retire"
-                                       asp-route-structureId="@Model.StructureId"
-                                       asp-route-recordId="@row.RecordId"
-                                       asp-route-asAt="@Model.AsAtIso">@T["Retire"]</a>
+                                    @T["from {0}", BilingualDisplay.Date(row.From)]
+                                }
+                                else
+                                {
+                                    @T["{0} to {1}", BilingualDisplay.Date(row.From), BilingualDisplay.Date(row.To)]
                                 }
                             </div>
+                            @if (!row.IsActive)
+                            {
+                                @* A different fact from existing on a date, and both are shown: a unit
+                                   can be flagged "do not use for new transactions" without being
+                                   closed, and merging the two would answer neither question. *@
+                                <div class="text-muted small">@T["Not offered in pickers"]</div>
+                            }
+                        </td>
+                        <td class="text-end record-employees">
+                            @if (row.EmployeeCount is { } count && count > 0 && Model.CanViewEmployees && !string.IsNullOrEmpty(Model.StructureId))
+                            {
+                                <a asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+                                   asp-route-structureId="@Model.StructureId"
+                                   asp-route-recordId="@row.RecordId"
+                                   asp-route-asAt="@Model.AsAtIso">@count</a>
+                            }
+                            else if (row.EmployeeCount is { } shown)
+                            {
+                                @shown
+                            }
+                            else
+                            {
+                                @* Blank rather than a zero. A dash or a zero on every row of a tenant
+                                   with no employees yet is noise, not information. *@
+                                <span class="text-muted"></span>
+                            }
+                        </td>
+                        @foreach (var value in row.AttributeValues)
+                        {
+                            <td class="record-attribute">@value</td>
                         }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+                        <td class="text-end">
+                            @if (Model.CanEdit)
+                            {
+                                <div class="btn-group btn-group-sm">
+                                    @* Per row as well as in the toolbar. The toolbar's pair act on
+                                       the row the reader ticked, which is what the FRS draws; these
+                                       are one click instead of two for the reader who is already
+                                       looking at the row they want. *@
+                                    <a class="btn btn-outline-secondary record-edit"
+                                       asp-action="Edit" asp-route-id="@row.RecordId"
+                                       asp-route-structureId="@Model.StructureId">@T["Edit"]</a>
+                                    @if (!string.IsNullOrEmpty(Model.StructureId))
+                                    {
+                                        @* Moving and retiring are the designer's own dated screens.
+                                           A move rewrites what every historical report under the unit
+                                           resolves to, which is why it has its own permission and its
+                                           own dry run; reimplementing it here would be a second way to
+                                           do the one thing that most needs one way. *@
+                                        <a class="btn btn-outline-secondary record-move"
+                                           asp-controller="OrganisationDesignerAdmin" asp-action="Move"
+                                           asp-route-structureId="@Model.StructureId"
+                                           asp-route-recordId="@row.RecordId"
+                                           asp-route-asAt="@Model.AsAtIso">@T["Move"]</a>
+                                        <a class="btn btn-outline-secondary record-retire"
+                                           asp-controller="OrganisationDesignerAdmin" asp-action="Retire"
+                                           asp-route-structureId="@Model.StructureId"
+                                           asp-route-recordId="@row.RecordId"
+                                           asp-route-asAt="@Model.AsAtIso">@T["Retire"]</a>
+                                    }
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </form>
 
-    <p class="text-muted">@T["Showing {0} of {1}.", Model.Rows.Count, Model.Total]</p>
+    <p class="text-muted">@T["Showing {0} of {1}.", rows.Count, Model.Total]</p>
 
-    @if (Model.HasMore)
+    @* Paging is a list-view idea. A tree that stopped halfway would draw the second half's values
+       as roots, which is a wrong shape rather than a partial one, so tree view says it was capped
+       instead — see DimensionRecordsAdminController.TreeCap. *@
+    @if (!isTree && Model.HasMore)
     {
         <a class="btn btn-outline-secondary" id="record-next-page"
            asp-action="Index"
@@ -275,9 +426,15 @@ else
            asp-route-within="@Model.Within"
            asp-route-status="@Model.Status"
            asp-route-asAt="@Model.AsAtIso"
+           asp-route-view="@Model.View"
            asp-route-skip="@(Model.Skip + Model.Take)"
            asp-route-take="@Model.Take">@T["Next page"]</a>
     }
 }
 
+<style asp-name="workmate-organisation-designer"></style>
 <script asp-name="workmate-unit-picker" at="Foot"></script>
+@* Collapsing a branch and opening the filter panel are the only two things on this screen that
+   need the browser to run anything. Without it every row is visible and the filter panel is an
+   open <details> — which is a worse screen, not a broken one. *@
+<script asp-name="workmate-dimension-records" at="Foot"></script>

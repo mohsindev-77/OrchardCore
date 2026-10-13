@@ -89,26 +89,11 @@ public sealed class DimensionTypeUnitsBrowserTests
     /// Opens the admin and clicks an Organisation menu entry, expanding the group if it is closed.
     /// </summary>
     /// <remarks>
-    /// Role-based locators rather than the admin theme's own ids: the markup of Orchard's sidebar is
-    /// not this module's to depend on, and the accessible name is what a reader navigates by.
-    /// Matched on a substring of that name, because the theme renders a menu item's words twice —
-    /// once visibly and once as the collapsed-sidebar title — so a link captioned "Dimension types"
-    /// has the accessible name "Dimension types Dimension types". The group's state is checked
-    /// rather than assumed, because clicking an already-open group closes it.
+    /// <b>One line, because the helper it used to hold is now shared.</b> It had its own copy, and
+    /// so did two other classes, and all three asked whether the group was open with Playwright's
+    /// non-retrying <c>IsVisibleAsync</c> before the sidebar had necessarily rendered. See
+    /// <see cref="AdminMenu"/> for the race that bought and what replaced it.
     /// </remarks>
-    internal static async Task OpenOrganisationMenuEntryAsync(IPage page, string text)
-    {
-        await page.GotoAsync("/Admin");
-
-        var entry = page.GetByRole(AriaRole.Link, new() { NameString = text }).First;
-
-        if (!await entry.IsVisibleAsync())
-        {
-            await page.GetByRole(AriaRole.Button, new() { NameString = "Organisation" })
-                .First.ClickAsync();
-        }
-
-        await Assertions.Expect(entry).ToBeVisibleAsync();
-        await entry.ClickAsync();
-    }
+    internal static Task OpenOrganisationMenuEntryAsync(IPage page, string text) =>
+        AdminMenu.ClickAsync(page, "Organisation", text);
 }

@@ -39,6 +39,23 @@ namespace WorkMate.Dimensions.Controllers;
 [Admin("Dimensions/Records/{action}/{id?}", "DimensionRecords{action}")]
 public sealed class DimensionRecordsAdminController : Controller
 {
+    /// <summary>
+    /// How many values tree view loads at once.
+    /// </summary>
+    /// <remarks>
+    /// <b>A tree and a page cannot be combined.</b> A value whose parent happens to be on another
+    /// page would be drawn as a root of the dimension, which is not a partial answer but a wrong
+    /// one — and a wrong one that looks right. So tree view asks for the whole dimension up to this
+    /// bound and tells the reader when it stopped early, rather than paging and quietly reshaping
+    /// the tenant's organisation.
+    ///
+    /// Five hundred is chosen to be past any real single dimension — Crescent, the ragged reference
+    /// tenant, has twenty-odd departments — while still bounded, because "load them all" on a
+    /// dimension somebody has imported badly is how a screen becomes a denial of service. List view
+    /// is unaffected and still pages.
+    /// </remarks>
+    internal const int TreeCap = 500;
+
     private readonly IDimensionTypeService _types;
     private readonly IDimensionService _records;
     private readonly IDimensionGraphService _graph;
@@ -83,6 +100,11 @@ public sealed class DimensionRecordsAdminController : Controller
     /// The attribute names this reader wants as columns. Off by default and carried on the query
     /// string, so a useful arrangement is a URL somebody can bookmark and send to a colleague.
     /// </param>
+    /// <param name="view">
+    /// Tree or list, FRS v2.5 §4.1. On the query string rather than in a cookie, so a tree somebody
+    /// is looking at is a URL they can send to a colleague — which is also what makes the toggle a
+    /// pair of ordinary links that work with no script.
+    /// </param>
     public async Task<IActionResult> Index(
         string dimensionTypeId,
         string? search,
@@ -91,6 +113,7 @@ public sealed class DimensionRecordsAdminController : Controller
         DimensionRecordStatus status = DimensionRecordStatus.Active,
         string[]? columns = null,
         string? asAt = null,
+        DimensionRecordView view = DimensionRecordView.List,
         int skip = 0,
         int take = 50,
         CancellationToken cancellationToken = default)
@@ -111,8 +134,22 @@ public sealed class DimensionRecordsAdminController : Controller
         var structures = await StructuresForAsync(type, cancellationToken);
         var scope = ResolveStructure(structures, structureId);
 
+        // Parentage is scoped to a structure, so a type used by two axes has two trees and the
+        // screen cannot draw "the" one. The same refusal to guess the Parent column and the
+        // headcount already make; see ResolveStructure.
+        var treeNeedsAStructure = view == DimensionRecordView.Tree && scope is null;
+        var tree = view == DimensionRecordView.Tree && !treeNeedsAStructure;
+
         var found = await _graph.SearchRecordsOfTypeAsync(
-            dimensionTypeId, search, scope?.StructureId, within, status, date, skip, take, cancellationToken);
+            dimensionTypeId,
+            search,
+            scope?.StructureId,
+            within,
+            status,
+            date,
+            tree ? 0 : skip,
+            tree ? TreeCap : take,
+            cancellationToken);
 
         var chosenColumns = (columns ?? []).ToHashSet(StringComparer.Ordinal);
 
@@ -121,15 +158,18 @@ public sealed class DimensionRecordsAdminController : Controller
             DimensionTypeId = type.DimensionTypeId,
             TypeCode = type.Code,
             TypeName = BilingualText.Display(type.Name.En, type.Name.Ar),
+            View = view,
             Search = search,
             StructureId = scope?.StructureId,
             Within = within,
             Status = status,
             AsAtIso = date.ToIso(),
-            Skip = skip,
-            Take = take,
+            Skip = tree ? 0 : skip,
+            Take = tree ? TreeCap : take,
             Total = found.Total,
             Structures = structures,
+            TreeNeedsAStructure = treeNeedsAStructure,
+            TreeTruncated = tree && found.Total > found.Items.Count,
             CanEdit = await CanEditAsync(),
             CanViewEmployees = await CanViewEmployeesAsync(),
             AttributeColumns =
@@ -143,7 +183,127 @@ public sealed class DimensionRecordsAdminController : Controller
 
         model.Rows = await RowsAsync(model, found.Items, structures, scope, date, cancellationToken);
 
+        if (tree)
+        {
+            model.TreeRows = await TreeRowsAsync(model.Rows, scope!.StructureId, type.DimensionTypeId, date, cancellationToken);
+        }
+
         return View(model);
+    }
+
+    /// <summary>
+    /// Arranges a dimension's own values into its own tree: indented under the nearest value
+    /// <em>of the same dimension</em> above them, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// FRS v2.5 Rule 2 — <em>"a tree view only shows the values that belong to that one
+    /// dimension"</em>. A Department sits under a Division on the organisation chart; on the
+    /// Department screen it sits under <em>HR</em>, or at the top. So the parent here is the last
+    /// same-type entry in the record's ancestor chain, and a record whose chain has none is a root
+    /// of this dimension however deep it sits on the chart.
+    ///
+    /// <b>One batched query for the whole set, not one per node.</b>
+    /// <see cref="IDimensionGraphService.GetAncestorPathsAsync"/> already answers it in two queries
+    /// for every record at once, and it already returns each chain root-first with each entry's
+    /// depth — which is why the nearest same-type ancestor is the <em>last</em> match rather than
+    /// the first. Asking for children per node instead would be a query per row, on the screen most
+    /// likely to have a lot of them.
+    ///
+    /// <b>A parent outside the loaded set makes its child a root.</b> That can only happen when the
+    /// search or the status filter has excluded the parent, or when the dimension has more values
+    /// than <see cref="TreeCap"/>. Both are stated on the screen rather than left to look like the
+    /// tenant's real shape — a filtered tree says it is filtered, and a capped one says it is
+    /// capped.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionRecordRowViewModel>> TreeRowsAsync(
+        IReadOnlyList<DimensionRecordRowViewModel> rows,
+        string structureId,
+        string dimensionTypeId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        var present = rows.ToDictionary(row => row.RecordId, StringComparer.Ordinal);
+
+        var paths = await _graph.GetAncestorPathsAsync(
+            structureId, [.. rows.Select(row => row.RecordId)], asAt, cancellationToken);
+
+        var childrenOf = new Dictionary<string, List<DimensionRecordRowViewModel>>(StringComparer.Ordinal);
+        var roots = new List<DimensionRecordRowViewModel>();
+
+        foreach (var row in rows)
+        {
+            // Root-first, so the nearest ancestor of this dimension is the last one that matches.
+            var parent = (paths.GetValueOrDefault(row.RecordId) ?? [])
+                .LastOrDefault(ancestor =>
+                    string.Equals(ancestor.DimensionTypeId, dimensionTypeId, StringComparison.Ordinal) &&
+                    present.ContainsKey(ancestor.RecordId));
+
+            if (parent is null)
+            {
+                roots.Add(row);
+
+                continue;
+            }
+
+            row.ParentRecordId = parent.RecordId;
+
+            if (!childrenOf.TryGetValue(parent.RecordId, out var siblings))
+            {
+                childrenOf[parent.RecordId] = siblings = [];
+            }
+
+            siblings.Add(row);
+        }
+
+        foreach (var row in rows)
+        {
+            row.ChildCount = childrenOf.TryGetValue(row.RecordId, out var children) ? children.Count : 0;
+        }
+
+        var ordered = new List<DimensionRecordRowViewModel>(rows.Count);
+
+        // Iterative rather than recursive: the depth of a customer's tree is their business, and a
+        // stack overflow on an imported cycle would be a crash rather than a message. Cycles cannot
+        // reach here — the engine refuses them across every date — but a screen is the wrong place
+        // to rely on that.
+        var pending = new Stack<(DimensionRecordRowViewModel Row, int Depth)>();
+
+        foreach (var root in Enumerable.Reverse(roots))
+        {
+            pending.Push((root, 0));
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        while (pending.Count > 0)
+        {
+            var (row, depth) = pending.Pop();
+
+            if (!seen.Add(row.RecordId))
+            {
+                continue;
+            }
+
+            row.Depth = depth;
+            ordered.Add(row);
+
+            if (!childrenOf.TryGetValue(row.RecordId, out var children))
+            {
+                continue;
+            }
+
+            foreach (var child in Enumerable.Reverse(children))
+            {
+                pending.Push((child, depth + 1));
+            }
+        }
+
+        return ordered;
     }
 
     /// <summary>
@@ -243,6 +403,8 @@ public sealed class DimensionRecordsAdminController : Controller
                 Code = record.Code,
                 NameEn = record.NameEn,
                 NameAr = record.NameAr,
+                AliasEn = record.AliasEn,
+                AliasAr = record.AliasAr,
                 IsEffective = record.EffectiveRange.Contains(asAt),
                 From = record.EffectiveRange.From,
                 To = record.EffectiveRange.To,
@@ -326,6 +488,7 @@ public sealed class DimensionRecordsAdminController : Controller
             // No sort order from the form: a unit added here belongs after the siblings that were
             // already there, which is what the service's default does.
             sortOrder: null,
+            model.Alias,
             cancellationToken);
 
         if (!result.IsAuthorised)
@@ -394,11 +557,28 @@ public sealed class DimensionRecordsAdminController : Controller
 
     // ---- editing one -------------------------------------------------------------------
 
-    public async Task<IActionResult> Edit(string id, string? structureId, CancellationToken cancellationToken)
+    /// <param name="dimensionTypeId">
+    /// Carried only so that an Edit pressed with no row ticked can get back to the list it came
+    /// from. The record's own type is read from the record everywhere else.
+    /// </param>
+    public async Task<IActionResult> Edit(
+        string? id,
+        string? structureId,
+        string? dimensionTypeId = null,
+        CancellationToken cancellationToken = default)
     {
         if (!await CanEditAsync())
         {
             return Forbid();
+        }
+
+        // The toolbar's Edit acts on the row the reader ticked, and a form can be submitted with
+        // nothing ticked. A sentence beats a 404 on an empty id.
+        if (string.IsNullOrEmpty(id))
+        {
+            await _notifier.WarningAsync(H["Choose a unit first, then press Edit."]);
+
+            return RedirectToAction(nameof(Index), new { dimensionTypeId, structureId });
         }
 
         var record = await _records.GetAsync(id, null, cancellationToken);
@@ -414,6 +594,8 @@ public sealed class DimensionRecordsAdminController : Controller
             Code = record.Code,
             NameEn = record.NameEn,
             NameAr = record.NameAr,
+            AliasEn = record.AliasEn,
+            AliasAr = record.AliasAr,
             StructureId = structureId,
             EffectiveFrom = (await _authorisation.TodayAsync()).ToIso(),
         };
@@ -481,6 +663,25 @@ public sealed class DimensionRecordsAdminController : Controller
             }
         }
 
+        // Undated, and only when it changed. The alias has no history and no two kinds of rename,
+        // so unlike the name above it there is no date to apply it from and no question to ask.
+        if (model.AliasChanged)
+        {
+            var aliased = await _records.SetAliasAsync(record.RecordId, model.Alias, cancellationToken);
+
+            if (!aliased.IsAuthorised)
+            {
+                return Forbid();
+            }
+
+            if (!aliased.Succeeded)
+            {
+                AddErrors(aliased.Errors);
+
+                return View(model);
+            }
+        }
+
         if (model.Attributes.Count > 0)
         {
             var written = await _records.SetAttributeValuesAsync(
@@ -525,6 +726,8 @@ public sealed class DimensionRecordsAdminController : Controller
         model.Code = record.Code;
         model.CurrentNameEn = record.NameEn;
         model.CurrentNameAr = record.NameAr;
+        model.CurrentAliasEn = record.AliasEn;
+        model.CurrentAliasAr = record.AliasAr;
 
         var today = await _authorisation.TodayAsync();
         var structures = await StructuresForAsync(type, cancellationToken);
@@ -569,6 +772,73 @@ public sealed class DimensionRecordsAdminController : Controller
         }
 
         return null;
+    }
+
+    // ---- deleting one ------------------------------------------------------------------
+
+    /// <summary>
+    /// The toolbar's <b>Delete</b>, FRS v2.5 §4.1 — which for now takes the reader to the dated
+    /// retirement screen and says so on the way.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is not D4 yet, and it does not pretend to be.</b> Decision D4 and ADR-0025 give
+    /// Delete two outcomes: a value nothing has ever used is really deleted, and one that is or was
+    /// used is made inactive with an end date and the reader is told why. The second half already
+    /// exists in full — <c>PlanRetireAsync</c> names what is still attached on the day the unit
+    /// would close, and <c>RetireAsync</c> will not commit until somebody has said what happens to
+    /// the units underneath — and the first half does not, because a real delete is the one
+    /// operation in this module that destroys a record and it needs its own audit event, its own
+    /// confirmation and its own second review. That lands in slice F9.
+    ///
+    /// So the control the FRS asks for is on the screen, it is reachable, and what it does is
+    /// stated before it happens rather than discovered afterwards. The alternative — holding the
+    /// button back until F9 — would leave the toolbar four buttons for four slices, and the
+    /// alternative to <em>that</em>, labelling it "Retire", would quietly answer a question the
+    /// product owner has already answered the other way.
+    ///
+    /// <b>Why it is a GET that redirects rather than a screen of its own.</b> A screen here would be
+    /// a second place that explains retirement, and F9 would then have to delete it. One sentence
+    /// and a redirect leaves exactly one screen that explains it, and leaves this action as the
+    /// place F9's real behaviour goes.
+    /// </remarks>
+    public async Task<IActionResult> Delete(
+        string? id,
+        string? dimensionTypeId,
+        string? structureId,
+        string? asAt)
+    {
+        if (!await CanEditAsync())
+        {
+            return Forbid();
+        }
+
+        // The toolbar's buttons act on the row the reader ticked, and a form can be submitted with
+        // nothing ticked. Saying so beats a 404 on an empty id.
+        if (string.IsNullOrEmpty(id))
+        {
+            await _notifier.WarningAsync(H["Choose a unit first, then press Delete."]);
+
+            return RedirectToAction(nameof(Index), new { dimensionTypeId, structureId, asAt });
+        }
+
+        if (string.IsNullOrEmpty(structureId))
+        {
+            // Retirement closes the record on every structure at once, and the screen that does it
+            // needs one to show the branch from. A type on no structure cannot be retired from here.
+            await _notifier.WarningAsync(H["Choose a structure before deleting a unit."]);
+
+            return RedirectToAction(nameof(Index), new { dimensionTypeId, structureId, asAt });
+        }
+
+        // One string literal, not a concatenation. The localisation gate scans the source for
+        // localiser calls and reads the literal that follows, so a sentence split across `+` is
+        // extracted as its first fragment and the rest is never translated.
+        await _notifier.InformationAsync(H["Deleting a unit that is in use is not available yet. This screen ends it on a date instead: it stops being offered, and every report for a period before that date still resolves it."]);
+
+        return RedirectToAction(
+            nameof(OrganisationDesignerAdminController.Retire),
+            "OrganisationDesignerAdmin",
+            new { structureId, recordId = id, asAt });
     }
 
     // ---- shared ------------------------------------------------------------------------

@@ -30,6 +30,22 @@
             <span asp-validation-for="NameAr" class="text-danger"></span>
         </div>
     </div>
+    @* The alias: what people in the business call the unit, beside what it is formally called.
+       Optional in both languages, and undated — see DimensionRecordPart.AliasEn for why it is not
+       a second dated name history. *@
+    <div class="row g-2 mt-1">
+        <div class="col-md-4">
+            <label asp-for="AliasEn" class="form-label">@T["Alias (English)"]</label>
+            <input asp-for="AliasEn" class="form-control" dir="ltr" lang="en" maxlength="255" />
+            <span asp-validation-for="AliasEn" class="text-danger"></span>
+            <div class="form-text">@T["Optional. A short label this unit is known by."]</div>
+        </div>
+        <div class="col-md-4">
+            <label asp-for="AliasAr" class="form-label">@T["Alias (Arabic)"]</label>
+            <input asp-for="AliasAr" class="form-control" dir="rtl" lang="ar" maxlength="255" />
+            <span asp-validation-for="AliasAr" class="text-danger"></span>
+        </div>
+    </div>
 </fieldset>
 
 <fieldset class="mb-3">

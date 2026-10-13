@@ -617,6 +617,55 @@ public sealed class Migrations : DataMigration
     }
 
     /// <summary>
+    /// FRS v2.5 §4.1: the Alias column every dimension's list and tree carry.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this does not also edit the step that creates the table.</b>
+    /// <c>DimensionRecordPartIndex</c> is created by <see cref="UpdateFrom1Async"/>, which has
+    /// shipped. ADR-0009's rule is that a shipped step is never edited again, and the exception that
+    /// ADR describes — "<c>CreateAsync</c>, or whichever step currently plays that role for a table,
+    /// keeps being updated to match the latest schema" — exists only because a brand-new tenant must
+    /// reach the current schema in one pass. It does not apply here: a brand-new tenant runs
+    /// <see cref="CreateAsync"/> and then every <c>UpdateFromNAsync</c> in order, so it arrives at
+    /// this step with the table and <em>without</em> these two columns, which is exactly where a
+    /// tenant upgrading from version 9 arrives. Both states are the same state, so the column can
+    /// simply be added, and <see cref="UpdateFrom1Async"/> is left alone.
+    ///
+    /// That is the same reasoning <see cref="UpdateFrom5Async"/> gives for creating a whole table
+    /// here rather than folding it back, applied to a column: what forced
+    /// <see cref="UpdateFrom3Async"/> and <see cref="UpdateFrom4Async"/> to inspect the database
+    /// first was that their column is also produced by a step the fresh tenant has already run.
+    /// Nothing produces these two but this step.
+    ///
+    /// <b>It is still guarded.</b> Not because a fresh tenant might have the columns, but because
+    /// this step has to tolerate being run against a table that already has them — which is the
+    /// state a tenant rolled back for an upgrade test reaches, and the state a catch-up that failed
+    /// after this step and was retried would reach. An <c>AddColumn</c> on an existing column throws
+    /// on both SQLite and SQL Server, and when it throws here the whole catch-up fails and the
+    /// tenant is left stuck below head. One query is a cheap way not to have that failure mode.
+    ///
+    /// <b>Nothing is back-filled.</b> Every existing record gets an empty alias, which is what "this
+    /// unit has no short name" is: the field is optional and the FRS's own figures show units with
+    /// one and units without.
+    /// </remarks>
+    public async Task<int> UpdateFrom9Async()
+    {
+        if (!await ColumnExistsAsync(nameof(DimensionRecordPartIndex), nameof(DimensionRecordPartIndex.AliasEn)))
+        {
+            await SchemaBuilder.AlterIndexTableAsync<DimensionRecordPartIndex>(table =>
+                table.AddColumn<string>(nameof(DimensionRecordPartIndex.AliasEn), column => column.WithLength(NameLength)));
+        }
+
+        if (!await ColumnExistsAsync(nameof(DimensionRecordPartIndex), nameof(DimensionRecordPartIndex.AliasAr)))
+        {
+            await SchemaBuilder.AlterIndexTableAsync<DimensionRecordPartIndex>(table =>
+                table.AddColumn<string>(nameof(DimensionRecordPartIndex.AliasAr), column => column.WithLength(NameLength)));
+        }
+
+        return 10;
+    }
+
+    /// <summary>
     /// Whether <paramref name="tableName"/> already has a column named <paramref name="columnName"/>,
     /// read from the database itself rather than assumed from what the code expects — the whole
     /// point of the check in <see cref="UpdateFrom3Async"/> is to stop trusting that.

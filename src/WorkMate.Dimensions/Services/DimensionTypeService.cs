@@ -551,6 +551,8 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             "Code",
             "NameEn",
             "NameAr",
+            "AliasEn",
+            "AliasAr",
             "DimensionTypeId",
             "EffectiveFrom",
             "EffectiveTo",

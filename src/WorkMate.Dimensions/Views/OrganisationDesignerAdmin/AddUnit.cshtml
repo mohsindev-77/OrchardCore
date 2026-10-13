@@ -79,6 +79,12 @@
 
     <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" />
 
+    @* Optional in both languages — it is the short label the unit is known by, not a second name.
+       The same control as the name so the two read as the pair they are. *@
+    @{ var aliasHint = T["Optional. Shown beside the name on this dimension's list and tree."].Value; }
+    <workmate-bilingual for-en="AliasEn" for-ar="AliasAr" label="@T["Alias"]"
+                        hint="@aliasHint" max-length="255" />
+
     <div class="mb-3" style="max-width: 16rem;">
         <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
         <input class="form-control" type="date" asp-for="EffectiveFrom" required />

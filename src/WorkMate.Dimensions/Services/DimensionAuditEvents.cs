@@ -37,6 +37,18 @@ public enum DimensionRecordOperation
 
     /// <summary>The record was closed with an end date.</summary>
     Retired,
+
+    /// <summary>
+    /// The short label the dimension's list and tree show beside the name was set or changed.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one operation here whose <c>EffectiveFrom</c> is not a date somebody chose.</b> An
+    /// alias is undated by design — <c>DimensionRecordPart.AliasEn</c> sets out why — so there is no
+    /// effective date to record, and the field carries the day the change was <em>made</em> instead.
+    /// That is stated here rather than left for a reader to infer from a date that looks like every
+    /// other one on this enum.
+    /// </remarks>
+    AliasChanged,
 }
 
 /// <summary>
@@ -81,6 +93,27 @@ public sealed class DimensionRecordAuditEvent
 
     /// <summary>What it is called after. Null on a retirement, which changes no name.</summary>
     public DimensionRecordNameState? After { get; set; }
+
+    /// <summary>
+    /// The alias on either side of the change. Set on
+    /// <see cref="DimensionRecordOperation.AliasChanged"/> only, and null everywhere else.
+    /// </summary>
+    /// <remarks>
+    /// Four plain strings rather than two <see cref="DimensionRecordNameState"/>s, even though the
+    /// shape is the same pair. That type's properties are called <c>NameEn</c> and <c>NameAr</c>,
+    /// and an auditor reading a serialised entry whose <c>NameEn</c> held an alias would have no way
+    /// to tell which of the two facts they were looking at.
+    /// </remarks>
+    public string? AliasEnBefore { get; set; }
+
+    /// <inheritdoc cref="AliasEnBefore"/>
+    public string? AliasArBefore { get; set; }
+
+    /// <inheritdoc cref="AliasEnBefore"/>
+    public string? AliasEnAfter { get; set; }
+
+    /// <inheritdoc cref="AliasEnBefore"/>
+    public string? AliasArAfter { get; set; }
 }
 
 /// <summary>A record's bilingual name at one point in an audit entry.</summary>
