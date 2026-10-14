@@ -95,6 +95,22 @@ public sealed record DimensionMenuGroup(
         return string.IsNullOrWhiteSpace(plural) ? Name.Display(culture) : plural;
     }
 
+    /// <summary>
+    /// Whether this reader has a real plural to read, or is seeing the singular stand in for one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Asked per language, because a plural can be authored in one and not the other.</b> What
+    /// it decides is how the menu phrases the entry that opens the whole dimension: with a plural it
+    /// reads <em>All Departments</em>, and without one <em>All Workstream units</em> — a whole
+    /// sentence the localiser owns, rather than <em>All Workstream</em>, which is the broken English
+    /// that falling back to the singular produces the moment the word is put in a sentence.
+    ///
+    /// Decision D24. <c>StandardDimensionPlurals</c> gives the shipped names their plurals on
+    /// upgrade, so this is the answer for a name the product does not ship and nobody has authored.
+    /// </remarks>
+    public bool HasPlural(CultureInfo? culture = null) =>
+        !string.IsNullOrWhiteSpace(PluralName.Display(culture));
+
     /// <summary>The values to list, in this reader's alphabetical order.</summary>
     public IReadOnlyList<DimensionMenuValue> Values(CultureInfo? culture = null) =>
         BilingualText.IsArabic(culture ?? CultureInfo.CurrentUICulture) ? ArabicOrder : EnglishOrder;
@@ -107,30 +123,69 @@ public sealed record DimensionMenuGroup(
 /// One value under a dimension's menu entry: a department a reader can open in one click.
 /// </summary>
 /// <param name="Organisation">
-/// The structure this value's type belongs to, when the group spans more than one and the type
+/// The organisation this value's type belongs to, when the group spans more than one and the type
 /// belongs to exactly one — so <em>Civil</em> under a Department group covering three companies
-/// reads <em>Civil (Zenith Engineering &amp; Construction)</em>. Null when there is nothing to
-/// disambiguate, and null when the type is itself on several structures, because then the suffix
-/// would be a guess about which one was meant.
+/// reads <em>Civil (Zenith)</em>. The structure's <b>short name</b> (D24), falling back to its full
+/// name. Null when there is nothing to disambiguate, and null when the type is itself on several
+/// structures, because then the suffix would be a guess about which one was meant.
 /// </param>
+/// <param name="Parent">
+/// The unit this value sits under, used only when another value in the same group reads the same.
+/// Null when the value's type is on more than one chart, for the reason
+/// <paramref name="Organisation"/> is.
+/// </param>
+/// <param name="AmbiguousInEnglish">
+/// Whether an English reader sees this name more than once in this group, and so needs the parent.
+/// </param>
+/// <param name="AmbiguousInArabic"><inheritdoc cref="AmbiguousInEnglish"/></param>
 public sealed record DimensionMenuValue(
     string RecordId,
     string DimensionTypeId,
     BilingualText Name,
-    BilingualText? Organisation)
+    BilingualText? Organisation,
+    BilingualText? Parent = null,
+    bool AmbiguousInEnglish = false,
+    bool AmbiguousInArabic = false)
 {
-    /// <summary>The caption, with its organisation in brackets when there is one.</summary>
+    /// <summary>
+    /// The caption: the name, its parent when the name alone is ambiguous, and its organisation
+    /// when the dimension spans more than one.
+    /// </summary>
+    /// <remarks>
+    /// <b>The parent is added per language, not per value.</b> Two units can collide in one
+    /// language and not the other — a tenant that translated one of them and not the other — so
+    /// adding the parent to both readers because one of them needs it would put a disambiguator
+    /// where there is nothing to disambiguate.
+    ///
+    /// <b>Why the parent rather than the code.</b> Crescent has two departments called
+    /// <em>Credit</em>, one per branch; what tells a reader which is which is <em>Lahore Main
+    /// Branch</em>, not <c>crescent-dept-lhr-credit</c>. The code is on the list screen, which is
+    /// where somebody who wants the code is going.
+    ///
+    /// The order is name, parent, organisation — narrowest to widest, so the words a reader is
+    /// scanning for come first and the qualifiers read as qualifiers.
+    /// </remarks>
     public string Caption(CultureInfo? culture = null)
     {
-        var name = Name.Display(culture);
+        var resolved = culture ?? CultureInfo.CurrentUICulture;
+        var caption = Name.Display(resolved);
+
+        var ambiguous = BilingualText.IsArabic(resolved) ? AmbiguousInArabic : AmbiguousInEnglish;
+
+        if (ambiguous && Parent is not null && Parent.Display(resolved) is { Length: > 0 } parent)
+        {
+            // An en dash with spaces, which reads as an apposition rather than as part of the name.
+            // A hyphen would look like a compound unit name, which some of them are.
+            caption = $"{caption} – {parent}";
+        }
 
         if (Organisation is null)
         {
-            return name;
+            return caption;
         }
 
-        var organisation = Organisation.Display(culture);
+        var organisation = Organisation.Display(resolved);
 
-        return string.IsNullOrWhiteSpace(organisation) ? name : $"{name} ({organisation})";
+        return string.IsNullOrWhiteSpace(organisation) ? caption : $"{caption} ({organisation})";
     }
 }

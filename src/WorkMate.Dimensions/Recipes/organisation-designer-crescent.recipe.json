@@ -47,6 +47,8 @@
           "code": "crescent-org",
           "nameEn": "Crescent Microfinance",
           "nameAr": "كريسنت للتمويل الأصغر",
+          "shortNameEn": "Crescent",
+          "shortNameAr": "كريسنت",
           "levelTypeCodes": ["crescent-division", "crescent-region", "crescent-branch", "crescent-department"],
           "rootTypeCodes": ["crescent-division"],
           "containment": {

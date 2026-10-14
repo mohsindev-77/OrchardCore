@@ -50,6 +50,8 @@
           "code": "zenith-org",
           "nameEn": "Zenith Engineering & Construction",
           "nameAr": "زينيث للهندسة والإنشاءات",
+          "shortNameEn": "Zenith",
+          "shortNameAr": "زينيث",
           "levelTypeCodes": ["zenith-division", "zenith-department", "zenith-project", "zenith-team"],
           "rootTypeCodes": ["zenith-division"],
           "containment": {

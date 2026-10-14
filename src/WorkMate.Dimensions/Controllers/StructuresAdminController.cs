@@ -103,6 +103,7 @@ public sealed class StructuresAdminController : Controller
             model.IsStrict,
             model.IsPrimaryOrganisation,
             model.ToShape(),
+            shortName: model.ToShortName(),
             cancellationToken: cancellationToken);
 
         if (!result.IsAuthorised)
@@ -249,6 +250,7 @@ public sealed class StructuresAdminController : Controller
             model.IsStrict,
             model.IsPrimaryOrganisation,
             model.ToShape(),
+            model.ToShortName(),
             cancellationToken);
 
         if (!result.IsAuthorised)

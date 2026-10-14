@@ -1,0 +1,106 @@
+@model DimensionRecordHierarchyNodeViewModel
+@using Microsoft.AspNetCore.Mvc.Localization
+@*
+    One box in a value's read-only org chart — decision D25.
+
+    THE MARKUP IS THE ORGANISATION DESIGNER'S, ON PURPOSE. `li.designer-node > .designer-card +
+    ul.designer-children` is the shape organisation-designer.css draws the connector lines, the row
+    levelling and the RTL mirroring for, so reusing it gets a chart that is already right in both
+    directions rather than a second layout to keep in step with the first. Nothing in the designer
+    is touched to get it: this view names its classes, and that is all.
+
+    WHAT IS DELIBERATELY ABSENT IS THE ⋯ MENU. The designer's card carries one; this carries none.
+    D25 is explicit that editing stays in the designer and on the value pages, and a read-only chart
+    that grew an edit control would be a second write path into the one thing that most needs one.
+    The <details> element is simply not rendered — not hidden with CSS, which is how the designer
+    itself treats a reader without permission.
+
+    Recursive: a partial that renders its own children. The nesting is built in the controller, so
+    the depth here is the depth of the customer's chart, which the subtree cap already bounds.
+*@
+<li class="designer-node @(Model.IsRoot ? "designer-node-structure" : null)"
+    data-record-id="@Model.RecordId"
+    data-expanded="true"
+    data-child-count="@Model.Children.Count">
+    <div class="designer-card">
+        @* Always rendered, hidden when there is nothing under it — the same two attributes the
+           designer flips, so the icon rotation and the spacer alignment come from the same rules. *@
+        <button type="button" class="designer-toggle value-hierarchy-toggle"
+                aria-label="@T["Expand or collapse this unit"]"
+                aria-expanded="true"
+                hidden="@(Model.Children.Count > 0 ? null : "hidden")">
+            <span class="designer-toggle-icon" aria-hidden="true">▸</span>
+            <span class="designer-toggle-count">@Model.Children.Count</span>
+        </button>
+        <span class="designer-toggle-spacer" aria-hidden="true"
+              hidden="@(Model.Children.Count > 0 ? "hidden" : null)"></span>
+
+        <div class="designer-card-body">
+            @* The same classes the designer's own card uses, so the chart's fixed card size, its
+               truncation and its hover title all apply without a rule being written twice. The
+               name is a LINK here where the designer's is plain text, because this chart's whole
+               purpose is to be a way into each value's page. *@
+            <div class="designer-card-name" title="@Model.Name">
+                @if (Model.IsRoot)
+                {
+                    @* The page the reader is already on. A link to it would be a control that does
+                       nothing, which is worse than no control — the designer's structure card is
+                       the same. *@
+                    <span class="value-hierarchy-name">@Model.Name</span>
+                }
+                else
+                {
+                    <a class="value-hierarchy-name"
+                       asp-action="Details" asp-route-id="@Model.RecordId"
+                       asp-route-structureId="@ViewData["StructureId"]"
+                       asp-route-asAt="@ViewData["AsAtIso"]">@Model.Name</a>
+                }
+            </div>
+
+            <div class="designer-card-meta">
+                @if (!string.IsNullOrWhiteSpace(Model.TypeName))
+                {
+                    <span class="designer-card-type">@Model.TypeName</span>
+                }
+                <code class="designer-card-code">@Model.Code</code>
+            </div>
+
+            @if (!Model.IsEffective)
+            {
+                <div class="designer-card-head">
+                    <span class="badge text-bg-secondary">@T["Inactive"]</span>
+                </div>
+            }
+
+            @* The roll-up, with the unit's own count on hover — the number somebody scanning a
+               chart wants is everything beneath, and the one they occasionally need is how many of
+               those are here. Not a link: this chart is read-only (D25), and the value's own page
+               is one click away through the name above it. *@
+            <span class="designer-card-employees value-hierarchy-employees"
+                  title="@AsText(T.Plural(Model.EmployeeCount, "{0} directly", "{0} directly", Model.EmployeeCount))">
+                @Model.EmployeeCountIncludingSubUnits
+            </span>
+        </div>
+    </div>
+
+    <ul class="designer-children">
+        @foreach (var child in Model.Children)
+        {
+            await Html.RenderPartialAsync("_ValueHierarchyNode", child);
+        }
+    </ul>
+</li>
+
+@functions {
+    // A LocalizedHtmlString rendered as plain text, for a title attribute. Its `Value` is the
+    // msgid — "{0} directly" — not the formatted result, which is a trap that compiles and puts a
+    // literal placeholder in front of a reader. See the same helper in Details.cshtml.
+    private static string AsText(Microsoft.AspNetCore.Mvc.Localization.LocalizedHtmlString text)
+    {
+        using var writer = new System.IO.StringWriter();
+
+        text.WriteTo(writer, System.Text.Encodings.Web.HtmlEncoder.Default);
+
+        return writer.ToString();
+    }
+}

@@ -61,6 +61,14 @@ public sealed class WorkMateDimensionsResourceManifest : IConfigureOptions<Resou
             .SetUrl("~/WorkMate.Dimensions/js/dimension-records.js")
             .SetVersion("1.0.0");
 
+        // Full captions as hover titles on the Organisation menu's entries (D24). An enhancement:
+        // every caption is already complete in the page and every link works without it. Required
+        // on every admin page by OrganisationMenuTooltipFilter, because the menu is on every admin
+        // page and Orchard's MenuItem has nowhere to put a title.
+        manifest.DefineScript("workmate-organisation-menu")
+            .SetUrl("~/WorkMate.Dimensions/js/organisation-menu.js")
+            .SetVersion("1.0.0");
+
         // The unit picker's search. It depends on WorkMate.Platform's combobox, which is the same
         // control the employee picker drives: naming the dependency is what makes Orchard put the
         // two on the page in the order they have to be in.

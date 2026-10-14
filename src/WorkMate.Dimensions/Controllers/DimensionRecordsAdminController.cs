@@ -611,10 +611,30 @@ public sealed class DimensionRecordsAdminController : Controller
     /// level of exactly one, which is the ordinary tenant; left unanswered rather than guessed when
     /// it is a level of several.
     /// </param>
+    /// <param name="includeRetired">
+    /// Whether the <em>Units under this one</em> tree shows units that are no longer in use. Off by
+    /// default: a chart is normally a question about today.
+    /// </param>
+    /// <param name="view">
+    /// Which of the three renderings of the <em>Units under this one</em> section to draw —
+    /// hierarchy, tree or list (decision D25). On the query string rather than in a cookie alone,
+    /// so a view somebody is looking at is a URL they can send and the back button returns to the
+    /// one they were on. Unrecognised or absent means <see cref="UnitsView.Tree"/>, which is what
+    /// the section already was.
+    /// </param>
+    /// <param name="sort">
+    /// Which column the <b>list</b> view is sorted by: <c>code</c>, <c>name</c>,
+    /// <c>dimension</c>, <c>parent</c>, <c>status</c> or <c>employees</c>. Absent means tree
+    /// order, which is what the other two views show.
+    /// </param>
     public async Task<IActionResult> Details(
         string? id,
         string? structureId,
         string? asAt = null,
+        bool includeRetired = false,
+        string? view = null,
+        string? sort = null,
+        bool desc = false,
         CancellationToken cancellationToken = default)
     {
         if (!await CanViewAsync())
@@ -671,6 +691,12 @@ public sealed class DimensionRecordsAdminController : Controller
             AsAtIso = date.ToIso(),
             StructureId = scope?.StructureId,
             Structures = structures,
+            IncludeRetired = includeRetired,
+            UnitsView = Enum.TryParse<UnitsView>(view, ignoreCase: true, out var chosen)
+                ? chosen
+                : UnitsView.Tree,
+            Sort = sort,
+            SortDescending = desc,
             CanEdit = await CanEditAsync(),
             CanMove = await _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords),
             CanViewEmployees = await CanViewEmployeesAsync(),
@@ -717,10 +743,7 @@ public sealed class DimensionRecordsAdminController : Controller
                 model.HeadTo = head.Range.To;
             }
 
-            var counts = await _assignments.CountEmployeesAtAsync(
-                scope.StructureId, [record.RecordId], date, cancellationToken);
-
-            model.EmployeeCount = counts.GetValueOrDefault(record.RecordId, 0);
+            await FillUnitsBelowAsync(model, scope.StructureId, record, date, includeRetired, cancellationToken);
         }
 
         var values = (await _records.GetAttributeValuesAsync(record.RecordId, cancellationToken))
@@ -736,6 +759,381 @@ public sealed class DimensionRecordsAdminController : Controller
         ];
 
         return View(model);
+    }
+
+    /// <summary>
+    /// How many people are at this unit, how many are under it, and what the units under it are.
+    /// Decision D24.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fixed handful of queries, however deep the subtree.</b> One batched direct headcount for
+    /// every node at once, one closure read for the descendants, one batched ancestor-path read to
+    /// learn each node's parent, and one read of the assignments under the root. Nothing is asked
+    /// per node — which is the whole reason the closure index exists, and the rule the organisation
+    /// designer's lazily-loaded children already follow.
+    ///
+    /// <b>"Including units below" is a distinct count, not a sum of the direct ones.</b> The
+    /// assignment rows for the whole subtree are read once and rolled up as <em>sets</em> of
+    /// employee ids, so one person assigned to two units below this one is counted once. Summing
+    /// would have been one query cheaper and wrong in the way D1 names.
+    ///
+    /// <b>Two caps, and both are stated on screen rather than hidden.</b> The tree draws at most
+    /// <see cref="TreeCap"/> units, because a tree cannot be paged — a node whose parent fell
+    /// outside the slice would be drawn as a root, a wrong shape rather than a partial one. The
+    /// roll-up reads at most <see cref="PeopleCap"/> assignment rows; past that the counts are
+    /// marked as partial by the same truncation notice, because a headcount that is quietly short
+    /// is worse than one that says it stopped counting.
+    /// </remarks>
+    private async Task FillUnitsBelowAsync(
+        DimensionRecordDetailsViewModel model,
+        string structureId,
+        DimensionNodeRef record,
+        DateOnly date,
+        bool includeRetired,
+        CancellationToken cancellationToken)
+    {
+        // Two different questions, not one question with a filter. Retiring a unit closes both its
+        // record and its placement, so a retired department is not "placed here but ineffective" —
+        // it is gone from today's subtree entirely. Showing it means asking the wider, undated
+        // question instead. D24.
+        var descendants = includeRetired
+            ? await _graph.GetDescendantsEverAsync(structureId, record.RecordId, 0, TreeCap, cancellationToken)
+            : await _graph.GetDescendantsAsync(structureId, record.RecordId, date, 0, TreeCap, cancellationToken);
+
+        model.UnitsBelow = descendants.Total;
+        model.TreeTruncated = descendants.Total > descendants.Items.Count;
+
+        var shown = descendants.Items.ToList();
+
+        var allIds = new List<string> { record.RecordId };
+        allIds.AddRange(shown.Select(node => node.RecordId));
+
+        var direct = await _assignments.CountEmployeesAtAsync(structureId, allIds, date, cancellationToken);
+
+        model.EmployeeCount = direct.GetValueOrDefault(record.RecordId, 0);
+
+        if (shown.Count == 0)
+        {
+            // A leaf. Nothing is below it, so "including units below" is the same number and the
+            // section is absent rather than empty.
+            model.EmployeeCountIncludingSubUnits = model.EmployeeCount;
+
+            return;
+        }
+
+        // Each node's immediate parent, for the whole subtree in two queries. Chains come back
+        // root-first, so the parent is the last entry; a node whose chain stops at the page's own
+        // value is an immediate child of it.
+        var paths = await _graph.GetAncestorPathsAsync(
+            structureId, [.. shown.Select(node => node.RecordId)], date, cancellationToken);
+
+        var present = shown.Select(node => node.RecordId).ToHashSet(StringComparer.Ordinal);
+
+        var parentOf = new Dictionary<string, string?>(StringComparer.Ordinal);
+
+        foreach (var node in shown)
+        {
+            var chain = paths.GetValueOrDefault(node.RecordId) ?? [];
+
+            parentOf[node.RecordId] = chain.Count > 0 && present.Contains(chain[^1].RecordId)
+                ? chain[^1].RecordId
+                : null;
+        }
+
+        var people = await EmployeeSetsAsync(structureId, record.RecordId, date, cancellationToken);
+
+        // Rolled up from the leaves: a node's set is its own people plus every child's set. Depth
+        // descending guarantees a child is finished before its parent asks for it.
+        var under = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var node in shown.OrderByDescending(node => node.Depth))
+        {
+            var set = under.TryGetValue(node.RecordId, out var own)
+                ? own
+                : under[node.RecordId] = new HashSet<string>(StringComparer.Ordinal);
+
+            set.UnionWith(people.GetValueOrDefault(node.RecordId) ?? []);
+
+            var parent = parentOf[node.RecordId] ?? record.RecordId;
+
+            if (!under.TryGetValue(parent, out var above))
+            {
+                under[parent] = above = new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            above.UnionWith(set);
+        }
+
+        if (!under.TryGetValue(record.RecordId, out var root))
+        {
+            under[record.RecordId] = root = new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        root.UnionWith(people.GetValueOrDefault(record.RecordId) ?? []);
+
+        model.EmployeeCountIncludingSubUnits = root.Count;
+
+        var children = shown
+            .GroupBy(node => parentOf[node.RecordId] ?? record.RecordId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+
+        var typeNames = (await _types.ListAsync(includeRetired: true, cancellationToken: cancellationToken))
+            .ToDictionary(
+                type => type.DimensionTypeId,
+                type => BilingualText.Display(type.Name.En, type.Name.Ar),
+                StringComparer.Ordinal);
+
+        var names = shown.ToDictionary(
+            node => node.RecordId,
+            node => BilingualText.Display(node.NameEn, node.NameAr),
+            StringComparer.Ordinal);
+
+        var ownName = BilingualText.Display(record.NameEn, record.NameAr);
+
+        model.Tree = Arrange(shown, parentOf, record.RecordId)
+            .Select(row => new DimensionRecordTreeRowViewModel
+            {
+                RecordId = row.Node.RecordId,
+                Code = row.Node.Code,
+                NameEn = row.Node.NameEn,
+                NameAr = row.Node.NameAr,
+                TypeName = typeNames.GetValueOrDefault(row.Node.DimensionTypeId, string.Empty),
+                Depth = row.Depth,
+                ParentRecordId = parentOf[row.Node.RecordId],
+                // The page's own value for an immediate child: that is what it sits under, and the
+                // list view has no indentation to say so with.
+                ParentName = parentOf[row.Node.RecordId] is { } parentId
+                    ? names.GetValueOrDefault(parentId, string.Empty)
+                    : ownName,
+                ChildCount = children.GetValueOrDefault(row.Node.RecordId, 0),
+                EmployeeCount = direct.GetValueOrDefault(row.Node.RecordId, 0),
+                EmployeeCountIncludingSubUnits = under.GetValueOrDefault(row.Node.RecordId)?.Count ?? 0,
+                IsEffective = row.Node.EffectiveRange.Contains(date),
+            })
+            .ToList();
+
+        model.Hierarchy = Nest(model.Tree, record, model.EmployeeCount ?? 0, root.Count);
+    }
+
+    /// <summary>
+    /// The same rows again, nested, with the page's own value as the root box. Decision D25.
+    /// </summary>
+    /// <remarks>
+    /// <b>Built from <see cref="DimensionRecordDetailsViewModel.Tree"/> rather than from the
+    /// subtree a second time.</b> The chart and the tree are two renderings of one answer, so they
+    /// are shaped from one list — which is what stops them disagreeing about what is under what,
+    /// the drift the designer's own two views were built to avoid.
+    ///
+    /// Iterative, like everything else that walks a customer's tree here: the depth of their
+    /// organisation is their business, and a stack overflow on an imported cycle would be a crash
+    /// rather than a message.
+    /// </remarks>
+    private static DimensionRecordHierarchyNodeViewModel Nest(
+        IReadOnlyList<DimensionRecordTreeRowViewModel> rows,
+        DimensionNodeRef record,
+        int ownEmployees,
+        int employeesBelow)
+    {
+        var nodes = rows.ToDictionary(
+            row => row.RecordId,
+            row => new DimensionRecordHierarchyNodeViewModel
+            {
+                RecordId = row.RecordId,
+                Code = row.Code,
+                NameEn = row.NameEn,
+                NameAr = row.NameAr,
+                TypeName = row.TypeName,
+                EmployeeCount = row.EmployeeCount,
+                EmployeeCountIncludingSubUnits = row.EmployeeCountIncludingSubUnits,
+                IsEffective = row.IsEffective,
+            },
+            StringComparer.Ordinal);
+
+        var root = new DimensionRecordHierarchyNodeViewModel
+        {
+            RecordId = record.RecordId,
+            Code = record.Code,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            EmployeeCount = ownEmployees,
+            EmployeeCountIncludingSubUnits = employeesBelow,
+            IsEffective = true,
+            IsRoot = true,
+        };
+
+        var childrenOf = new Dictionary<string, List<DimensionRecordHierarchyNodeViewModel>>(StringComparer.Ordinal);
+
+        // Rows arrive in tree order — each node before the nodes under it — so a parent's list
+        // exists by the time its children are read, and the children keep the order they were
+        // arranged in.
+        foreach (var row in rows)
+        {
+            var parent = row.ParentRecordId ?? record.RecordId;
+
+            if (!childrenOf.TryGetValue(parent, out var list))
+            {
+                childrenOf[parent] = list = [];
+            }
+
+            list.Add(nodes[row.RecordId]);
+        }
+
+        foreach (var (id, list) in childrenOf)
+        {
+            if (string.Equals(id, record.RecordId, StringComparison.Ordinal))
+            {
+                root.Children = list;
+            }
+            else if (nodes.TryGetValue(id, out var node))
+            {
+                node.Children = list;
+            }
+        }
+
+        return root;
+    }
+
+    /// <summary>
+    /// The list view's rows, in the order the reader asked for. Decision D25.
+    /// </summary>
+    /// <remarks>
+    /// <b>Sorted on the server, from the query string</b>, so a sorted list is a URL somebody can
+    /// send and the column headings work with no JavaScript — the same choice every other list in
+    /// this module makes. An unrecognised column leaves the rows in <b>tree order</b>, which is
+    /// what the other two views show and therefore what a reader arriving from one of them expects,
+    /// rather than an arbitrary alphabetisation nobody asked for.
+    ///
+    /// Names sort culture-aware and case-insensitive, because they are words a person reads; codes
+    /// sort ordinally, because they are identifiers. Ties break on the code, so the order is total
+    /// and a reader paging back and forth sees the same list.
+    /// </remarks>
+    internal static IReadOnlyList<DimensionRecordTreeRowViewModel> SortedForList(
+        IReadOnlyList<DimensionRecordTreeRowViewModel> rows,
+        string? sort,
+        bool descending)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        var byName = StringComparer.Create(System.Globalization.CultureInfo.CurrentUICulture, ignoreCase: true);
+
+        IOrderedEnumerable<DimensionRecordTreeRowViewModel> By<TKey>(
+            Func<DimensionRecordTreeRowViewModel, TKey> key, IComparer<TKey>? comparer = null) =>
+            descending ? rows.OrderByDescending(key, comparer) : rows.OrderBy(key, comparer);
+
+        IOrderedEnumerable<DimensionRecordTreeRowViewModel>? ordered =
+            (sort ?? string.Empty).ToLowerInvariant() switch
+            {
+                "code" => By(row => row.Code, StringComparer.Ordinal),
+                "name" => By(row => row.Name, byName),
+                "dimension" => By(row => row.TypeName, byName),
+                "parent" => By(row => row.ParentName, byName),
+                "status" => By(row => row.IsEffective),
+                "employees" => By(row => row.EmployeeCountIncludingSubUnits),
+                _ => null,
+            };
+
+        return ordered is null
+            ? rows
+            : [.. ordered.ThenBy(row => row.Code, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// How many assignment rows the subtree roll-up will read before it stops counting.
+    /// </summary>
+    /// <remarks>
+    /// Five thousand is the scale specification section 7 names for a tenant's records, and a
+    /// subtree's people are bounded by that in any organisation anybody draws. Past it the page
+    /// says the tree was truncated rather than printing a number that is quietly short.
+    /// </remarks>
+    internal const int PeopleCap = 5000;
+
+    /// <summary>The distinct employees at each unit in the subtree, keyed by unit.</summary>
+    /// <remarks>
+    /// One read of the whole subtree's assignments through the closure index's correlated
+    /// sub-select — not an id list, which would exceed SQL Server's parameter limit at five
+    /// thousand records, and not a query per node.
+    /// </remarks>
+    private async Task<Dictionary<string, HashSet<string>>> EmployeeSetsAsync(
+        string structureId,
+        string recordId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var assignments = await _assignments.GetEmployeesUnderAsync(
+            structureId, recordId, date, includeDescendants: true, 0, PeopleCap, cancellationToken);
+
+        var sets = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var assignment in assignments.Items)
+        {
+            if (!sets.TryGetValue(assignment.RecordId, out var set))
+            {
+                sets[assignment.RecordId] = set = new HashSet<string>(StringComparer.Ordinal);
+            }
+
+            set.Add(assignment.EmployeeId);
+        }
+
+        return sets;
+    }
+
+    /// <summary>
+    /// The subtree in reading order: each node immediately before the nodes under it.
+    /// </summary>
+    /// <remarks>
+    /// Iterative rather than recursive, for the reason the list screen's tree builder is: the depth
+    /// of a customer's organisation is their business, and a stack overflow on an imported cycle
+    /// would be a crash rather than a message. Cycles cannot reach here — the engine refuses them
+    /// across every date — but a screen is the wrong place to rely on that.
+    /// </remarks>
+    /// <remarks>
+    /// <b>The depth is the one this tree draws, not the one the closure index reported.</b> They
+    /// differ when "Include retired" is off and a retired unit sits between two live ones: the
+    /// grandchild is then drawn directly under the page's value, and indenting it by its closure
+    /// depth would leave a gap under a parent that is not on screen.
+    /// </remarks>
+    private static List<(DimensionNodeRef Node, int Depth)> Arrange(
+        List<DimensionNodeRef> nodes,
+        Dictionary<string, string?> parentOf,
+        string rootId)
+    {
+        var childrenOf = nodes
+            .GroupBy(node => parentOf[node.RecordId] ?? rootId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(node => node.SortOrder)
+                    .ThenBy(node => node.NameEn, StringComparer.Ordinal)
+                    .ToList(),
+                StringComparer.Ordinal);
+
+        var ordered = new List<(DimensionNodeRef Node, int Depth)>(nodes.Count);
+        var pending = new Stack<(DimensionNodeRef Node, int Depth)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var root in Enumerable.Reverse(childrenOf.GetValueOrDefault(rootId) ?? []))
+        {
+            pending.Push((root, 1));
+        }
+
+        while (pending.Count > 0)
+        {
+            var (node, depth) = pending.Pop();
+
+            if (!seen.Add(node.RecordId))
+            {
+                continue;
+            }
+
+            ordered.Add((node, depth));
+
+            foreach (var child in Enumerable.Reverse(childrenOf.GetValueOrDefault(node.RecordId) ?? []))
+            {
+                pending.Push((child, depth + 1));
+            }
+        }
+
+        return ordered;
     }
 
     /// <summary>

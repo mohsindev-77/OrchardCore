@@ -511,3 +511,173 @@ customer's company name will shorten one wrongly.
 
 **If a short form is wanted it is a field on the structure, authored like the plural.** Flagged for
 the product owner; nothing is built for it.
+
+---
+
+# D24 — polish from manual testing, and the tree on a value's page
+
+Recorded 14 October 2026 by Mohsin Hasnain, after testing slice F2 on an existing tenant.
+**Status: product owner requirements.** The organisation designer stays unchanged, and the
+"All *plural*" screens stay as they are (list view by default). ADR-0024 is amended.
+
+## D24 A Existing tenants get the shipped plurals, without anybody editing anything
+
+A tenant created before the dimension type editor had a plural field reads **Department**,
+**Division** and **All Department** down its whole Organisation menu. Every one of those is the
+correct fallback and every one of them looks wrong.
+
+**`Migrations.UpdateFrom11Async` fills an unauthored plural from a frozen table** —
+`StandardDimensionPlurals` — for the names the product ships:
+
+| | |
+| --- | --- |
+| Division → Divisions · Department → Departments · Section → Sections · Team → Teams | Region → Regions · Branch → **Branches** · Project → Projects |
+| Cost centre → Cost centres · Position → Positions | Grade step → Grade steps · Business unit → Business units |
+
+with the Arabic plural looked up by the **Arabic** name, so a tenant whose Division is قطاع gets
+القطاعات and one whose Division is قسم gets الأقسام. Keying Arabic off the English name would have
+handed one of them the other's noun.
+
+**"Unauthored" means blank *or the singular repeated*.** The second is the one that matters:
+`UpdateFrom10Async` cleared session D's guesses by writing the singular as a visible placeholder, so
+that is the state every tenant that has upgraded is actually in, and a step that only filled blanks
+would have reached none of them. A plural somebody typed is never touched (ADR-0009).
+
+**For any other name, the caption is phrased rather than guessed.** Nothing derives a word — the
+whole of ADR-0024. A dimension with no plural keeps its singular as its entry, and the entry that
+opens the whole dimension reads **"All Workstream units"** rather than *All Workstream*, which is
+broken English the moment the singular is put in a sentence.
+
+## D24 B Two values of the same name are told apart by their parent
+
+Crescent has two departments called **Credit** — one in the Lahore branch, one in Karachi — and two
+called **Operations** beside them, because a code is unique within a tenant and a name is not. The
+menu listed *Credit (Crescent)* twice.
+
+**When two values in a group read the same, the caption gains the parent:** *Credit – Lahore Main
+Branch*. Asked **per language**, because a tenant can translate one of two same-named units and not
+the other, and a disambiguator where there is nothing to disambiguate is noise on every row.
+
+**The organisation bracket stays, but only when the group spans more than one structure**, and it
+now carries the structure's **short name**: *Civil (Zenith)*, not *Civil (Zenith Engineering &
+Construction)*.
+
+`StructureDocument.ShortName` is a new authored bilingual field on the structure editor — **this is
+question Q-l, answered**. Authored and never derived, for the reason the plural is: a rule that
+shortened a company name would shorten one wrongly, and the wrong one would be a customer's own
+name on every row of their menu. Empty falls back to the full name. The reference recipes ship
+*Zenith*, *Crescent* and *Demo*.
+
+**The full caption is the link's tooltip**, so a sidebar that truncates still answers on hover.
+Orchard Core 3.0.1's `MenuItem` has nowhere to put a title — verified with `tools/api-probe` — and
+the admin theme's templates are compiled into its own assembly, so this is a script this module
+ships and requires on admin pages, not a change to Orchard.
+
+## D24 C The value page shows the Arabic name where it belongs
+
+The Arabic name rendered as a `dir="rtl"` **block**, which fills the column and pushes its text to
+the far edge, so it read as something detached from the Name row. It is a **span** now, under the
+English name, as the list screens already do it.
+
+## D24 D The value page separates who is here from who is below
+
+**"0 here" was misleading** on a division whose people sit in its departments — and the engine
+guarantees that case, because a unit with units under it may not hold employees at all.
+
+The page now reads **"N directly · M including units below"**, each with the correct plural form in
+both languages (Arabic has six), and each number linking to the employee list — the second with
+**Include sub-units** ticked, so the list agrees with the number beside it. A number of zero is not a
+link.
+
+**M is distinct, not summed**: one person placed in two units below this one is one person, which is
+D1's `DISTINCT EmployeeId` rule.
+
+## D24 E NEW — a tree of everything under a value
+
+Opening a value that has children shows **"Units under *name*"** below the details:
+
+- **Every dimension, not just this one** — the opposite of the dimension's own Tree/List screen,
+  which Rule 2 scopes to one dimension. A reader who opened *Corporate* wants the departments in it
+  and the sections in those.
+- As at today, **active only by default**, with an **Include retired** toggle. Retiring a unit closes
+  both its record and its placement, so showing retired ones is a different, undated question —
+  `IDimensionGraphService.GetDescendantsEverAsync`.
+- Indented, **expand/collapse per node** plus **Expand all / Collapse all**.
+- Each row: the **name**, linking to that unit's own page; its **dimension**; and its **employee
+  count including sub-units**, with the direct count on hover.
+- **A leaf shows no section at all** — not an empty table and not a "nothing here" line.
+- Works in Arabic and RTL.
+
+**Batched, with no per-node round trips.** One closure read for the subtree, one batched
+ancestor-path read for every node's parent, one batched direct headcount, and one read of the
+subtree's assignments rolled up in memory as sets of employee ids. The tree is capped at 500 units
+and the roll-up at 5,000 placements; both say so on screen rather than printing a number that is
+quietly short.
+
+The same row contract as the dimension list's tree view — depth, parent and child count as data
+attributes — so **one collapse script serves both screens** rather than a second being written.
+
+---
+
+# D25 — three views of a value's "Units under this one"
+
+Recorded 14 October 2026 by Mohsin Hasnain, before committing the F2 polish.
+**Status: product owner requirements.** ADR-0024 is amended again.
+
+**Two screens do not change, and both are now guarded by a test.** The **organisation designer**
+stays exactly as it is. The **"All *plural*"** screens stay exactly as they are — no new views
+there. `UnchangedScreensTenantTests` asserts both: that the list screen has none of the value
+page's controls and still has its own five-button toolbar and Tree/List toggle, and that the
+designer still renders its editable cards with their ⋯ menus and its own nine card actions.
+
+## D25 A A switch at the top right of that section
+
+**Hierarchy | Tree | List**, in that order, the active one highlighted. It appears only where the
+section does, so a **leaf value has no section and no switch**.
+
+## D25 B List
+
+A flat table of every descendant: **Code, Name** (link to its page), **Dimension, Parent, Status,
+Employees** (including units below). **Sortable by column** — the headings are links carrying the
+whole state, sorted on the server, so a sorted list is a URL somebody can send and it works with no
+JavaScript. No column named means **tree order**, which is what the other two views show.
+
+The **Parent** column is the point of this view: it is flat, so the indentation that carries
+containment elsewhere is not there to carry it.
+
+## D25 C Tree
+
+Unchanged — today's indented rows with expand/collapse and Expand all / Collapse all.
+
+## D25 D Hierarchy
+
+A **read-only** top-down org chart. The value itself is the root box; one box per descendant,
+connected by lines. Each box shows the **name** (link to that value's page), **code**, **dimension**
+and an **employee badge** (including units below, direct count on hover).
+
+- Expand/collapse per node, **zoom − / Fit to screen / +**, horizontal scroll for wide charts,
+  mirrored in Arabic/RTL.
+- **No editing actions and no ⋯ menus.** Editing stays in the organisation designer and on the
+  value pages. The menu element is *absent* rather than hidden — the same way the designer treats a
+  reader without permission.
+
+**The designer's layout is reused and its behaviour is not.** The boxes are the designer's own
+`li.designer-node > .designer-card + ul.designer-children` markup inside a `.designer-surface`, so
+the connector lines, the row levelling and the RTL mirroring all come from
+`organisation-designer.css` — every rule of which is already written in logical properties. Three
+new CSS rules were added and **no existing selector was touched**. The designer's *script* is not
+reused: it drags, fetches and edits, none of which a read-only chart should be able to do, so the
+expand, zoom and fit are a few lines in `workmate-dimension-records`.
+
+## D25 E Common
+
+| | |
+| --- | --- |
+| **Default** | **Tree** — what the section already was. A reader who had learnt it should not have to find it again |
+| **In the URL** | `?view=hierarchy\|tree\|list`, so a view is linkable and the back button returns to the one before |
+| **Remembered** | The last choice is kept in `localStorage`, in `try`/`catch`. A URL that names a view is an explicit choice and is **never** overridden; a remembered one is applied with `location.replace`, so restoring a preference does not put a page the reader never asked for into their history |
+| **Include retired** | Applies to all three |
+| **Reads** | Batched, through the closure index, nothing per node. One subtree read feeds all three views — the hierarchy's nesting is shaped from the same rows as the tree, so they cannot disagree about what is under what |
+| **Labels** | Bilingual: *Hierarchy* / **الهيكل**, *Tree* / **شجرة**, *List* / **قائمة** |
+
+Tested on a chart of **fifty-odd units across four levels**, in all three views.

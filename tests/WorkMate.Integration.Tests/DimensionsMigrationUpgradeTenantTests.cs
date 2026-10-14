@@ -551,16 +551,143 @@ public sealed class DimensionsMigrationUpgradeTenantTests
 
             var guessed = await types.GetByCodeAsync(guessedCode);
 
-            guessed!.PluralName.En.Should().Be(
-                "Branch", "a derived plural is replaced by the singular, never left as Branchs");
-            guessed.PluralName.Ar.Should().Be("فرع");
-            guessed.MenuCaption(System.Globalization.CultureInfo.InvariantCulture).Should().Be("Branch");
+            // The chain, not one step: a tenant rolled back to 10 runs UpdateFrom10 and then
+            // UpdateFrom11. The first replaces the guess with the SINGULAR — never leaving
+            // "Branchs" — and the second recognises that singular as a plural nobody authored and
+            // fills it from the shipped table (D24). What a tenant ends up with is the right word.
+            guessed!.PluralName.En.Should().Be("Branches", "and never Branchs, which is what got the menu pulled");
+            guessed.PluralName.Ar.Should().Be("الفروع");
+            guessed.MenuCaption(System.Globalization.CultureInfo.InvariantCulture).Should().Be("Branches");
 
             var authored = await types.GetByCodeAsync(authoredCode);
 
             authored!.PluralName.En.Should().Be(
                 "Branches", "a plural somebody typed is data, and a migration never destroys data");
             authored.PluralName.Ar.Should().Be("الفروع");
+        });
+    }
+
+    /// <summary>
+    /// Decision D24: a tenant whose dimensions have no plural gets the shipped ones, and anything a
+    /// person authored survives.
+    /// </summary>
+    /// <remarks>
+    /// <b>The complaint this answers.</b> A tenant created before the dimension type editor had a
+    /// plural field reads <em>Department</em>, <em>Division</em> and <em>All Department</em> all the
+    /// way down its Organisation menu. Every one of those is the correct fallback and every one of
+    /// them looks wrong, and asking a customer to edit twelve types by hand to fix a regression
+    /// they did not cause is not a migration strategy.
+    ///
+    /// <b>Three cases, because the third is the one a careless version would get wrong.</b> A blank
+    /// plural is filled. A plural that is the singular repeated is also filled — that is what
+    /// <c>UpdateFrom10Async</c> wrote as a placeholder, so it is the state every upgraded tenant is
+    /// actually in, and a step that only filled blanks would have reached none of them. A plural
+    /// somebody typed is left exactly as it is, however odd, because ADR-0009 does not let a
+    /// migration overwrite data.
+    ///
+    /// <b>And a fourth: a name the product does not ship gets nothing.</b> Nothing here derives a
+    /// word — the whole of ADR-0024 — so a Workstream stays without a plural and the menu phrases
+    /// itself around the singular instead.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantWithNoPluralsGetsTheShippedOnesAndKeepsWhatWasAuthored()
+    {
+        const string blankCode = "d24-blank-division";
+        const string placeholderCode = "d24-placeholder-department";
+        const string authoredCode = "d24-authored-branch";
+        const string unknownCode = "d24-unknown-workstream";
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = services.GetRequiredService<IDimensionTypeService>();
+
+            var names = new Dictionary<string, BilingualText>(StringComparer.Ordinal)
+            {
+                [blankCode] = new BilingualText("Division", "قطاع"),
+                [placeholderCode] = new BilingualText("Department", "إدارة"),
+                [authoredCode] = new BilingualText("Branch", "فرع"),
+                [unknownCode] = new BilingualText("Workstream", "مسار العمل"),
+            };
+
+            foreach (var (code, name) in names)
+            {
+                var created = await types.CreateAsync(code, name, [], allowsSelfNesting: false);
+
+                created.Succeeded.Should().BeTrue(string.Join("; ", created.Errors.Select(e => e.Message.Value)));
+            }
+        });
+
+        // The three states a tenant can be in when it reaches this step.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            foreach (var document in await session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+            {
+                switch (document.Code)
+                {
+                    case blankCode:
+                    case unknownCode:
+                        // Never edited: created before the field existed.
+                        document.PluralName = new BilingualText(string.Empty, string.Empty);
+                        break;
+
+                    case placeholderCode:
+                        // What UpdateFrom10Async writes, and so what every upgraded tenant holds.
+                        document.PluralName = new BilingualText(document.Name.En, document.Name.Ar);
+                        break;
+
+                    case authoredCode:
+                        document.PluralName = new BilingualText("Outlets", "المنافذ");
+                        break;
+
+                    default:
+                        continue;
+                }
+
+                await session.SaveCheckedAsync(document);
+            }
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            migration.Version.Should().BeGreaterThanOrEqualTo(
+                12, "this test's premise is a schema that already includes the standard plurals");
+
+            migration.Version = 11;
+            session.Save(record);
+            await session.SaveChangesAsync();
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = services.GetRequiredService<IDimensionTypeService>();
+
+            var blank = await types.GetByCodeAsync(blankCode);
+
+            blank!.PluralName.En.Should().Be("Divisions", "a blank plural is filled from the shipped table");
+            blank.PluralName.Ar.Should().Be("القطاعات", "and the Arabic half from the Arabic name");
+
+            var placeholder = await types.GetByCodeAsync(placeholderCode);
+
+            placeholder!.PluralName.En.Should().Be(
+                "Departments", "the singular repeated is a placeholder, not a word anybody chose");
+            placeholder.PluralName.Ar.Should().Be("الإدارات");
+
+            var authored = await types.GetByCodeAsync(authoredCode);
+
+            authored!.PluralName.En.Should().Be("Outlets", "a migration never overwrites what a person typed");
+            authored.PluralName.Ar.Should().Be("المنافذ");
+
+            var unknown = await types.GetByCodeAsync(unknownCode);
+
+            unknown!.PluralName.En.Should().BeEmpty("nothing derives a plural for a name the product does not ship");
+            unknown.PluralName.Ar.Should().BeEmpty();
         });
     }
 

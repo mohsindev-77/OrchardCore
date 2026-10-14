@@ -195,8 +195,15 @@ internal sealed class AdminMenu : INavigationProvider
                 $"{DimensionsPosition}.{++position}",
                 dimension =>
                 {
+                    // With a plural, "All Departments". Without one the caption is the singular,
+                    // and "All Workstream" is broken English the moment the word is in a sentence
+                    // — so the phrasing changes rather than the word being invented. D24.
+                    var allCaption = group.HasPlural(culture)
+                        ? S["All {0}", caption]
+                        : S["All {0} units", caption];
+
                     dimension
-                        .Add(S["All {0}", caption], "1", all => all
+                        .Add(allCaption, "1", all => all
                             .Action("Index", "DimensionRecordsAdmin", new
                             {
                                 area = "WorkMate.Dimensions",

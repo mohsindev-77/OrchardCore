@@ -206,3 +206,159 @@ a short form is wanted, it is a field on the structure, authored like the plural
 | **A flat entry per dimension, no values** | What the FRS literally asks for, and what shipped. The product owner's D23 asks for the values; a dimension's list screen is a search box away from being the same thing, and the menu is where a reader looks first |
 | **Sort the values at render time** | Correct, and would mean caching every value of every dimension rather than fifteen per language. The cap is what makes the cached model bounded |
 | **Group on the content type or a new stored group id** | A stored group is a migration, an editor and a second thing to keep in step with the name. The name is already the thing two types share when a reader calls them the same dimension |
+
+---
+
+## Amendment — what manual testing on a real tenant changed (2026-10-14)
+
+**Status:** accepted, **pending second review**. Decision **D24**. Where this and the text above
+disagree, this wins.
+
+The menu above was built, shipped to a reviewer and tested on an existing tenant. Four things were
+wrong in practice and one was missing. None of them changes the decision; all of them change what
+it has to do to hold.
+
+### 1. An existing tenant has no authored plurals, and the fallback is visible everywhere
+
+The decision says a plural is authored and a type with none reads as its singular — *wrong-looking,
+never wrong*. On a tenant created before the editor had the field that is **every entry**:
+*Department*, *Division*, *All Department*, down the whole menu. "Never wrong" was the right trade
+for one dimension and the wrong one for all of them.
+
+`Migrations.UpdateFrom11Async` fills an unauthored plural from **`StandardDimensionPlurals`**, a
+frozen lookup of the names this product ships. It is a lookup and not a rule: there is no suffix, no
+algorithm, and nothing at all for a name that is not on the list. The two halves are looked up
+independently — English by the English name, Arabic by the Arabic — because the reference recipes
+use both قطاع and قسم for *Division* and each pluralises its own way.
+
+**"Unauthored" has to mean blank *or the singular repeated*.** `UpdateFrom10Async` cleared session
+D's guesses by writing the singular as a deliberate, visible placeholder, so that is the state every
+upgraded tenant is actually in. A step that only filled blanks would have reached none of them.
+
+**For a name the table does not know, the phrasing changes rather than the word.** The group keeps
+its singular, and the entry that opens the whole dimension reads **"All Workstream units"**. That is
+the same principle one level out: the sentence is the localiser's, the noun is the customer's, and
+nothing invents either.
+
+### 2. Two values of the same name are indistinguishable
+
+The decision anticipated this and declined to fix it: *the bracket disambiguates organisations, not
+values… the list screen is where that question is answered*. On Crescent, which has two departments
+called **Credit** and two called **Operations**, that produced two identical menu entries — and
+sending a reader to another screen to find out which is which is not an answer.
+
+**When two values in a group read the same, the caption gains the parent**: *Credit – Lahore Main
+Branch*. Asked **per language**, because a tenant can translate one of two same-named units and not
+the other. The parent rather than the code, because *Lahore Main Branch* is what a reader knows.
+
+The values are now also **ordered by caption rather than by name**, so the two Credits sort by their
+parents instead of by whichever generated id happened to fall first.
+
+### 3. The organisation bracket was unreadable, and Q-l is answered
+
+*Civil (Zenith Engineering & Construction)* in a sidebar is a caption nobody can read, and the part
+that gets truncated is the part that disambiguates. The ADR raised this as **Q-l** and recommended
+an authored short name; the product owner has taken it.
+
+**`StructureDocument.ShortName`** is a new optional bilingual field on the structure editor, carried
+by the `structures` recipe step and the export, falling back to the full name. Authored and never
+derived, for the reason the plural is.
+
+### 4. A long caption still needs its full text, and Orchard has nowhere to put it
+
+`MenuItem` carries `Text`, `Href`, `Id`, `Classes`, `Permissions` and `RouteValues` — **no title and
+no attribute bag** (verified against the pinned assemblies with `tools/api-probe`) — and the admin
+theme's templates are compiled into `TheAdmin.dll`, where a module cannot override them and a theme
+would win if it could.
+
+So the tooltip is a script this module ships (`workmate-organisation-menu`), required on admin pages
+by `OrganisationMenuTooltipFilter`. It copies each menu link's own text into its `title`; the text is
+already complete in the DOM and the truncation is CSS. **This is an extension of Orchard's rendered
+output, not a change to Orchard** — the alternative would have been editing the theme, which
+CLAUDE.md forbids outright.
+
+### 5. The value page needed a tree, and two honest headcounts
+
+**"0 here" was a lie by omission.** A division's own headcount is zero and always will be: the
+engine refuses to place an employee on a unit that has units under it, because they would be counted
+by it and again by every roll-up beneath. The page now says **"N directly · M including units
+below"**, each linking to the employee list — the second with *Include sub-units* ticked — and M is a
+**distinct** count across the subtree rather than a sum of the direct ones.
+
+**And a value with children now shows what is under it.** "Units under *name*": every dimension, not
+just this one, as at today, active by default with an **Include retired** toggle, indented, with
+expand/collapse per node and Expand all / Collapse all. Each row links to that unit's own page.
+**A leaf shows no section at all.**
+
+Two things make that affordable. The whole subtree costs a fixed handful of queries — one closure
+read, one batched ancestor-path read for the parents, one batched direct headcount, and one read of
+the subtree's placements rolled up in memory as sets of employee ids — with nothing asked per node.
+And the rows carry the **same contract** as the dimension list's tree view, so the collapse script
+that already existed serves both screens rather than a second one being written and kept in step.
+
+**"Include retired" is a different question, not a filter.** Retiring a unit closes its record *and*
+its placement, so a retired department is not "placed here but ineffective" — it is gone from
+today's subtree. Showing it means asking an undated question, which is
+`IDimensionGraphService.GetDescendantsEverAsync`: everything that is or has ever been under this
+node, one row per unit at the shallowest depth it ever sat.
+
+---
+
+## Second amendment — three views of a value's subtree (2026-10-14)
+
+**Status:** accepted, **pending second review**. Decision **D25**.
+
+The first amendment gave a value's page a tree of everything under it. A reviewer asked for two more
+renderings of the same thing and, more importantly, for an explicit guarantee about what must *not*
+change.
+
+### What must not change, and is now asserted
+
+The **organisation designer** and the **"All *plural*"** list screens stay exactly as they are.
+`UnchangedScreensTenantTests` says so in four assertions: the list screen carries none of the value
+page's controls and keeps its own toolbar and Tree/List toggle; the designer still renders editable
+cards with their ⋯ menus, its own zoom controls and its nine named card actions.
+
+This is a test rather than a note because three briefs running have added something to the value
+page, and each time the cheapest implementation would have put a little of it on one of these two
+screens as well. Nothing stops that except an assertion that says what they are.
+
+### The three views
+
+A switch at the top right of the section — **Hierarchy | Tree | List** — with **Tree** the default,
+because Tree is what the section already was.
+
+**One subtree read feeds all three.** The controller reads the subtree once, as before, and shapes
+the same rows into a flat list, an indented tree and a nested chart. That is the point: three
+renderings of one answer cannot disagree about what is under what, which is the drift the designer's
+own two views were built to avoid.
+
+**The hierarchy reuses the designer's layout and none of its behaviour.** The boxes are
+`li.designer-node > .designer-card + ul.designer-children` inside a `.designer-surface`, so the
+connector lines, the row levelling and the RTL mirroring come from `organisation-designer.css` —
+already written in logical properties, so already correct in both directions. Three CSS rules were
+added and no existing selector was touched. The designer's *script* is deliberately not reused: it
+drags, fetches and edits, and this chart is read-only, so its expand, zoom and fit are a few lines
+in `workmate-dimension-records`.
+
+**`zoom`, not `transform: scale`** — the designer's own reasoning, which applies here for the same
+reason: a transform leaves the layout box at its original size, so the viewport's scrollbars keep
+describing the unscaled chart and half of a zoomed-in org chart becomes unreachable. Scaling the
+layout is what keeps the horizontal scroll honest at every level, in both directions.
+
+### The view is in the URL, and only then in storage
+
+`?view=hierarchy|tree|list`. A view that lives only in a cookie or in storage is a view nobody can
+link to and the back button cannot return to, which is the same argument the dimension list's own
+Tree/List toggle was built on.
+
+The reader's last choice is remembered in `localStorage`, wrapped in `try`/`catch` because storage
+throws rather than returning null in a browser configured to forbid it. **A URL that names a view is
+never overridden**, and a remembered one is applied with `location.replace` so that restoring a
+preference does not put a page the reader never asked for into their history.
+
+### What this does not add
+
+No editing. D25 is explicit, and the chart has no ⋯ menu, no drag, and no action of any kind beyond
+following a link to a value's own page. Editing stays where it already is: the organisation designer
+and the value pages.

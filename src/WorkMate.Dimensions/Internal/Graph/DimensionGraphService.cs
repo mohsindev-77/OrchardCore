@@ -111,6 +111,36 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return new Page<DimensionNodeRef>(items, total, skip, take);
     }
 
+    public async Task<Page<DimensionNodeRef>> GetDescendantsEverAsync(
+        string structureId,
+        string recordId,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        // No date filter at all — see the interface. Every closure row this node has ever had, then
+        // reduced to one entry per descendant at the shallowest depth it ever sat, because a unit
+        // that was moved out and back has a row per period and the caller draws one row per unit.
+        var rows = await _session
+            .QueryIndex<DimensionClosureIndex>(index =>
+                index.StructureId == structureId &&
+                index.AncestorId == recordId &&
+                index.Depth > 0)
+            .ListAsync(cancellationToken);
+
+        var shallowest = rows
+            .GroupBy(row => row.DescendantId, StringComparer.Ordinal)
+            .Select(group => (DescendantId: group.Key, Depth: group.Min(row => row.Depth)))
+            .OrderBy(entry => entry.Depth)
+            .ThenBy(entry => entry.DescendantId, StringComparer.Ordinal)
+            .ToList();
+
+        var items = await HydrateAsync(
+            shallowest.Skip(Math.Max(skip, 0)).Take(Math.Max(take, 0)), cancellationToken);
+
+        return new Page<DimensionNodeRef>(items, shallowest.Count, skip, take);
+    }
+
     public async Task<IReadOnlyList<DimensionNodeRef>> GetChildrenAsync(
         string structureId,
         string recordId,

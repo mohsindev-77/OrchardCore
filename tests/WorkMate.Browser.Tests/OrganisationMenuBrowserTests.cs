@@ -155,7 +155,8 @@ public sealed class OrganisationMenuBrowserTests
 
         await OpenAdminInAsync(page, "en");
 
-        await AdminMenu.ClickAsync(page, "Civil (Zenith Engineering & Construction)", "Organisation", "Departments");
+        // The short name (D24): the bracket reads "(Zenith)", not the whole company name.
+        await AdminMenu.ClickAsync(page, "Civil (Zenith)", "Organisation", "Departments");
 
         await Assertions.Expect(page.Locator("#value-name")).ToContainTextAsync("Civil");
         await Assertions.Expect(page.Locator("#value-code")).ToContainTextAsync("zenith-dept-civil");
@@ -166,6 +167,45 @@ public sealed class OrganisationMenuBrowserTests
         await Assertions.Expect(page.Locator("#value-head")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator("#value-employees")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator("#value-edit")).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// Two same-named units carry their parent, and the full caption is on hover.
+    /// </summary>
+    /// <remarks>
+    /// <b>Decision D24, in a real browser because both halves only exist there.</b> Crescent has two
+    /// departments called <em>Credit</em>, so the rendered menu has to tell them apart; and the
+    /// tooltip is set by a script this module ships, because Orchard Core 3.0.1's <c>MenuItem</c>
+    /// has nowhere to put a title and the admin theme's templates are compiled into its own
+    /// assembly — verified with <c>tools/api-probe</c>. A test against the view model would prove
+    /// neither.
+    /// </remarks>
+    [Fact]
+    public async Task SameNamedValuesCarryTheirParentAndTheWholeCaptionIsOnHover()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenAdminInAsync(page, "en");
+
+        // Expanded first, because a nested group's values are not in the page until it is opened —
+        // which is also why the script that titles them watches for additions rather than running
+        // once at load.
+        await AdminMenu.OpenGroupAsync(page, "All Departments", "Organisation", "Departments");
+
+        var captions = await DimensionValueCaptionsAsync(page);
+
+        captions.Should().Contain("Credit – Lahore Main Branch (Crescent)");
+        captions.Should().Contain("Credit – Karachi Main Branch (Crescent)");
+
+        captions.Should().NotContain(
+            caption => caption.Contains("Zenith Engineering", StringComparison.Ordinal),
+            "the bracket is the structure's short name");
+
+        // The tooltip is the caption, so a sidebar that truncates still answers on hover.
+        var link = page.GetByRole(AriaRole.Link, new() { NameString = "Credit – Lahore Main Branch (Crescent)" }).First;
+
+        await Assertions.Expect(link).ToHaveAttributeAsync("title", "Credit – Lahore Main Branch (Crescent)");
     }
 
     /// <summary>
@@ -309,6 +349,12 @@ public sealed class OrganisationMenuBrowserTests
     private static Task<string[]> DimensionCaptionsAsync(IPage page) =>
         page.EvaluateAsync<string[]>(
             "() => [...document.querySelectorAll(\"" + DimensionLinks + "\")]"
+            + ".map(link => link.textContent.trim())");
+
+    /// <summary>The captions of the value entries under every dimension, as rendered.</summary>
+    private static Task<string[]> DimensionValueCaptionsAsync(IPage page) =>
+        page.EvaluateAsync<string[]>(
+            "() => [...document.querySelectorAll(\"" + ValueLinks + "\")]"
             + ".map(link => link.textContent.trim())");
 
     /// <summary>The query string of each per-dimension link, in menu order.</summary>

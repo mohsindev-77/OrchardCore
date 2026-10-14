@@ -52,14 +52,22 @@ internal static class DimensionMenuComposition
     /// type id. Already filtered: this method does no dating, because the date is the caller's and
     /// a pure function should not be reading a clock.
     /// </param>
+    /// <param name="parentsOf">
+    /// The unit each value sits under, keyed by record id, for the values that need one. Supplied
+    /// by the caller because resolving a parent is a closure-index read and this method does no
+    /// queries; absent for a value whose name is unique, which is almost all of them.
+    /// </param>
     public static DimensionMenu Compose(
         IReadOnlyList<DimensionTypeDocument> types,
         IReadOnlyDictionary<string, IReadOnlyList<StructureRef>> structuresOfType,
-        IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>> activeRecordsOfType)
+        IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>> activeRecordsOfType,
+        IReadOnlyDictionary<string, BilingualText>? parentsOf = null)
     {
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(structuresOfType);
         ArgumentNullException.ThrowIfNull(activeRecordsOfType);
+
+        var parents = parentsOf ?? new Dictionary<string, BilingualText>(StringComparer.Ordinal);
 
         var shown = types
             .Where(type => type.ShowInMenu && type.RetiredOn is null)
@@ -67,7 +75,7 @@ internal static class DimensionMenuComposition
 
         var groups = shown
             .GroupBy(KeyOf, StringComparer.Ordinal)
-            .Select(group => Build(group.Key, [.. group], structuresOfType, activeRecordsOfType))
+            .Select(group => Build(group.Key, [.. group], structuresOfType, activeRecordsOfType, parents))
             .OrderBy(group => group.MenuOrder)
             // Then by the key, which is the English name lower-cased — never by the caption. A
             // caption is in the reader's language, and ordering by it is precisely the defect that
@@ -105,11 +113,34 @@ internal static class DimensionMenuComposition
             : english.ToLowerInvariant();
     }
 
+    /// <summary>
+    /// The record ids whose display name in <paramref name="culture"/> is shared with another value
+    /// in the same group — the ones that need their parent to be told apart.
+    /// </summary>
+    /// <remarks>
+    /// Crescent is the case this exists for: two departments called <em>Credit</em>, one in the
+    /// Lahore branch and one in Karachi, and two called <em>Operations</em> beside them. A name is
+    /// not unique within a tenant — only a code is — so the menu listed <em>Credit (Crescent)</em>
+    /// twice with nothing to choose between them.
+    ///
+    /// Compared on the resolved display name rather than on the stored half, because that is what
+    /// the reader actually sees: a unit with no Arabic name falls back to its English, and can
+    /// collide with an English name that way.
+    /// </remarks>
+    private static HashSet<string> Ambiguous(IReadOnlyList<DimensionMenuValue> values, CultureInfo culture) =>
+    [
+        .. values
+            .GroupBy(value => value.Name.Display(culture), StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .SelectMany(group => group.Select(value => value.RecordId)),
+    ];
+
     private static DimensionMenuGroup Build(
         string key,
         IReadOnlyList<DimensionTypeDocument> members,
         IReadOnlyDictionary<string, IReadOnlyList<StructureRef>> structuresOfType,
-        IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>> activeRecordsOfType)
+        IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>> activeRecordsOfType,
+        IReadOnlyDictionary<string, BilingualText> parentsOf)
     {
         // The group's own order, which decides which member names it and which plural it reads.
         // MenuOrder first so a tenant can choose; code as the tiebreak so it is never arbitrary.
@@ -142,24 +173,41 @@ internal static class DimensionMenuComposition
             .Take(2)
             .Count() > 1;
 
-        var values = new List<DimensionMenuValue>();
+        var raw = new List<DimensionMenuValue>();
 
         foreach (var type in ordered)
         {
             // Named only when this type is on exactly one chart. On several, "which organisation is
-            // this department in" has more than one true answer and a bracket would pick one.
+            // this department in" has more than one true answer and a bracket would pick one. The
+            // SHORT name (D24): "Civil (Zenith)" is a menu entry, "Civil (Zenith Engineering &
+            // Construction)" is a sentence in a sidebar.
             var structures = structuresByTypeId[type.DimensionTypeId];
-            var organisation = showsOrganisation && structures.Count == 1 ? structures[0].Name : null;
+            var onOneChart = structures.Count == 1;
 
             foreach (var record in activeRecordsOfType.GetValueOrDefault(type.DimensionTypeId) ?? [])
             {
-                values.Add(new DimensionMenuValue(
+                raw.Add(new DimensionMenuValue(
                     record.RecordId,
                     type.DimensionTypeId,
                     new BilingualText(record.NameEn, record.NameAr),
-                    organisation));
+                    showsOrganisation && onOneChart ? structures[0].ShortName : null,
+                    onOneChart ? parentsOf.GetValueOrDefault(record.RecordId) : null));
             }
         }
+
+        // Which names a reader of each language meets twice. Asked per language because a tenant
+        // can translate one of two same-named units and not the other, and because the whole point
+        // of the parent suffix is to be absent where there is nothing to disambiguate.
+        var ambiguousInEnglish = Ambiguous(raw, EnglishCulture);
+        var ambiguousInArabic = Ambiguous(raw, ArabicCulture);
+
+        var values = raw
+            .Select(value => value with
+            {
+                AmbiguousInEnglish = ambiguousInEnglish.Contains(value.RecordId),
+                AmbiguousInArabic = ambiguousInArabic.Contains(value.RecordId),
+            })
+            .ToList();
 
         return new DimensionMenuGroup(
             key,
@@ -181,6 +229,11 @@ internal static class DimensionMenuComposition
     /// fifteen of the dimension, so <em>Show all</em> means "and the rest after these", not "and
     /// fifteen arbitrary others as well".
     ///
+    /// <b>By the caption, not by the name.</b> The caption is what the reader is scanning, and it
+    /// is what makes two same-named units sort meaningfully: <em>Credit – Karachi</em> before
+    /// <em>Credit – Lahore</em> rather than in whichever order their generated ids happen to fall.
+    /// Decision D24; the parent is already on the value by the time this runs.
+    ///
     /// <b>Both orders are computed and both are kept</b>, because they are genuinely different
     /// lists: Arabic sorts الفروع where English sorts Branches, so taking fifteen in one language
     /// and rendering them in the other would show an Arabic reader a set chosen by English spelling.
@@ -195,11 +248,16 @@ internal static class DimensionMenuComposition
         StringComparer comparer) =>
         [
             .. values
-                .OrderBy(value => value.Name.Display(culture), comparer)
+                .OrderBy(value => value.Caption(culture), comparer)
                 .ThenBy(value => value.RecordId, StringComparer.Ordinal)
                 .Take(DimensionMenuGroup.MaxValues),
         ];
 }
 
 /// <summary>A structure, as the menu needs to know it: enough to name it and tell it from another.</summary>
-internal sealed record StructureRef(string StructureId, BilingualText Name);
+/// <param name="ShortName">
+/// What the menu puts in brackets: the structure's authored short name, or its full name when there
+/// is none. Decision D24 — <em>Civil (Zenith)</em> rather than
+/// <em>Civil (Zenith Engineering &amp; Construction)</em>.
+/// </param>
+internal sealed record StructureRef(string StructureId, BilingualText Name, BilingualText ShortName);

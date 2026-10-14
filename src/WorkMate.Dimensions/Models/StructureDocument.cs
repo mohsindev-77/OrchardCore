@@ -36,6 +36,41 @@ public sealed class StructureDocument
     public BilingualText Name { get; set; } = new(string.Empty, string.Empty);
 
     /// <summary>
+    /// A short name for places that have to say which organisation something belongs to without
+    /// room for the whole one. Optional; empty means use <see cref="Name"/>. Decision D24.
+    /// </summary>
+    /// <remarks>
+    /// <b>The Organisation menu is what asked for this.</b> When a tenant has more than one
+    /// dimension type called Department — one per company — each value in the menu names its own
+    /// organisation in brackets, and <em>Civil (Zenith Engineering &amp; Construction)</em> in a
+    /// sidebar is a caption nobody can read. This was raised as question Q-l when that was built,
+    /// with the recommendation that the short form be <b>authored rather than derived</b>, and the
+    /// product owner has taken it.
+    ///
+    /// <b>Authored, for the reason the plural is</b> (ADR-0024). A rule that shortened a company
+    /// name — first word, initials, truncate at twenty characters — would shorten one wrongly, and
+    /// the wrong one would be a customer's own name on every row of their menu. <em>Zenith</em> is
+    /// right because somebody said so.
+    ///
+    /// <b>No migration and no index column.</b> It is a document property, so an existing structure
+    /// deserialises with it empty and falls back to the full name — which is exactly the behaviour
+    /// before it existed. Defaults to a fresh instance, never <see cref="BilingualText.Empty"/>,
+    /// per ADR-0007.
+    /// </remarks>
+    public BilingualText ShortName { get; set; } = new(string.Empty, string.Empty);
+
+    /// <summary>
+    /// The shortest honest way to name this organisation to a reader: the short name if there is
+    /// one, else the full name.
+    /// </summary>
+    public BilingualText DisplayShortName =>
+        string.IsNullOrWhiteSpace(ShortName.En) && string.IsNullOrWhiteSpace(ShortName.Ar)
+            ? Name
+            : new BilingualText(
+                string.IsNullOrWhiteSpace(ShortName.En) ? Name.En : ShortName.En,
+                string.IsNullOrWhiteSpace(ShortName.Ar) ? Name.Ar : ShortName.Ar);
+
+    /// <summary>
     /// The types this axis uses, in reading order. Ordinals are contiguous from zero.
     /// </summary>
     /// <remarks>

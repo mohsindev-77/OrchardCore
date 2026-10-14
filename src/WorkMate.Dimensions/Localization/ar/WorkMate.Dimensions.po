@@ -2028,7 +2028,81 @@ msgstr "شاغر"
 msgid "Choose a structure to see the head and the headcount."
 msgstr "اختر هيكلاً لعرض رئيس الوحدة وعدد الموظفين."
 
-#. {0} is how many employees sit at this value on the chosen chart.
+#. ---- Decision D24: the value page's two headcounts and its tree of units below ----------
+
+#. {0} is how many employees sit at this unit itself. Shown beside "including units below",
+#. because a division whose people all sit in its departments has a direct count of zero and
+#. "0 here" said it was empty.
 #: Views/DimensionRecordsAdmin/Details.cshtml
-msgid "{0} here"
-msgstr "{0} هنا"
+msgid "{0} directly"
+msgid_plural "{0} directly"
+msgstr[0] "لا أحد مباشرة"
+msgstr[1] "موظف واحد مباشرة"
+msgstr[2] "موظفان مباشرة"
+msgstr[3] "{0} موظفين مباشرة"
+msgstr[4] "{0} موظفاً مباشرة"
+msgstr[5] "{0} موظف مباشرة"
+
+#. {0} counts this unit and everything beneath it, each employee once.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} including units below"
+msgid_plural "{0} including units below"
+msgstr[0] "لا أحد بما في ذلك الوحدات الأدنى"
+msgstr[1] "موظف واحد بما في ذلك الوحدات الأدنى"
+msgstr[2] "موظفان بما في ذلك الوحدات الأدنى"
+msgstr[3] "{0} موظفين بما في ذلك الوحدات الأدنى"
+msgstr[4] "{0} موظفاً بما في ذلك الوحدات الأدنى"
+msgstr[5] "{0} موظف بما في ذلك الوحدات الأدنى"
+
+#. The heading of the tree of everything under this unit. {0} is the unit's own name.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Units under {0}"
+msgstr "الوحدات تحت {0}"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Include retired"
+msgstr "إظهار المتقاعدة"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Hide retired"
+msgstr "إخفاء المتقاعدة"
+
+#. ---- Decision D25: the three views of a value's "Units under this one" section ----------
+
+#. The read-only org chart. Beside "Tree" and "List", which this module already raises elsewhere.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Hierarchy"
+msgstr "الهيكل"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Expand all"
+msgstr "توسيع الكل"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Collapse all"
+msgstr "طي الكل"
+
+#. A tree cannot be paged — a unit whose parent fell outside the slice would be drawn as a root,
+#. which is a wrong shape rather than a partial one — so the screen says it stopped instead.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "This unit has {0} units under it and the tree shows the first {1}. Open a unit lower down to see the rest."
+msgstr "تحت هذه الوحدة {0} وحدة وتعرض الشجرة أول {1}. افتح وحدة أدنى لعرض البقية."
+
+#. ---- Slice F2 value page ----------------------------------------------------------------
+
+#. The Organisation menu's entry for a dimension with no authored plural: "All Workstream units"
+#. rather than "All Workstream", which is what falling back to the singular produces in a
+#. sentence. Decision D24.
+#: Navigation/AdminMenu.cs
+msgid "All {0} units"
+msgstr "كل وحدات {0}"
+
+#. The structure editor's short name, used where there is no room for the whole one — the
+#. Organisation menu's brackets. Authored, never derived, for the reason the plural is.
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Short name"
+msgstr "الاسم المختصر"
+
+#: Views/StructuresAdmin/Edit.cshtml
+msgid "Optional. Used where there is no room for the whole name — the Organisation menu shows it in brackets after a unit when two organisations share a dimension. Left empty, the full name is used."
+msgstr "اختياري. يُستخدم حيث لا تتسع المساحة للاسم الكامل — تعرضه قائمة الهيكل التنظيمي بين قوسين بعد الوحدة عندما تشترك منظمتان في بُعد واحد. إن تُرك فارغاً يُستخدم الاسم الكامل."

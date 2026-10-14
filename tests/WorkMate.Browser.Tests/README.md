@@ -119,8 +119,18 @@ names the dimension as a group and `All <plural>` as the entry:
 await AdminMenu.ClickAsync(page, "Organisation designer", "Organisation");
 await AdminMenu.ClickAsync(page, "Dimension types", "Organisation", "Settings");
 await AdminMenu.ClickAsync(page, "All Sections", "Organisation", "Sections");
-await AdminMenu.ClickAsync(page, "Civil (Zenith Engineering & Construction)", "Organisation", "Departments");
+await AdminMenu.ClickAsync(page, "Civil (Zenith)", "Organisation", "Departments");
 ```
+
+**A nested group's control is not in the page until the group above it is open.**
+Measured, not assumed: `GetByRole(Button, "Divisions").CountAsync()` is `0` on a
+freshly loaded `/Admin` and becomes `1` once *Organisation* has been expanded. So
+the helper waits for each control with `Expect(...).ToBeVisible()` and then clicks
+it, rather than asking `IsVisibleAsync` first — that question is immediate and
+non-retrying, and a control still mid-expansion answered "no", the click never
+happened, and the failure surfaced as a missing link two groups later. The same
+lateness is why `workmate-organisation-menu` titles menu links through a
+`MutationObserver` instead of one pass at load.
 
 Each group is opened in turn and the entry is only checked at the end. A nested
 entry is not visible until every group above it is open, so asking "is the entry

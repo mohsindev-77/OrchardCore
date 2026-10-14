@@ -21,6 +21,13 @@
 
     <workmate-bilingual for-en="NameEn" for-ar="NameAr" label="@T["Name"]" required="true" max-length="200" />
 
+    @* The short form (decision D24). Authored, never derived, for the reason the dimension plural
+       is: a rule that shortened a customer's company name would shorten one wrongly, and the wrong
+       one would be their own name on every row of their menu. *@
+    @{ var shortNameHint = T["Optional. Used where there is no room for the whole name — the Organisation menu shows it in brackets after a unit when two organisations share a dimension. Left empty, the full name is used."].Value; }
+    <workmate-bilingual for-en="ShortNameEn" for-ar="ShortNameAr" label="@T["Short name"]"
+                        hint="@shortNameHint" max-length="60" />
+
     @* Not an input any more. ADR-0010 turned this setting into explicit ticks in the grid below,
        once, when the structure was upgraded. It is still posted so that saving does not quietly
        clear the record of what the map was derived from, but it is not shown: the grid is the

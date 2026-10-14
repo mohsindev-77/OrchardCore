@@ -299,12 +299,95 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
         {
             var captions = Captions(await GroupAsync(services, "Departments"));
 
-            captions.Should().Contain("HR (Zenith Engineering & Construction)");
-            captions.Should().Contain("HR (Crescent Microfinance)");
+            // The structure's SHORT name (D24): "(Zenith)", not "(Zenith Engineering &
+            // Construction)", which is a sentence in a sidebar fifteen characters wide. And the
+            // parent beside it, because both companies call their department HR, so the
+            // organisation alone leaves two entries reading the same but for a bracket.
+            captions.Should().Contain("HR – Corporate (Zenith)");
+            captions.Should().Contain("HR – Head Office (Crescent)");
 
             // Projects exist on one chart only, so there is nothing to disambiguate and no bracket.
             Captions(await GroupAsync(services, "Projects")).Skip(1)
                 .Should().NotContain(caption => caption.Contains('(', StringComparison.Ordinal));
+        });
+
+    /// <summary>
+    /// Two departments of the same name in one company are told apart by their parent.
+    /// </summary>
+    /// <remarks>
+    /// <b>Crescent is the tenant this exists for, and it is real data rather than a contrivance.</b>
+    /// It has two departments called <em>Credit</em> — one in the Lahore branch, one in Karachi —
+    /// and two called <em>Operations</em> beside them, because a code is unique within a tenant and
+    /// a name is not. Before decision D24 the menu listed <em>Credit (Crescent)</em> twice with
+    /// nothing to choose between them.
+    ///
+    /// The parent rather than the code: what tells a reader which Credit is which is <em>Lahore
+    /// Main Branch</em>. The code is on the list screen, which is where somebody who wants one is
+    /// going anyway.
+    /// </remarks>
+    [Fact]
+    public async Task SameNamedValuesAreToldApartByTheirParent() =>
+        await InTenantAsSystemAsync(async services =>
+        {
+            var captions = Captions(await GroupAsync(services, "Departments"));
+
+            captions.Should().Contain("Credit – Lahore Main Branch (Crescent)");
+            captions.Should().Contain("Credit – Karachi Main Branch (Crescent)");
+            captions.Should().Contain("Operations – Lahore Main Branch (Crescent)");
+            captions.Should().Contain("Operations – Karachi Main Branch (Crescent)");
+
+            // A uniquely named department in the same group keeps its bare name: a disambiguator
+            // on something unambiguous is noise, and on a menu it is noise on every row.
+            captions.Should().Contain("Civil (Zenith)");
+            captions.Should().NotContain(caption => caption.StartsWith("Civil –", StringComparison.Ordinal));
+        });
+
+    /// <summary>
+    /// A dimension with no authored plural reads as a sentence rather than as broken English.
+    /// </summary>
+    /// <remarks>
+    /// Decision D24. The group's caption falls back to the singular, which is correct on its own
+    /// and breaks the moment it is in a sentence: <em>All Workstream</em>. The menu changes the
+    /// phrasing instead of inventing a word, which is ADR-0024's whole position.
+    /// </remarks>
+    [Fact]
+    public async Task ADimensionWithNoPluralSaysAllOfItsUnitsRatherThanAllOfIt() =>
+        await InTenantAsSystemAsync(async services =>
+        {
+            var created = await services.GetRequiredService<IDimensionTypeService>().CreateAsync(
+                "menu-phrasing-workstream",
+                new BilingualText("Workstream", "مسار العمل"),
+                [],
+                allowsSelfNesting: false);
+
+            created.Succeeded.Should().BeTrue(Why(created.Errors));
+
+            Captions(await GroupAsync(services, "Workstream"))[0].Should().Be("All Workstream units");
+
+            // And a dimension that does have one still reads the short way.
+            Captions(await GroupAsync(services, "Departments"))[0].Should().Be("All Departments");
+        });
+
+    /// <summary>
+    /// The shipped dimensions get their plurals on upgrade, so an existing tenant's menu is right.
+    /// </summary>
+    /// <remarks>
+    /// The end-to-end of decision D24's first half: a type whose plural is blank or is the singular
+    /// repeated — which is what every tenant that upgraded through <c>UpdateFrom10Async</c> holds —
+    /// is filled from the shipped table by <c>UpdateFrom11Async</c>, and the menu reads
+    /// <em>Departments</em> rather than <em>Department</em>. The migration itself is covered
+    /// directly in <c>DimensionsMigrationUpgradeTenantTests</c>; this is the menu agreeing.
+    /// </remarks>
+    [Fact]
+    public async Task TheShippedDimensionsReadAsPluralsOnATenantThatNeverAuthoredAny() =>
+        await InTenantAsSystemAsync(async services =>
+        {
+            var captions = await DimensionCaptionsAsync(services);
+
+            captions.Should().NotContain("Department", "a tenant should never read the singular in this menu");
+            captions.Should().NotContain("Division");
+            captions.Should().Contain("Departments");
+            captions.Should().Contain("Divisions");
         });
 
     /// <summary>
@@ -350,7 +433,7 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
             var after = await GroupAsync(services, "Departments");
 
             Captions(after).Should().Contain(
-                "Aardvark (Zenith Engineering & Construction)",
+                "Aardvark (Zenith)",
                 "the cached menu was dropped the moment the value was written");
 
             after.Items[^1].Text.Value.Should().NotBe(total, "and the count behind Show all moved with it");
@@ -380,7 +463,7 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
             renamed.Succeeded.Should().BeTrue(Why(renamed.Errors));
 
             Captions(await GroupAsync(services, "Departments"))
-                .Should().Contain("Group Treasury (Crescent Microfinance)");
+                .Should().Contain("Group Treasury (Crescent)");
         });
 
     /// <summary>
@@ -546,10 +629,52 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
         hrefs.Should().Contain(href => href.Contains("/Dimensions/Designer/Index", StringComparison.OrdinalIgnoreCase));
 
         html.Should().Contain("All Departments");
-        html.Should().Contain("HR (Zenith Engineering &amp; Construction)");
+
+        // Read through the parser rather than off the raw HTML: Orchard's default HtmlEncoder
+        // escapes every non-ASCII character, so the en dash in "HR – Corporate" is &#x2013; in the
+        // response and a substring search for the character it stands for finds nothing. Asserting
+        // on the decoded text is asking what a reader sees. D24.
+        var captions = document
+            .QuerySelectorAll("a[href*='/Dimensions/Records/Details']")
+            .Select(link => link.TextContent.Trim())
+            .ToList();
+
+        captions.Should().Contain("HR – Corporate (Zenith)");
+
+        captions.Should().NotContain(
+            caption => caption.Contains("Zenith Engineering", StringComparison.Ordinal),
+            "the bracket is the structure's short name");
         html.Should().NotContain("Zenith Departments", "the company-qualified captions are gone (D23 B)");
         html.Should().Contain("/Admin/Dimensions/Types/Index");
         html.Should().Contain("/Admin/Dimensions/Structures/Index");
+    }
+
+    /// <summary>
+    /// Every admin page carries the script that puts a menu caption's full text on its link.
+    /// </summary>
+    /// <remarks>
+    /// <b>Decision D24, and it has to be a script.</b> Orchard Core 3.0.1's <c>MenuItem</c> carries
+    /// <c>Text</c>, <c>Href</c>, <c>Id</c>, <c>Classes</c>, <c>Permissions</c> and
+    /// <c>RouteValues</c> — no title and no attribute bag, verified against the pinned assemblies
+    /// with <c>tools/api-probe</c> — and the admin theme's templates are compiled into
+    /// <c>TheAdmin.dll</c>, where a module cannot override them. Decorating the rendered menu is an
+    /// extension of Orchard; editing the theme would be a change to it, which CLAUDE.md forbids.
+    ///
+    /// Asserted on a page this module does not own, because that is the point of requiring it from
+    /// a result filter rather than from a view: the menu is on every admin screen and this module
+    /// has a view for almost none of them.
+    /// </remarks>
+    [Fact]
+    public async Task TheMenuTooltipScriptIsOnEveryAdminPage()
+    {
+        foreach (var path in new[] { "/Admin", "/Admin/Dimensions/Types/Index" })
+        {
+            var html = await BaseTenantFixture.GetPageAsync(_tenant.Administrator, path);
+
+            html.Should().Contain(
+                "organisation-menu.js",
+                $"the menu is on {path} too, so the script that decorates it has to be");
+        }
     }
 
     // ---- harness ---------------------------------------------------------------------------

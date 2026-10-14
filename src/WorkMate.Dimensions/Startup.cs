@@ -42,6 +42,12 @@ public sealed class Startup : StartupBase
         services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
             options.Filters.Add<Filters.DimensionRecordAdminRedirectFilter>());
 
+        // The Organisation menu's captions can be long enough for the sidebar to truncate them, and
+        // Orchard's MenuItem has nowhere to put a tooltip. See the filter for why this is a script
+        // on every admin page rather than an attribute in markup.
+        services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(options =>
+            options.Filters.Add<Filters.OrganisationMenuTooltipFilter>());
+
         // Every admin asset this module ships, so views name them instead of pathing to them and
         // Orchard gives each URL a content hash. See the manifest's remarks: a bare path is cached
         // by the browser for thirty days and a rebuild never reaches it.

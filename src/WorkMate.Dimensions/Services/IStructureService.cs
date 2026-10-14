@@ -24,6 +24,10 @@ public interface IStructureService
     /// leaves it null to have it derived here. Both go through one derivation, so the same
     /// description always produces the same map.
     /// </remarks>
+    /// <param name="shortName">
+    /// A short form of <paramref name="name"/> for places with no room for the whole one — the
+    /// Organisation menu's brackets, decision D24. Null or empty means the full name is used.
+    /// </param>
     Task<DimensionResult<StructureDocument>> CreateAsync(
         string code,
         BilingualText name,
@@ -33,6 +37,7 @@ public interface IStructureService
         bool isPrimaryOrganisation,
         StructureShape? shape = null,
         DimensionValidationBatch? batch = null,
+        BilingualText? shortName = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -45,6 +50,12 @@ public interface IStructureService
     /// removing a level never refuses: the graph service closes rather than deletes, so that half
     /// of a level change is always safe.
     /// </remarks>
+    /// <param name="shortName">
+    /// As on <see cref="CreateAsync"/>, with the rule <c>IDimensionTypeService.UpdateAsync</c>'s
+    /// menu parameter follows: <b>null leaves the stored short name exactly as it is</b> rather than
+    /// clearing it, so a caller that is not describing it cannot silently discard one somebody
+    /// authored. An explicitly empty <see cref="BilingualText"/> does clear it.
+    /// </param>
     Task<DimensionResult<StructureDocument>> UpdateAsync(
         string structureId,
         BilingualText name,
@@ -53,6 +64,7 @@ public interface IStructureService
         bool isStrict,
         bool isPrimaryOrganisation,
         StructureShape? shape = null,
+        BilingualText? shortName = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

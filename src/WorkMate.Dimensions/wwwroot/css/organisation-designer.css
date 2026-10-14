@@ -607,3 +607,43 @@
 #record-filter-panel > summary::-webkit-details-marker {
     display: none;
 }
+
+/* ---- a value's own read-only hierarchy (decision D25) ---------------------------------- */
+
+/*
+    The value page's "Units under this one" chart reuses everything above it: the same
+    ul > li.designer-node > .designer-card + ul.designer-children markup, so the same connector
+    lines, the same row levelling and the same RTL mirroring, with nothing written twice.
+
+    These three rules are the whole of what it adds, and none of them touches a selector the
+    designer uses. The outermost list needs the same treatment #designer-tree > ul gets — no stem
+    above a card that is not there — and that rule is addressed by the designer's own id, which
+    this page does not have.
+*/
+.value-hierarchy-root {
+    padding-block-start: 0 !important;
+    padding-inline-start: 0 !important;
+}
+
+/*
+    The name is a link here where the designer's is plain text: this chart exists to be a way into
+    each value's page. It inherits the card's truncation rather than escaping it, so a long name
+    still fits the box and still answers on hover.
+*/
+.designer-chart .value-hierarchy-name {
+    color: inherit;
+    text-decoration: none;
+}
+
+.designer-chart .value-hierarchy-name:hover,
+.designer-chart .value-hierarchy-name:focus-visible {
+    text-decoration: underline;
+}
+
+/*
+    The headcount badge. The designer's equivalent is a link into the employee list; this one is
+    read-only, so it is styled as the number it is rather than as something to press.
+*/
+.designer-chart .value-hierarchy-employees {
+    cursor: default;
+}

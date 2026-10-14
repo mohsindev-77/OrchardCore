@@ -128,6 +128,7 @@ internal sealed class StructureService : IStructureService
         bool isPrimaryOrganisation,
         StructureShape? shape = null,
         DimensionValidationBatch? batch = null,
+        BilingualText? shortName = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -170,6 +171,9 @@ internal sealed class StructureService : IStructureService
             AllowSkipLevel = allowSkipLevel,
             IsStrict = isStrict,
             IsPrimaryOrganisation = isPrimaryOrganisation,
+            // Null means "nobody said", which on a new axis is the same as empty: a reader sees the
+            // full name until somebody authors a short one. D24.
+            ShortName = shortName ?? new BilingualText(string.Empty, string.Empty),
         };
 
         await _session.SaveCheckedAsync(document, cancellationToken);
@@ -200,6 +204,7 @@ internal sealed class StructureService : IStructureService
         bool isStrict,
         bool isPrimaryOrganisation,
         StructureShape? shape = null,
+        BilingualText? shortName = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -272,6 +277,15 @@ internal sealed class StructureService : IStructureService
         document.AllowSkipLevel = allowSkipLevel;
         document.IsStrict = isStrict;
         document.IsPrimaryOrganisation = isPrimaryOrganisation;
+
+        // Only when the caller is describing it. Null is "I am not talking about the short name"
+        // rather than "clear it" — the same rule EmployeeAttachableDimensionTypeIds states three
+        // lines above, and for the same reason: a recipe row or an API call that says nothing about
+        // it must not discard one somebody authored.
+        if (shortName is not null)
+        {
+            document.ShortName = shortName;
+        }
 
         await _session.SaveCheckedAsync(document, cancellationToken);
 

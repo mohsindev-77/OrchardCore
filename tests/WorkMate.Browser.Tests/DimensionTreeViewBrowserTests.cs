@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -192,5 +193,272 @@ public sealed class DimensionTreeViewBrowserTests
         // The editor for that record, named for it — and carrying the alias box the FRS asks for.
         await Assertions.Expect(page.Locator("#record-edit")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator("#AliasEn")).ToHaveValueAsync("Shops");
+    }
+
+    /// <summary>
+    /// Opening a value from the menu shows the units under it, three levels deep, and collapses.
+    /// </summary>
+    /// <remarks>
+    /// <b>Decision D24, by clicking, which is the only way the collapse half counts.</b> The
+    /// organisation designer's expand control once shipped doing nothing at all while the whole
+    /// suite stayed green, because the markup was right and nothing ever pressed it. This presses
+    /// everything: the menu entry, the value under it, a branch toggle, and Collapse all.
+    ///
+    /// The demo chart is Sales → Retail → In-Store Sales → Counter, which is three levels below
+    /// the division and the only seeded tree deep enough to tell "nested" from "a list of children".
+    /// </remarks>
+    [Fact]
+    public async Task AValuesPageShowsTheUnitsUnderItAndCollapsesThem()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+
+        await Assertions.Expect(page.Locator("#value-name")).ToContainTextAsync("Sales");
+        await Assertions.Expect(page.Locator("#value-tree-heading")).ToContainTextAsync("Units under Sales");
+
+        var retail = page.Locator("#value-tree tr.record-row[data-record-code='demo-dept-retail']");
+        var inStore = page.Locator("#value-tree tr.record-row[data-record-code='demo-sec-instore']");
+        var counter = page.Locator("#value-tree tr.record-row[data-record-code='demo-sec-counter']");
+
+        await Assertions.Expect(retail).ToBeVisibleAsync();
+        await Assertions.Expect(inStore).ToBeVisibleAsync();
+        await Assertions.Expect(counter).ToBeVisibleAsync();
+
+        // Three levels, indented by depth, and each naming the dimension it is of.
+        await Assertions.Expect(retail).ToHaveAttributeAsync("data-depth", "1");
+        await Assertions.Expect(inStore).ToHaveAttributeAsync("data-depth", "2");
+        await Assertions.Expect(counter).ToHaveAttributeAsync("data-depth", "3");
+        await Assertions.Expect(retail).ToContainTextAsync("Department");
+
+        // Collapsing the top branch takes everything under it with it.
+        await retail.Locator(".record-toggle").ClickAsync();
+
+        await Assertions.Expect(inStore).ToBeHiddenAsync();
+        await Assertions.Expect(counter).ToBeHiddenAsync();
+        await Assertions.Expect(retail).ToBeVisibleAsync();
+
+        // Expand all brings the whole subtree back in one press.
+        await page.ClickAsync("#value-tree-expand-all");
+
+        await Assertions.Expect(counter).ToBeVisibleAsync();
+
+        await page.ClickAsync("#value-tree-collapse-all");
+
+        // Only the immediate children survive a collapse; everything deeper goes.
+        await Assertions.Expect(retail).ToBeVisibleAsync();
+        await Assertions.Expect(inStore).ToBeHiddenAsync();
+    }
+
+    /// <summary>
+    /// A unit's name in the tree opens that unit's own page, and a leaf has no tree at all.
+    /// </summary>
+    /// <remarks>
+    /// The two ends of D24's fifth requirement in one journey: every row is a way further in, and
+    /// the bottom of the chart says nothing rather than showing an empty table.
+    /// </remarks>
+    [Fact]
+    public async Task AUnitInTheTreeOpensItsOwnPageAndALeafHasNoTree()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+
+        await page.Locator("#value-tree tr.record-row[data-record-code='demo-sec-counter'] a").First.ClickAsync();
+
+        await Assertions.Expect(page.Locator("#value-name")).ToContainTextAsync("Counter");
+        await Assertions.Expect(page.Locator("#value-code")).ToContainTextAsync("demo-sec-counter");
+
+        // Counter is the bottom of this chart, so there is no section — not an empty one.
+        await Assertions.Expect(page.Locator("#value-tree")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.Locator("#value-tree-heading")).ToHaveCountAsync(0);
+    }
+
+    /// <summary>
+    /// The three views switch by clicking, each draws its own thing, and the URL says which.
+    /// </summary>
+    /// <remarks>
+    /// <b>Decision D25, in a browser because that is where a view switch exists.</b> The server
+    /// side is covered far more cheaply in <c>DimensionValuePageTenantTests</c>; what only this can
+    /// answer is whether the three links are reachable, whether pressing one lands on the view it
+    /// names, and whether the back button returns to the one before — which is the whole reason
+    /// the view is in the URL rather than only in storage.
+    /// </remarks>
+    [Fact]
+    public async Task TheThreeViewsSwitchByClickingAndTheUrlSaysWhichIsShowing()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+
+        // Tree is what you get without asking.
+        await Assertions.Expect(page.Locator("#value-tree")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("#value-units-view-tree")).ToHaveAttributeAsync("aria-current", "true");
+
+        await page.ClickAsync("#value-units-view-hierarchy");
+
+        await Assertions.Expect(page.Locator("#value-hierarchy")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("#value-tree")).ToHaveCountAsync(0);
+        page.Url.Should().Contain("view=hierarchy");
+
+        await page.ClickAsync("#value-units-view-list");
+
+        await Assertions.Expect(page.Locator("#value-list")).ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator("#value-hierarchy")).ToHaveCountAsync(0);
+        page.Url.Should().Contain("view=list");
+
+        // The back button returns to the view before, because each one is a real page.
+        await page.GoBackAsync();
+
+        await Assertions.Expect(page.Locator("#value-hierarchy")).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// The hierarchy expands, collapses, zooms, and every box is a way into that unit's page.
+    /// </summary>
+    /// <remarks>
+    /// The expand control is the half that only a browser can answer: the designer's own expand
+    /// control once shipped doing nothing at all while the whole suite stayed green, because the
+    /// markup was right and nothing ever pressed it.
+    /// </remarks>
+    [Fact]
+    public async Task TheHierarchyExpandsCollapsesZoomsAndLinksToEachUnit()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+        await page.ClickAsync("#value-units-view-hierarchy");
+
+        // Scoped to the chart, not to the page. Since decision D23 the Organisation menu lists a
+        // dimension's values too, so "In-Store Sales" is a link in the sidebar as well and a
+        // page-wide locator matches two — which Playwright reports as a strict-mode violation
+        // rather than quietly picking one. The question here is about the chart.
+        var chart = page.Locator("#value-hierarchy");
+
+        var retail = chart.Locator("li.designer-node[data-record-id]")
+            .Filter(new() { Has = page.Locator("a.value-hierarchy-name", new() { HasTextString = "Retail" }) })
+            .First;
+
+        var inStore = chart.GetByRole(AriaRole.Link, new() { NameString = "In-Store Sales" });
+
+        await Assertions.Expect(inStore).ToBeVisibleAsync();
+
+        // Collapsing a branch takes everything under it with it.
+        await retail.Locator(".value-hierarchy-toggle").First.ClickAsync();
+
+        await Assertions.Expect(inStore).ToBeHiddenAsync();
+
+        await page.ClickAsync("#value-tree-expand-all");
+
+        await Assertions.Expect(inStore).ToBeVisibleAsync();
+
+        // Zoom scales the canvas, which is what keeps a wide chart's scrollbars honest.
+        await page.ClickAsync("[data-value-zoom='in']");
+
+        var zoomed = await page.Locator("#value-hierarchy-canvas").EvaluateAsync<string>(
+            "node => node.style.getPropertyValue('--designer-zoom')");
+
+        zoomed.Should().NotBeNullOrEmpty("the zoom control set a scale on the canvas");
+
+        await page.ClickAsync("[data-value-zoom='fit']");
+
+        // And a box is a way in: clicking a name opens that unit's own page.
+        await chart.GetByRole(AriaRole.Link, new() { NameString = "Counter" }).ClickAsync();
+
+        await Assertions.Expect(page.Locator("#value-name")).ToContainTextAsync("Counter");
+        await Assertions.Expect(page.Locator("#value-code")).ToContainTextAsync("demo-sec-counter");
+    }
+
+    /// <summary>
+    /// The list sorts by clicking a column heading, and its names open the right pages.
+    /// </summary>
+    [Fact]
+    public async Task TheListSortsByClickingAColumnHeading()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+        await page.ClickAsync("#value-units-view-list");
+
+        await page.ClickAsync("#value-list thead a[data-sort='name']");
+
+        page.Url.Should().Contain("sort=name");
+
+        var ascending = await page.EvaluateAsync<string[]>(
+            "() => [...document.querySelectorAll('#value-list tbody tr')].map(r => r.getAttribute('data-record-code'))");
+
+        // Pressing the same heading again turns it round, which is what a reader expects of a
+        // column they have just sorted.
+        await page.ClickAsync("#value-list thead a[data-sort='name']");
+
+        var descending = await page.EvaluateAsync<string[]>(
+            "() => [...document.querySelectorAll('#value-list tbody tr')].map(r => r.getAttribute('data-record-code'))");
+
+        descending.Should().Equal(ascending.Reverse(), "the same rows, the other way up");
+
+        await page.Locator("#value-list tr[data-record-code='demo-sec-counter'] a").First.ClickAsync();
+
+        await Assertions.Expect(page.Locator("#value-code")).ToContainTextAsync("demo-sec-counter");
+    }
+
+    /// <summary>
+    /// An Arabic reader gets the three views in Arabic, and the chart mirrors.
+    /// </summary>
+    /// <remarks>
+    /// The chart's layout is the designer's, every rule of which is written in logical properties
+    /// — <c>inset-inline-start</c>, <c>border-inline-end</c> — so it mirrors on the document's
+    /// direction rather than on a second stylesheet. This asserts the direction actually reaches
+    /// it, which is the part a rule cannot promise by itself.
+    /// </remarks>
+    [Fact]
+    public async Task TheViewsAreInArabicAndTheChartMirrors()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenSalesAsync(page);
+
+        await page.EvaluateAsync("document.cookie = '.AspNetCore.Culture=c%3Dar%7Cuic%3Dar;path=/'");
+        await page.ReloadAsync();
+
+        await Assertions.Expect(page.Locator("#value-units-view-hierarchy")).ToContainTextAsync("الهيكل");
+        await Assertions.Expect(page.Locator("#value-units-view-list")).ToContainTextAsync("قائمة");
+
+        await page.ClickAsync("#value-units-view-hierarchy");
+
+        await Assertions.Expect(page.Locator("#value-hierarchy")).ToBeVisibleAsync();
+
+        var direction = await page.Locator("#value-hierarchy").EvaluateAsync<string>(
+            "node => getComputedStyle(node).direction");
+
+        direction.Should().Be("rtl", "the chart inherits the document's direction and mirrors on it");
+    }
+
+    /// <summary>
+    /// Opens the Sales division's own page, entirely by clicking: Organisation → Divisions → All
+    /// Divisions → the row for <c>demo-div-sales</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Through the list rather than straight off the menu, and that is about this tenant rather
+    /// than about the feature.</b> The browser tenant is shared, and the move-and-merge tests add
+    /// two divisions apiece to it; past fifteen the menu lists the first fifteen and offers
+    /// <em>Show all</em>, so whether <em>Sales</em> has its own entry depends on how many tests ran
+    /// first. Finding the row by its <b>code</b> is stable in a way a name in a capped list is not.
+    ///
+    /// The journey is no weaker for it — every step is still a click, and it also exercises the
+    /// list screen's name link, which is the other route D23 C says must reach this page. The menu
+    /// listing values is covered on a tenant nothing mutates, in
+    /// <c>OrganisationMenuBrowserTests</c> and <c>OrganisationMenuTenantTests</c>.
+    /// </remarks>
+    private static async Task OpenSalesAsync(IPage page)
+    {
+        await AdminMenu.ClickAsync(page, "All Divisions", "Organisation", "Divisions");
+
+        await page.Locator("tr.record-row[data-record-code='demo-div-sales'] a.record-details").ClickAsync();
     }
 }

@@ -724,6 +724,65 @@ public sealed class Migrations : DataMigration
     }
 
     /// <summary>
+    /// Decision D24: gives an existing tenant's dimensions their plurals, so the Organisation menu
+    /// stops reading <em>Department</em> and <em>All Department</em>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The problem this exists for.</b> ADR-0024 brought the per-dimension menu back with the
+    /// plural authored on the dimension type editor. A tenant created before that field existed has
+    /// no plural on any type, so every entry falls back to its singular — correct, and wrong-looking
+    /// on every line of the menu. Asking a customer to edit twelve dimension types by hand to fix a
+    /// regression they did not cause is not a migration strategy.
+    ///
+    /// <b>Why the test is not simply "is it blank".</b> <see cref="UpdateFrom10Async"/> replaced
+    /// session D's guessed plurals with the <em>singular</em>, deliberately, so the editor showed
+    /// what the menu would say. Every tenant that has upgraded past version 11 therefore holds
+    /// "Department" rather than "", and a step that only filled blanks would reach none of them.
+    /// <see cref="StandardDimensionPlurals.MayBeFilled"/> treats both as unauthored and says why.
+    ///
+    /// <b>Nothing is derived and nothing a person typed is touched.</b> The plural comes from
+    /// <see cref="StandardDimensionPlurals"/>, a frozen lookup of the names this product ships; a
+    /// type whose name is not on it is left exactly as it is, and the menu phrases itself around the
+    /// singular instead — <em>All Workstream units</em> rather than a word English does not have.
+    /// The two halves are filled independently, so a type with an authored English plural and no
+    /// Arabic one gains the Arabic and keeps the English.
+    ///
+    /// <b>Not a schema change</b> — <c>PluralName</c> has been a document property since version 8 —
+    /// and idempotent: once a plural has been filled it no longer equals the singular, so a second
+    /// pass changes nothing.
+    /// </remarks>
+    public async Task<int> UpdateFrom11Async()
+    {
+        foreach (var type in await _session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+        {
+            var standard = StandardDimensionPlurals.For(type.Name);
+
+            var english = StandardDimensionPlurals.MayBeFilled(type.PluralName.En, type.Name.En)
+                && standard.En.Length > 0
+                ? standard.En
+                : type.PluralName.En;
+
+            var arabic = StandardDimensionPlurals.MayBeFilled(type.PluralName.Ar, type.Name.Ar)
+                && standard.Ar.Length > 0
+                ? standard.Ar
+                : type.PluralName.Ar;
+
+            if (string.Equals(english, type.PluralName.En, StringComparison.Ordinal) &&
+                string.Equals(arabic, type.PluralName.Ar, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // A fresh instance, never a shared one — ADR-0007.
+            type.PluralName = new BilingualText(english, arabic);
+
+            await _session.SaveCheckedAsync(type);
+        }
+
+        return 12;
+    }
+
+    /// <summary>
     /// Whether <paramref name="tableName"/> already has a column named <paramref name="columnName"/>,
     /// read from the database itself rather than assumed from what the code expects — the whole
     /// point of the check in <see cref="UpdateFrom3Async"/> is to stop trusting that.

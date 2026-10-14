@@ -102,10 +102,20 @@ internal static class AdminMenu
                 break;
             }
 
-            if (await button.IsVisibleAsync())
-            {
-                await button.ClickAsync();
-            }
+            // Waited for, then clicked — never "ask whether it is visible, then click if it was".
+            //
+            // A nested group's control does not exist in the DOM at all until the group above it
+            // is expanded: measured on a real tenant, `GetByRole(Button, "Divisions").CountAsync()`
+            // is 0 until "Organisation" has been opened. The union gate above settles that one of
+            // the two has appeared, but it cannot promise which, and `IsVisibleAsync` is immediate
+            // and non-retrying — so a control that was still mid-expansion answered "no" and the
+            // click never happened, leaving the entry unreachable and the final assertion to
+            // report it as a missing link rather than as an unopened group.
+            //
+            // ClickAsync waits for actionability by itself, so this closes the window rather than
+            // narrowing it.
+            await Assertions.Expect(button).ToBeVisibleAsync();
+            await button.ClickAsync();
         }
 
         // Asserted, not assumed. A group that did not open fails here, naming the entry it was

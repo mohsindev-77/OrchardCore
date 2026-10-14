@@ -91,12 +91,35 @@ public sealed class StructureEditViewModel
     /// </remarks>
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
+    /// <summary>
+    /// A short form of the name, for places with no room for the whole one. Optional. Decision D24.
+    /// </summary>
+    /// <remarks>
+    /// Nullable for the reason <see cref="NameEn"/> is: an empty box binds to null, and a
+    /// non-nullable reference property gets an implicit <c>required</c> in model state, which would
+    /// refuse a blank short name before the controller ran. Blank is the ordinary answer — most
+    /// tenants have one organisation and never need one.
+    /// </remarks>
+    public string? ShortNameEn { get; set; }
+
+    /// <inheritdoc cref="ShortNameEn"/>
+    public string? ShortNameAr { get; set; }
+
+    /// <summary>
+    /// The posted short name as the service's value. Never null: this form always shows the boxes,
+    /// so a post from it is a complete statement — which is what lets a reader clear one.
+    /// </summary>
+    public BilingualText ToShortName() =>
+        new(ShortNameEn?.Trim() ?? string.Empty, ShortNameAr?.Trim() ?? string.Empty);
+
     public static StructureEditViewModel Of(StructureDocument document) => new()
     {
         StructureId = document.StructureId,
         Code = document.Code,
         NameEn = document.Name.En,
         NameAr = document.Name.Ar,
+        ShortNameEn = document.ShortName.En,
+        ShortNameAr = document.ShortName.Ar,
         AllowSkipLevel = document.AllowSkipLevel,
         IsStrict = document.IsStrict,
         IsPrimaryOrganisation = document.IsPrimaryOrganisation,

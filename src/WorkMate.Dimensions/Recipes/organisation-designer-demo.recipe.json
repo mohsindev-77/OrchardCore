@@ -35,6 +35,8 @@
           "code": "demo-org",
           "nameEn": "WorkMate Demo Organisation",
           "nameAr": "منظمة وورك ميت التجريبية",
+          "shortNameEn": "Demo",
+          "shortNameAr": "تجريبي",
           "levelTypeCodes": ["demo-division", "demo-department", "demo-section"],
           "allowSkipLevel": false,
           "isStrict": true,

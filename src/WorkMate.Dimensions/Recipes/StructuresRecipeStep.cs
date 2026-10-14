@@ -175,7 +175,8 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     new StructureShape(
                         existing.RootDimensionTypeIds,
                         existing.Containment,
-                        shapesByStructure[structure].EmployeeAttachableDimensionTypeIds));
+                        shapesByStructure[structure].EmployeeAttachableDimensionTypeIds),
+                    structure.ToShortName());
 
                 if (!filled.Succeeded)
                 {
@@ -198,7 +199,9 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     structure.AllowSkipLevel == true,
                     structure.IsStrict,
                     structure.IsPrimaryOrganisation,
-                    shapesByStructure[structure]);
+                    shapesByStructure[structure],
+                    batch: null,
+                    structure.ToShortName());
 
                 if (!result.Succeeded)
                 {
@@ -351,6 +354,21 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             differences.Add(RecipeNameComparison.Describe("Arabic name", existing.Name.Ar, structure.NameAr));
         }
 
+        // The short name, each half only when the row states it — the same rule, for the same
+        // reason. A recipe written before decision D24 states neither and must not refuse a re-run
+        // against a tenant whose structures have since been given one.
+        if (structure.ShortNameEn is { } shortNameEn &&
+            !RecipeNameComparison.Same(existing.ShortName.En, shortNameEn))
+        {
+            differences.Add(RecipeNameComparison.Describe("short name", existing.ShortName.En, shortNameEn));
+        }
+
+        if (structure.ShortNameAr is { } shortNameAr &&
+            !RecipeNameComparison.Same(existing.ShortName.Ar, shortNameAr))
+        {
+            differences.Add(RecipeNameComparison.Describe("Arabic short name", existing.ShortName.Ar, shortNameAr));
+        }
+
         // Compared only when the row states it. A row written in the explicit form says nothing
         // about skipping, and ADR-0008 scopes the comparison to the fields a row actually states.
         if (structure.AllowSkipLevel is { } allowSkipLevel && existing.AllowSkipLevel != allowSkipLevel)
@@ -437,6 +455,34 @@ internal sealed class StructureStepEntry
     public string NameEn { get; set; } = string.Empty;
 
     public string NameAr { get; set; } = string.Empty;
+
+    /// <summary>
+    /// A short form of the name for places with no room for the whole one — the Organisation menu's
+    /// brackets (decision D24). Optional in both halves.
+    /// </summary>
+    /// <remarks>
+    /// Nullable, so that "absent" and "stated as empty" are different things — the same reason
+    /// <c>pluralEn</c> is nullable on the <c>dimension-types</c> step. A row written before this
+    /// existed says nothing about it, and ADR-0008's comparison is scoped to what a row states, so
+    /// re-running it against a tenant whose structures have since been given short names must skip
+    /// rather than refuse.
+    /// </remarks>
+    public string? ShortNameEn { get; set; }
+
+    /// <inheritdoc cref="ShortNameEn"/>
+    public string? ShortNameAr { get; set; }
+
+    /// <summary>
+    /// The short name as the service's value, or null when the row states neither half.
+    /// </summary>
+    /// <remarks>
+    /// Null is what makes a row that says nothing leave a tenant's authored short name alone, which
+    /// is <c>IStructureService.UpdateAsync</c>'s documented rule for it.
+    /// </remarks>
+    public BilingualText? ToShortName() =>
+        ShortNameEn is null && ShortNameAr is null
+            ? null
+            : new BilingualText(ShortNameEn ?? string.Empty, ShortNameAr ?? string.Empty);
 
     /// <summary>Root first. Resolved against each type's code, not its generated id.</summary>
     public List<string> LevelTypeCodes { get; set; } = [];

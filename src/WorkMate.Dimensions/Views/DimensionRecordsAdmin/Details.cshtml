@@ -1,4 +1,21 @@
 @model DimensionRecordDetailsViewModel
+@* ViewLocalizerExtensions.Plural, which is what makes "1 employee" and Arabic's six plural forms
+   come out of one msgid. Imported here rather than in _ViewImports because this is the only view
+   that needs it. *@
+@using Microsoft.AspNetCore.Mvc.Localization
+@{
+    // Computed once, at the top, where a code block is unambiguous — Razor treats a nested @{ }
+    // inside an @if body as already being in code and refuses it.
+    //
+    // The two route values are for the hierarchy's recursive partial: ViewData flows into a
+    // partial, where a model property would have to be copied onto every node, and a node is about
+    // a unit rather than about this page's URL.
+    ViewData["StructureId"] = Model.StructureId;
+    ViewData["AsAtIso"] = Model.AsAtIso;
+
+    var sortedRows = WorkMate.Dimensions.Controllers.DimensionRecordsAdminController
+        .SortedForList(Model.Tree, Model.Sort, Model.SortDescending);
+}
 @*
     One dimension value's own page — decision D23 C. Where the Organisation menu's expanded values
     land, and where the list screen's names link to, so both routes arrive at the same screen.
@@ -66,12 +83,17 @@
 
     <dt class="col-sm-3">@T["Name"]</dt>
     <dd class="col-sm-9">
-        <div dir="ltr" lang="en" id="value-name-en">@Model.NameEn</div>
+        @* Spans in their own block rows, not bare blocks. A `dir="rtl"` BLOCK fills the column and
+           aligns its text to the far edge, so the Arabic name floated to the right-hand side of the
+           page and read as something detached from this row. A span carries the bidi direction for
+           its own text while taking its position from the ltr block around it, which puts it under
+           the English name where the list screens already put it. *@
+        <div><span dir="ltr" lang="en" id="value-name-en">@Model.NameEn</span></div>
         @* Arabic is optional since ADR-0003's addendum, so an untranslated value would otherwise
            carry a blank line where a name should be. *@
         @if (!string.IsNullOrWhiteSpace(Model.NameAr))
         {
-            <div dir="rtl" lang="ar" id="value-name-ar">@Model.NameAr</div>
+            <div><span dir="rtl" lang="ar" class="text-muted small" id="value-name-ar">@Model.NameAr</span></div>
         }
     </dd>
 
@@ -178,23 +200,57 @@
 
     <dt class="col-sm-3">@T["Employees"]</dt>
     <dd class="col-sm-9" id="value-employees">
+        @* Two numbers, because either alone misleads. A division whose people all sit in its
+           departments has a direct count of zero, and "0 here" said it was empty when it had four
+           hundred people in it. Both are plural-aware: Arabic has six forms, and "1 employees" is
+           the kind of thing a reader stops trusting the screen over. *@
         @if (Model.EmployeeCount is null)
         {
             <span class="text-muted">@T["Choose a structure to see the head and the headcount."]</span>
         }
-        else if (Model.EmployeeCount.Value > 0 && Model.CanViewEmployees)
-        {
-            <a id="value-employee-list"
-               asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
-               asp-route-structureId="@Model.StructureId"
-               asp-route-recordId="@Model.RecordId"
-               asp-route-asAt="@Model.AsAtIso">@T["{0} here", Model.EmployeeCount.Value]</a>
-        }
         else
         {
-            @* The count without a link: either nobody is here, or this reader may not open the
-               employee list. A link that leads to a refusal is worse than no link. *@
-            @T["{0} here", Model.EmployeeCount.Value]
+            var direct = Model.EmployeeCount.Value;
+            var below = Model.EmployeeCountIncludingSubUnits ?? direct;
+
+            <span id="value-employees-direct">
+                @if (direct > 0 && Model.CanViewEmployees)
+                {
+                    <a id="value-employee-list"
+                       asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+                       asp-route-structureId="@Model.StructureId"
+                       asp-route-recordId="@Model.RecordId"
+                       asp-route-asAt="@Model.AsAtIso">@T.Plural(direct, "{0} directly", "{0} directly", direct)</a>
+                }
+                else
+                {
+                    @* The count without a link: either nobody is here, or this reader may not open
+                       the employee list. A link that leads to a refusal is worse than no link. *@
+                    @T.Plural(direct, "{0} directly", "{0} directly", direct)
+                }
+            </span>
+
+            @* Only when there is something below. On a leaf the second number is the first one
+               again, and printing it twice invites the reader to look for a difference. *@
+            @if (Model.HasUnitsBelow)
+            {
+                <span class="text-muted mx-1" aria-hidden="true">·</span>
+                <span id="value-employees-below">
+                    @if (below > 0 && Model.CanViewEmployees)
+                    {
+                        <a id="value-employee-list-below"
+                           asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+                           asp-route-structureId="@Model.StructureId"
+                           asp-route-recordId="@Model.RecordId"
+                           asp-route-includeSubUnits="true"
+                           asp-route-asAt="@Model.AsAtIso">@T.Plural(below, "{0} including units below", "{0} including units below", below)</a>
+                    }
+                    else
+                    {
+                        @T.Plural(below, "{0} including units below", "{0} including units below", below)
+                    }
+                </span>
+            }
         }
     </dd>
 
@@ -206,6 +262,218 @@
         <dd class="col-sm-9 value-attribute">@field.Value</dd>
     }
 </dl>
+
+@* Decision D24. A leaf shows nothing at all here — not an empty table and not a "no units" line,
+   because "this unit contains nothing" is already said by the absence of the section, and a reader
+   scanning a page does not need to be told what is not there. *@
+@if (Model.HasUnitsBelow)
+{
+    <div class="d-flex justify-content-between align-items-center mt-4 mb-2 flex-wrap gap-2">
+        <h2 class="fs-5 mb-0" id="value-tree-heading">@T["Units under {0}", Model.Name]</h2>
+
+        <div class="d-flex align-items-center gap-2">
+            @* The three views (decision D25), in the order the brief names them. Ordinary links
+               carrying the whole state, so each view is a URL somebody can send and the back button
+               returns to the one they were on — the same choice every other toggle in this module
+               makes, and the reason none of them needs script to work. *@
+            <div class="btn-group btn-group-sm" role="group" id="value-units-views"
+                 aria-label="@T["View"]">
+                @foreach (var option in new[] { UnitsView.Hierarchy, UnitsView.Tree, UnitsView.List })
+                {
+                    var current = option == Model.UnitsView;
+
+                    <a class="btn @(current ? "btn-primary" : "btn-outline-secondary")"
+                       id="@($"value-units-view-{option.ToString().ToLowerInvariant()}")"
+                       data-units-view="@option.ToString().ToLowerInvariant()"
+                       aria-current="@(current ? "true" : null)"
+                       asp-action="Details" asp-route-id="@Model.RecordId"
+                       asp-route-structureId="@Model.StructureId"
+                       asp-route-asAt="@Model.AsAtIso"
+                       asp-route-includeRetired="@Model.IncludeRetired"
+                       asp-route-view="@option.ToString().ToLowerInvariant()">
+                        @(option switch
+                        {
+                            UnitsView.Hierarchy => T["Hierarchy"],
+                            UnitsView.List => T["List"],
+                            _ => T["Tree"],
+                        })
+                    </a>
+                }
+            </div>
+
+            @* Plain links, not script: each state is a URL somebody can bookmark and send, and the
+               toggle works with no JavaScript at all — the same choice the list screen's Tree/List
+               toggle makes. Carries the view, so asking for retired units does not also throw the
+               reader back to the default one. *@
+            <a class="btn btn-sm btn-outline-secondary" id="value-tree-retired"
+               asp-action="Details" asp-route-id="@Model.RecordId"
+               asp-route-structureId="@Model.StructureId"
+               asp-route-asAt="@Model.AsAtIso"
+               asp-route-view="@Model.UnitsView.ToString().ToLowerInvariant()"
+               asp-route-includeRetired="@(!Model.IncludeRetired)">
+                @(Model.IncludeRetired ? T["Hide retired"] : T["Include retired"])
+            </a>
+
+            @* Expand all and Collapse all need the browser. Without it every row is visible, which
+               is the readable state rather than a broken one, so they are rendered only when the
+               script that gives them meaning can run. The flat list has nothing to expand. *@
+            @if (Model.UnitsView != UnitsView.List)
+            {
+                <div class="btn-group btn-group-sm" role="group" id="value-tree-controls" hidden>
+                    <button type="button" class="btn btn-outline-secondary" id="value-tree-expand-all"
+                            data-tree-expand>@T["Expand all"]</button>
+                    <button type="button" class="btn btn-outline-secondary" id="value-tree-collapse-all">@T["Collapse all"]</button>
+                </div>
+            }
+
+            @* Zoom belongs to the chart and to nothing else. *@
+            @if (Model.UnitsView == UnitsView.Hierarchy)
+            {
+                <div class="btn-group btn-group-sm" role="group" id="value-zoom-controls" hidden>
+                    <button type="button" class="btn btn-outline-secondary" data-value-zoom="out"
+                            aria-label="@T["Zoom out"]">−</button>
+                    <button type="button" class="btn btn-outline-secondary" data-value-zoom="fit">@T["Fit to screen"]</button>
+                    <button type="button" class="btn btn-outline-secondary" data-value-zoom="in"
+                            aria-label="@T["Zoom in"]">+</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (Model.TreeTruncated)
+    {
+        <div class="alert alert-warning" id="value-tree-truncated">
+            @T["This unit has {0} units under it and the tree shows the first {1}. Open a unit lower down to see the rest.", Model.UnitsBelow, Model.Tree.Count]
+        </div>
+    }
+
+    @if (Model.UnitsView == UnitsView.Hierarchy)
+    {
+        @* The organisation designer's own chart layout, reused rather than reimplemented: the same
+           `.designer-surface` wrapper, the same `ul > li.designer-node > .designer-card + ul`
+           markup, and therefore the same connector lines, the same row levelling and the same RTL
+           mirroring — every rule of which is written in logical properties and needs nothing said
+           twice. Nothing in the designer is touched to get it; this is the stylesheet being used,
+           not the screen being changed.
+
+           What is deliberately NOT reused is its script, which drags, fetches and edits. This chart
+           is read-only (D25), so its expand, zoom and fit are the few lines in
+           workmate-dimension-records instead. *@
+        <div class="designer-surface" id="value-hierarchy">
+            <div class="designer-chart-viewport designer-chart" id="value-hierarchy-viewport"
+                 data-zoom-controls="value-zoom-controls">
+                <div class="designer-chart-canvas" id="value-hierarchy-canvas">
+                    <ul class="value-hierarchy-root">
+                        @{ await Html.RenderPartialAsync("_ValueHierarchyNode", Model.Hierarchy!); }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+    else if (Model.UnitsView == UnitsView.List)
+    {
+        <table class="table table-sm align-middle" id="value-list">
+            <thead>
+                <tr>
+                    <th scope="col">@SortHeading(Url, Model, "code", T["Code"])</th>
+                    <th scope="col">@SortHeading(Url, Model, "name", T["Name"])</th>
+                    <th scope="col">@SortHeading(Url, Model, "dimension", T["Dimension"])</th>
+                    <th scope="col">@SortHeading(Url, Model, "parent", T["Parent"])</th>
+                    <th scope="col">@SortHeading(Url, Model, "status", T["Status"])</th>
+                    <th scope="col" class="text-end">@SortHeading(Url, Model, "employees", T["Employees"])</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in sortedRows)
+                {
+                    @* Flat, so no depth and no toggle — the Parent column is what carries
+                       containment here, and the indentation that carries it in the other two views
+                       would be meaningless in a list somebody has sorted by name. *@
+                    <tr class="value-list-row" data-record-id="@row.RecordId" data-record-code="@row.Code">
+                        <td><code>@row.Code</code></td>
+                        <td>
+                            <a asp-action="Details" asp-route-id="@row.RecordId"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-asAt="@Model.AsAtIso"
+                               title="@row.Name">@row.Name</a>
+                        </td>
+                        <td class="text-muted">@row.TypeName</td>
+                        <td class="text-muted value-list-parent">@row.ParentName</td>
+                        <td>
+                            @if (row.IsEffective)
+                            {
+                                <span class="badge text-bg-success">@T["Active"]</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-secondary">@T["Inactive"]</span>
+                            }
+                        </td>
+                        <td class="text-end value-tree-employees"
+                            title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
+                            @row.EmployeeCountIncludingSubUnits
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+    <table class="table table-sm align-middle record-tree" id="value-tree"
+           data-tree-controls="value-tree-controls">
+        <thead>
+            <tr>
+                <th scope="col">@T["Name"]</th>
+                <th scope="col">@T["Dimension"]</th>
+                <th scope="col" class="text-end">@T["Employees"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Model.Tree)
+            {
+                @* The same row contract the dimension list's tree view uses — depth, parent and
+                   child count as data attributes — so the collapse script that already exists
+                   serves this table too rather than a second one being written for it. *@
+                <tr class="record-row" data-record-id="@row.RecordId" data-record-code="@row.Code"
+                    data-depth="@row.Depth" data-parent-record-id="@row.ParentRecordId"
+                    data-child-count="@row.ChildCount">
+                    <td>
+                        <span class="record-code-cell" style="--record-depth: @row.Depth">
+                            @if (row.ChildCount > 0)
+                            {
+                                <button type="button" class="btn btn-sm btn-link record-toggle p-0"
+                                        aria-expanded="true"
+                                        aria-label="@T["Collapse {0}", row.Name]">−</button>
+                            }
+                            else
+                            {
+                                <span class="record-toggle-spacer" aria-hidden="true"></span>
+                            }
+                            <a asp-action="Details" asp-route-id="@row.RecordId"
+                               asp-route-structureId="@Model.StructureId"
+                               asp-route-asAt="@Model.AsAtIso"
+                               title="@row.Name">@row.Name</a>
+                            @if (!row.IsEffective)
+                            {
+                                <span class="badge text-bg-secondary ms-1">@T["Inactive"]</span>
+                            }
+                        </span>
+                    </td>
+                    <td class="text-muted">@row.TypeName</td>
+                    @* The headcount including everything below, with the direct count on hover —
+                       the number a reader scanning a chart wants is the roll-up, and the one they
+                       occasionally need is how many of those are at this unit itself. *@
+                    <td class="text-end value-tree-employees"
+                        title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
+                        @row.EmployeeCountIncludingSubUnits
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    }
+}
 
 @if (Model.Structures.Count > 1)
 {
@@ -232,4 +500,77 @@
             <button type="submit" class="btn btn-secondary" id="value-structure-apply">@T["Apply"]</button>
         </div>
     </form>
+}
+
+@* The indentation and the toggle styling the tree shares with the dimension list's tree view, and
+   the script that collapses a branch. Both are the same assets that screen names, not copies:
+   the row markup is the same contract, so the behaviour is the same code. Without the script every
+   row is visible and every link still works, which is a longer page rather than a broken one. *@
+<style asp-name="workmate-organisation-designer"></style>
+<script asp-name="workmate-dimension-records" at="Foot"></script>
+
+@functions {
+    // One sortable column heading: a link that re-opens this page sorted by its own column, and
+    // flips the direction when it is already the one in use. It carries the whole state, so
+    // sorting cannot quietly drop the view or the retired filter.
+    //
+    // Built here rather than inline because a lambda returning IHtmlContent inside a Razor markup
+    // body is a type the compiler infers wrongly and reports three lines later.
+    private static Microsoft.AspNetCore.Html.IHtmlContent SortHeading(
+        Microsoft.AspNetCore.Mvc.IUrlHelper url,
+        DimensionRecordDetailsViewModel model,
+        string column,
+        Microsoft.AspNetCore.Mvc.Localization.LocalizedHtmlString label)
+    {
+        var active = string.Equals(model.Sort, column, StringComparison.OrdinalIgnoreCase);
+
+        var link = new Microsoft.AspNetCore.Mvc.Rendering.TagBuilder("a");
+
+        link.Attributes["href"] = url.Action("Details", new
+        {
+            id = model.RecordId,
+            structureId = model.StructureId,
+            asAt = model.AsAtIso,
+            includeRetired = model.IncludeRetired,
+            view = "list",
+            sort = column,
+            // Pressing the column already in use turns it round; pressing any other starts it
+            // ascending, which is what a reader expects of a column they have not sorted yet.
+            desc = active && !model.SortDescending,
+        });
+
+        link.Attributes["class"] = "value-list-sort" + (active ? " fw-bold" : string.Empty);
+        link.Attributes["data-sort"] = column;
+
+        if (active)
+        {
+            link.Attributes["aria-sort"] = model.SortDescending ? "descending" : "ascending";
+        }
+
+        link.InnerHtml.AppendHtml(label);
+
+        if (active)
+        {
+            link.InnerHtml.Append(model.SortDescending ? " ▾" : " ▴");
+        }
+
+        return link;
+    }
+
+    // A LocalizedHtmlString rendered as plain text, for an attribute.
+    //
+    // Its `Value` is the MSGID — "{0} directly" — not the formatted result, which is a trap that
+    // compiles, renders and puts a literal placeholder in front of a reader. The formatted text
+    // only exists once the content has been written somewhere, so this writes it.
+    //
+    // Needed because the plural forms have to come from the localiser (Arabic has six) and a title
+    // attribute needs a string rather than HTML.
+    private static string AsText(Microsoft.AspNetCore.Mvc.Localization.LocalizedHtmlString text)
+    {
+        using var writer = new System.IO.StringWriter();
+
+        text.WriteTo(writer, System.Text.Encodings.Web.HtmlEncoder.Default);
+
+        return writer.ToString();
+    }
 }

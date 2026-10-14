@@ -39,6 +39,31 @@ public interface IDimensionGraphService
         int take = 50,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Every node that is or has <em>ever</em> been under this one on this axis, whatever date its
+    /// placement covered. Decision D24's "Include retired".
+    /// </summary>
+    /// <remarks>
+    /// <b>Undated, which is the whole difference from <see cref="GetDescendantsAsync"/>.</b> That
+    /// one asks the closure index what is placed here on a date, and retiring a unit closes both its
+    /// record and its placement — so a retired department is not "placed but ineffective", it is
+    /// simply gone from today's answer. A screen offering to show retired units therefore cannot
+    /// filter today's subtree; it has to ask a wider question.
+    ///
+    /// <b>One row per descendant.</b> A unit that was moved out and back has several closure rows
+    /// for several periods; this returns it once, at the shallowest depth it ever sat, because the
+    /// caller is drawing one row per unit.
+    ///
+    /// Paged like its dated counterpart, and for the same reason: the bound is the whole history of
+    /// a subtree, which is larger than the subtree.
+    /// </remarks>
+    Task<Page<DimensionNodeRef>> GetDescendantsEverAsync(
+        string structureId,
+        string recordId,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default);
+
     /// <summary>The node's immediate children on this axis.</summary>
     Task<IReadOnlyList<DimensionNodeRef>> GetChildrenAsync(
         string structureId,

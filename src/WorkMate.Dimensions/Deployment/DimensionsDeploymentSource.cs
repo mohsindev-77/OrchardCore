@@ -371,6 +371,12 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
                             ["code"] = structure.Code,
                             ["nameEn"] = structure.Name.En,
                             ["nameAr"] = structure.Name.Ar,
+                            // The short name (D24), always stated — an export reproduces a tenant
+                            // rather than expressing an intent, and "this axis has no short name"
+                            // and "this recipe says nothing about one" are different tenants. The
+                            // same judgement the dimension type's menu fields are exported under.
+                            ["shortNameEn"] = structure.ShortName.En,
+                            ["shortNameAr"] = structure.ShortName.Ar,
                             ["levelTypeCodes"] = new JsonArray(
                             [
                                 .. structure.DimensionTypeIds

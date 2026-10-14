@@ -1054,6 +1054,23 @@ there are more than `DimensionMenuGroup.MaxValues`. Clicking a value opens
 headcount and attributes, with **Edit**, **Move** and **Retire** linking to the screens that already
 own those rules.
 
+**What a value in the menu is called (D24).** The name, then its **parent** when another value in
+the same group reads the same — Crescent has two departments called *Credit*, one per branch, so
+they read *Credit – Lahore Main Branch* and *Credit – Karachi Main Branch* — then its
+**organisation** when the dimension spans more than one chart, using the structure's authored
+`ShortName`: *(Zenith)*, not *(Zenith Engineering & Construction)*. The parent is added **per
+language**, because a tenant can translate one of two same-named units and not the other. The whole
+caption is the link's `title`, set by `workmate-organisation-menu` — Orchard's `MenuItem` has
+nowhere to put a tooltip and the admin theme's templates are compiled into its own assembly, so the
+script decorates the rendered menu rather than the markup being changed.
+
+**An existing tenant's plurals (D24).** `Migrations.UpdateFrom11Async` fills an unauthored plural
+from `StandardDimensionPlurals`, a **frozen lookup** of the names this product ships — not a rule,
+and silent on anything else. "Unauthored" means blank *or the singular repeated*, because
+`UpdateFrom10Async` wrote the singular as a visible placeholder and that is the state every upgraded
+tenant is in. A name the table does not know keeps its singular, and the menu changes its phrasing
+instead: *All Workstream units*, never *All Workstream*.
+
 **The three properties were revived, not re-invented.** `ShowInMenu`, `PluralName` and `MenuOrder`
 have been on `DimensionTypeDocument` since `UpdateFrom7Async`, read by nothing, because ADR-0009
 made that step unremovable. They are now read by `Navigation.AdminMenu` and written by the editor.
@@ -1066,10 +1083,71 @@ replaced by the singular; one that differs is something a person typed on sessio
 cannot drift from what the frozen step actually did — which is the one job that function now has,
 and the reason it is still here rather than merely unremovable.
 
+### One value's own page (decision D23 C, extended by D24)
+
+`DimensionRecordsAdmin/Details` is where the menu's values land and where every list row's name
+links. Read-only: **Edit**, **Move** and **Retire** are links to the screens that already own those
+rules, so there is no second write path and no second set of validation messages.
+
+**Two headcounts, because either alone misleads.** *N directly · M including units below*. A
+division's own count is zero and always will be — the engine refuses to place an employee on a unit
+that has units under it, since they would be counted by it and again by every roll-up beneath — so a
+page that stopped at the direct count said a division with four hundred people in it was empty. M is
+**distinct across the subtree**, not a sum of the direct counts: one person in two units below this
+one is one person (D1). Each number links to the employee list, the second with *Include sub-units*.
+
+**Units under this one.** A value with children carries everything beneath it, across **every
+dimension** — the opposite of the dimension's own Tree/List screen, which Rule 2 scopes to one
+dimension. Active as at today by default, with an *Include retired* toggle. **A leaf shows no
+section at all**, and no switch.
+
+**Three views of it (D25), switched at the top right: Hierarchy | Tree | List.**
+
+| | |
+| --- | --- |
+| **Hierarchy** | A **read-only** org chart. The value is the root box; each descendant is a box with its name (a link), code, dimension and roll-up headcount. Expand/collapse per node, zoom − / Fit / +, horizontal scroll, mirrored in RTL. **No ⋯ menus and no editing** — that stays in the designer and on the value pages |
+| **Tree** (default) | Indented rows with expand/collapse and Expand all / Collapse all. What the section already was, which is why it is the default |
+| **List** | A flat table — Code, Name, Dimension, **Parent**, Status, Employees — **sortable by column**, on the server, from the query string. The Parent column is the point: a flat view has no indentation to carry containment |
+
+**One subtree read feeds all three.** The controller reads once and shapes the same rows three ways,
+so the views cannot disagree about what is under what — the drift the designer's own two views were
+built to avoid.
+
+**The hierarchy reuses the designer's layout and none of its behaviour.** The boxes are the
+designer's own `li.designer-node > .designer-card + ul.designer-children` markup inside a
+`.designer-surface`, so the connector lines, the row levelling and the RTL mirroring come from
+`organisation-designer.css` — three rules were added to that file and **no existing selector was
+touched**. Its *script* is not reused, because that one drags, fetches and edits; the chart's
+expand, zoom and fit are a few lines in `workmate-dimension-records`, and `zoom` rather than
+`transform: scale` for the reason the designer's own comment gives.
+
+**The view is in the URL** (`?view=…`), so it is linkable and the back button works, and only then
+in `localStorage` — wrapped in `try`/`catch`, never overriding a URL that names a view, and applied
+with `location.replace` so a remembered preference does not enter the reader's history.
+
+**`UnchangedScreensTenantTests` guards what this must not touch**: the organisation designer and the
+*All &lt;plural&gt;* list screens.
+
+*Include retired* is a **different question, not a filter**: retiring a unit closes its record *and*
+its placement, so a retired department is not "placed but ineffective" — it is gone from today's
+subtree. `IDimensionGraphService.GetDescendantsEverAsync` is the undated read that finds it.
+
+**A fixed handful of queries, however deep.** One closure read for the subtree, one batched
+ancestor-path read for every node's parent, one batched direct headcount, and one read of the
+subtree's placements rolled up in memory as sets of employee ids. Nothing per node — which is what
+the closure index is for. The tree is capped at `TreeCap` units and the roll-up at `PeopleCap`
+placements, and both say so on screen rather than printing a number that is quietly short.
+
+**The rows carry the same contract as the dimension list's tree view** — `data-depth`,
+`data-parent-record-id`, `data-child-count` — so `workmate-dimension-records` collapses both screens
+rather than a second script being written and kept in step with the first.
+
 **Positions are explicit numbers, never `LocalizedString.PrefixPosition()`.** That orders by the
 caption in whatever language the reader is in, so an Arabic reader got a different order from an
 English one. The same reasoning makes `MenuOrder` a number a customer sets rather than a sort by
-name, and makes the ordering tiebreak the **English name** rather than the caption.
+name, and makes the ordering tiebreak the **English name** rather than the caption. The *values*
+under an entry sort by their rendered caption in the reader's own language, which is what makes two
+same-named units sort by their parents rather than by their generated ids.
 `OrganisationMenuTenantTests` builds the menu under both cultures and compares the two sequences *by
 code*; `OrganisationMenuBrowserTests` does the same against a real rendered page, in both languages,
 on a tenant with both demo companies loaded — which is the exact configuration that produced the
@@ -1736,6 +1814,23 @@ with different content.
   that cannot drift from what the frozen step actually did.
   `DimensionsMigrationUpgradeTenantTests.ATenantWithGuessedPluralsHasThemReplaced
   AndAuthoredOnesLeftAlone` asserts both halves on one tenant.
+
+- **ADR-0024 amended, decision D24** — `Migrations.UpdateFrom11Async` (schema
+  version 12) gives an existing tenant's dimensions their plurals, from
+  `StandardDimensionPlurals`. Also not a schema change, and also a data repair.
+
+  **It fills a plural that is blank *or is the singular repeated*.** The second is
+  the one that matters: `UpdateFrom10Async` wrote the singular as a deliberate,
+  visible placeholder, so that is what every tenant that has upgraded actually
+  holds, and a step that only filled blanks would have reached none of them.
+  Anything a person typed is left exactly as it is.
+
+  **It is a lookup, not a rule.** A name the shipped table does not know gets
+  nothing at all — no suffix, no algorithm — and the menu phrases itself around
+  the singular instead: *All Workstream units*. That is ADR-0024's position held
+  rather than quietly relaxed.
+  `DimensionsMigrationUpgradeTenantTests.ATenantWithNoPluralsGetsTheShippedOnes
+  AndKeepsWhatWasAuthored` covers all four cases.
 
 - **ADR-0020** — *withdrawn* by decision D19 before any of it was built. A value
   has exactly one parent; `DimensionLinkDocument.ParentOn` keeps returning one and
