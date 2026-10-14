@@ -23,16 +23,37 @@ public sealed class DimensionRecordListViewModel
     public string TypeCode { get; set; } = string.Empty;
 
     /// <summary>
-    /// The type's name, as it is stored: the singular.
+    /// The type's name, as it is stored: the singular. The group's caption when the screen is about
+    /// a whole group rather than one type.
     /// </summary>
     /// <remarks>
-    /// <b>There is no plural, and the screens are written so as not to need one.</b> A stored
-    /// plural was tried, for the withdrawn per-type menu, and the editor that maintained it went
-    /// with the menu — so reading it here would be reading a field a customer can no longer
-    /// correct. The headings say "Department units" rather than "Departments", which is a whole
-    /// sentence the localiser can translate and which no rule has to guess at.
+    /// <b>The plural came back with the menu</b> (ADR-0024), authored on the dimension type editor
+    /// rather than derived, so <see cref="GroupCaption"/> is a real plural a customer wrote. This
+    /// stays the singular because the screen's own headings — "Department units" — are sentences
+    /// the localiser owns, and because a screen scoped to one type should say that type's name.
     /// </remarks>
     public string TypeName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The dimension <em>name</em> this screen is about, lower-cased: the group key of decision
+    /// D23. Carried on every link so paging, filtering and the view toggle stay inside the group.
+    /// </summary>
+    public string Group { get; set; } = string.Empty;
+
+    /// <summary>The group's authored plural — what the menu entry that opened this screen reads.</summary>
+    public string GroupCaption { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The types in this group, each labelled by its organisation. Empty when the group has one
+    /// type, which is the ordinary tenant and the one that sees no Organisation column at all.
+    /// </summary>
+    public IReadOnlyList<DimensionGroupTypeViewModel> GroupTypes { get; set; } = [];
+
+    /// <summary>
+    /// Whether to show the Organisation column and its filter: only when this dimension's name is
+    /// shared by more than one type. Decision D23 C.
+    /// </summary>
+    public bool ShowsOrganisation => GroupTypes.Count > 1;
 
     /// <summary>
     /// Tree or list. FRS v2.5 §4.1: the same values, the same columns, two layouts, and a toggle in
@@ -141,6 +162,16 @@ public enum DimensionRecordView
 /// <summary>One structure this type is a level of.</summary>
 public sealed record StructureChoiceViewModel(string StructureId, string Code, string Name);
 
+/// <summary>
+/// One of the dimension types behind a group entry, named by the organisation it belongs to.
+/// </summary>
+/// <remarks>
+/// The Organisation filter's options. Labelled by the chart rather than by the type's own name,
+/// because within a group every type has the same name — a picker offering <em>Department</em>
+/// three times answers nothing.
+/// </remarks>
+public sealed record DimensionGroupTypeViewModel(string DimensionTypeId, string Organisation);
+
 /// <summary>One of the type's attributes, and whether the list is showing it as a column.</summary>
 public sealed record DimensionAttributeColumnViewModel(string Name, string Label, bool IsShown);
 
@@ -148,6 +179,15 @@ public sealed record DimensionAttributeColumnViewModel(string Name, string Label
 public sealed class DimensionRecordRowViewModel
 {
     public string RecordId { get; set; } = string.Empty;
+
+    /// <summary>The type this value is of — which, on a grouped screen, is which organisation's.</summary>
+    public string DimensionTypeId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The organisation this value belongs to, for the Organisation column. Empty when the screen
+    /// is about one type, and empty for a type that is a level of more than one chart.
+    /// </summary>
+    public string Organisation { get; set; } = string.Empty;
 
     public string Code { get; set; } = string.Empty;
 

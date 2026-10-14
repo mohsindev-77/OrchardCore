@@ -15,6 +15,7 @@
     "demo-dept-unassigned carries no placement on purpose: it is what a record created outside the designer looks like, and it is what the designer's unplaced-records panel is for.",
     "Three records carry an alias and the rest do not, which is the shape FRS v2.5's own figures show: an alias is optional, and a dimension's list has to read well with the column half empty. demo-div-sales states both halves and demo-dept-retail states only the English one, so the display fallback is exercised by real seeded data rather than only by a unit test.",
     "demo-section allows self-nesting, and demo-sec-counter sits inside demo-sec-instore. That is the FRS's own Department -> HR -> Recruitment shape, and it is what gives one dimension's own tree view a branch to collapse — without it every value is a root of its own tree, which is Rule 2 working correctly and demonstrating nothing. The diagonal is derived from allowsSelfNesting because this structure is still described as a chain; ADR-0010's addendum makes it a cell of the containment grid for a structure described explicitly.",
+    "The type codes stay prefixed demo-, as every demo recipe's do: this one is a self-contained SAMPLE rather than a reference company, its selling point is that it runs on any tenant without colliding with anything, and sharing a type code would give that up. Sharing them WAS tried while building slice F2 and reverted — see the Zenith recipe's notes for what it did to the charts. The display names are plain Division, Department and Section again; they briefly said Demo Division, which was an attempt to disambiguate the menu by renaming the data, and decision D23 disambiguates it in the menu instead: types sharing an English singular name are one entry, and its values name the chart they are on.",
     "Section rather than Department, deliberately: adding a unit under a parent that permits two kinds of unit makes the designer's Add-unit form ask which kind, and the browser tests add departments under divisions and sections under departments. Section is the one level nothing in the suite adds beneath, so giving it the diagonal changes no existing journey."
   ],
 
@@ -22,9 +23,9 @@
     {
       "name": "dimension-types",
       "types": [
-        { "code": "demo-division", "nameEn": "Division", "nameAr": "قسم", "allowsSelfNesting": false },
-        { "code": "demo-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
-        { "code": "demo-section", "nameEn": "Section", "nameAr": "شعبة", "allowsSelfNesting": true }
+        { "code": "demo-division", "nameEn": "Division", "nameAr": "قسم", "pluralEn": "Divisions", "pluralAr": "الأقسام", "menuOrder": 110, "allowsSelfNesting": false },
+        { "code": "demo-department", "nameEn": "Department", "nameAr": "إدارة", "pluralEn": "Departments", "pluralAr": "الإدارات", "menuOrder": 120, "allowsSelfNesting": false },
+        { "code": "demo-section", "nameEn": "Section", "nameAr": "شعبة", "pluralEn": "Sections", "pluralAr": "الشعب", "menuOrder": 130, "allowsSelfNesting": true }
       ]
     },
     {

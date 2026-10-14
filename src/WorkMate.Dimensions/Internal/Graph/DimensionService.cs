@@ -7,9 +7,11 @@ using OrchardCore.ContentManagement;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal;
+using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Fields;
+using WorkMate.Platform.Services;
 using YesSql;
 
 namespace WorkMate.Dimensions.Internal.Graph;
@@ -40,6 +42,8 @@ internal sealed class DimensionService : IDimensionService
     /// </summary>
     private readonly IDimensionRecordLookup _recordLookup;
 
+    private readonly OrchardCore.Environment.Cache.ISignal _signal;
+    private readonly OrchardCore.Environment.Shell.ShellSettings _shellSettings;
     private readonly IStringLocalizer S;
 
     public DimensionService(
@@ -53,6 +57,8 @@ internal sealed class DimensionService : IDimensionService
         IDimensionValidator validator,
         IAuditTrailManager auditTrailManager,
         IDimensionRecordLookup recordLookup,
+        OrchardCore.Environment.Cache.ISignal signal,
+        OrchardCore.Environment.Shell.ShellSettings shellSettings,
         IStringLocalizer<DimensionService> stringLocalizer)
     {
         _session = session;
@@ -65,6 +71,8 @@ internal sealed class DimensionService : IDimensionService
         _validator = validator;
         _auditTrailManager = auditTrailManager;
         _recordLookup = recordLookup;
+        _signal = signal;
+        _shellSettings = shellSettings;
         S = stringLocalizer;
     }
 
@@ -831,8 +839,27 @@ internal sealed class DimensionService : IDimensionService
             return DimensionResult.Failed<DimensionNodeRef>(moved.Errors);
         }
 
+        await InvalidateMenuAsync();
+
         return DimensionResult.Success((await GetAsync(recordId, effectiveFrom, cancellationToken))!);
     }
+
+    /// <summary>
+    /// Drops the cached Organisation menu after a write that touched only links. Decision D23 D.
+    /// </summary>
+    /// <remarks>
+    /// <b>The two writes <c>DimensionRecordHandler</c> cannot see.</b> Everything else that changes
+    /// a dimension value — creating it, renaming it, correcting it, retiring it, merging it away —
+    /// writes the record's content item, and that handler invalidates on the content hooks so no
+    /// success path here has to remember. A move and a cancelled move rewrite
+    /// <c>DimensionLink</c> and leave the item untouched, so they say so for themselves.
+    ///
+    /// ADR-0019's helper, never a bare <c>SignalTokenAsync</c>: this module writes and reads in one
+    /// scope constantly, and a signal that only fires after the commit leaves the reader in this
+    /// scope looking at the menu the move replaced.
+    /// </remarks>
+    private Task InvalidateMenuAsync() =>
+        _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.MenuSignal(_shellSettings.Name));
 
     public Task<DimensionResult<CancelMovePlan>> PlanCancelMoveAsync(
         string structureId,
@@ -904,6 +931,10 @@ internal sealed class DimensionService : IDimensionService
         if (apply)
         {
             await RecordMoveCancelledAsync(structureId, recordId, plan, reason!);
+
+            // Only when it was applied. A preview changes nothing, and signalling on one would
+            // evict the menu every time somebody opened the confirmation screen and backed out.
+            await InvalidateMenuAsync();
         }
 
         return DimensionResult.Success(plan, [.. restoration.Errors]);

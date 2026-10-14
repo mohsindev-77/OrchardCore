@@ -105,11 +105,23 @@ public sealed class DimensionRecordsAdminController : Controller
     /// is looking at is a URL they can send to a colleague — which is also what makes the toggle a
     /// pair of ordinary links that work with no script.
     /// </param>
+    /// <param name="group">
+    /// A dimension <em>name</em> rather than a type: the Organisation menu's <em>All Departments</em>
+    /// entry, decision D23 C. Every type sharing this English singular name is listed on one screen,
+    /// which is what lets a tenant with three Department types stop seeing three menu entries without
+    /// having to share one type — the fix D17 proposed, which was built and reverted because a shared
+    /// type belongs to every chart that declares it.
+    ///
+    /// With <paramref name="dimensionTypeId"/> as well, the group is narrowed to that one type: that
+    /// is the Organisation filter, which is a filter on the type because each of a group's types is
+    /// one organisation's.
+    /// </param>
     public async Task<IActionResult> Index(
-        string dimensionTypeId,
+        string? dimensionTypeId,
         string? search,
         string? structureId,
         string? within,
+        string? group = null,
         DimensionRecordStatus status = DimensionRecordStatus.Active,
         string[]? columns = null,
         string? asAt = null,
@@ -123,25 +135,28 @@ public sealed class DimensionRecordsAdminController : Controller
             return Forbid();
         }
 
-        var type = await _types.GetAsync(dimensionTypeId, cancellationToken: cancellationToken);
+        var scopeOfScreen = await ResolveGroupAsync(dimensionTypeId, group, cancellationToken);
 
-        if (type is null)
+        if (scopeOfScreen is null)
         {
             return NotFound();
         }
 
+        var (groupKey, groupCaption, siblings, listed) = scopeOfScreen;
+
         var date = IsoDate.TryParse(asAt, out var parsed) ? parsed : await _authorisation.TodayAsync();
-        var structures = await StructuresForAsync(type, cancellationToken);
+        var structures = await StructuresForAsync(listed, cancellationToken);
         var scope = ResolveStructure(structures, structureId);
 
         // Parentage is scoped to a structure, so a type used by two axes has two trees and the
         // screen cannot draw "the" one. The same refusal to guess the Parent column and the
-        // headcount already make; see ResolveStructure.
-        var treeNeedsAStructure = view == DimensionRecordView.Tree && scope is null;
+        // headcount already make; see ResolveStructure. A group spanning several organisations is
+        // the same problem arriving a second way.
+        var treeNeedsAStructure = view == DimensionRecordView.Tree && (scope is null || listed.Count > 1);
         var tree = view == DimensionRecordView.Tree && !treeNeedsAStructure;
 
-        var found = await _graph.SearchRecordsOfTypeAsync(
-            dimensionTypeId,
+        var found = await _graph.SearchRecordsOfTypesAsync(
+            [.. listed.Select(type => type.DimensionTypeId)],
             search,
             scope?.StructureId,
             within,
@@ -152,12 +167,18 @@ public sealed class DimensionRecordsAdminController : Controller
             cancellationToken);
 
         var chosenColumns = (columns ?? []).ToHashSet(StringComparer.Ordinal);
+        var only = listed.Count == 1 ? listed[0] : null;
 
         var model = new DimensionRecordListViewModel
         {
-            DimensionTypeId = type.DimensionTypeId,
-            TypeCode = type.Code,
-            TypeName = BilingualText.Display(type.Name.En, type.Name.Ar),
+            DimensionTypeId = only?.DimensionTypeId ?? string.Empty,
+            TypeCode = only?.Code ?? string.Empty,
+            TypeName = only is null
+                ? groupCaption
+                : BilingualText.Display(only.Name.En, only.Name.Ar),
+            Group = groupKey,
+            GroupCaption = groupCaption,
+            GroupTypes = await GroupChoicesAsync(siblings, cancellationToken),
             View = view,
             Search = search,
             StructureId = scope?.StructureId,
@@ -172,23 +193,160 @@ public sealed class DimensionRecordsAdminController : Controller
             TreeTruncated = tree && found.Total > found.Items.Count,
             CanEdit = await CanEditAsync(),
             CanViewEmployees = await CanViewEmployeesAsync(),
-            AttributeColumns =
-            [
-                .. type.AttributeSchema.Select(attribute => new DimensionAttributeColumnViewModel(
-                    attribute.Name,
-                    BilingualText.Display(attribute.Label.En, attribute.Label.Ar),
-                    chosenColumns.Contains(attribute.Name))),
-            ],
+
+            // The attribute columns are one type's own schema, so they are only offered when the
+            // screen is about one type. Three Department types can declare three different schemas,
+            // and a column that existed for a third of the rows would be a column that looked empty.
+            AttributeColumns = only is null
+                ?
+                [
+                ]
+                :
+                [
+                    .. only.AttributeSchema.Select(attribute => new DimensionAttributeColumnViewModel(
+                        attribute.Name,
+                        BilingualText.Display(attribute.Label.En, attribute.Label.Ar),
+                        chosenColumns.Contains(attribute.Name))),
+                ],
         };
 
         model.Rows = await RowsAsync(model, found.Items, structures, scope, date, cancellationToken);
 
         if (tree)
         {
-            model.TreeRows = await TreeRowsAsync(model.Rows, scope!.StructureId, type.DimensionTypeId, date, cancellationToken);
+            model.TreeRows = await TreeRowsAsync(
+                model.Rows, scope!.StructureId, only!.DimensionTypeId, date, cancellationToken);
         }
 
         return View(model);
+    }
+
+    /// <summary>
+    /// What one screen is about: a dimension group, the types in it, and the ones actually listed.
+    /// </summary>
+    /// <param name="Siblings">
+    /// Every type in the group, whether or not the reader has filtered down to one. What the
+    /// Organisation filter offers.
+    /// </param>
+    /// <param name="Listed">The types whose records the screen shows: all the siblings, or just one.</param>
+    private sealed record ScreenScope(
+        string GroupKey,
+        string Caption,
+        IReadOnlyList<DimensionTypeDocument> Siblings,
+        IReadOnlyList<DimensionTypeDocument> Listed);
+
+    /// <summary>
+    /// Works out which types the screen is about, from a type id, a group name, or both.
+    /// </summary>
+    /// <remarks>
+    /// <b>The group is resolved from the types, not from the menu.</b> The menu hides what a tenant
+    /// has switched off (<c>ShowInMenu</c>) and the list screen must not: a hidden dimension's
+    /// screens stay reachable from the Dimension types list, which is the promise D3 made when it
+    /// introduced the switch. So the grouping rule is shared with the menu —
+    /// <see cref="DimensionMenuComposition.KeyOf"/> is the one implementation — and the visibility
+    /// filter is not.
+    ///
+    /// <b>A type id alone still works and is still the common case.</b> Every existing link —
+    /// <em>View units</em> on the Dimension types list, every redirect after a save — passes one,
+    /// and gets exactly the screen it got before: that type, its own attribute columns, no
+    /// Organisation column. The group only widens the screen when a reader asks it to.
+    /// </remarks>
+    private async Task<ScreenScope?> ResolveGroupAsync(
+        string? dimensionTypeId,
+        string? group,
+        CancellationToken cancellationToken)
+    {
+        var chosen = string.IsNullOrEmpty(dimensionTypeId)
+            ? null
+            : await _types.GetAsync(dimensionTypeId, cancellationToken: cancellationToken);
+
+        if (chosen is null && string.IsNullOrEmpty(group))
+        {
+            return null;
+        }
+
+        var key = chosen is not null ? DimensionMenuComposition.KeyOf(chosen) : group!;
+
+        var siblings = (await _types.ListAsync(cancellationToken: cancellationToken))
+            .Where(type => string.Equals(DimensionMenuComposition.KeyOf(type), key, StringComparison.Ordinal))
+            .OrderBy(type => type.MenuOrder)
+            .ThenBy(type => type.Code, StringComparer.Ordinal)
+            .ToList();
+
+        if (siblings.Count == 0)
+        {
+            // A group named by a URL that matches nothing, or a type retired since the menu was
+            // built. The chosen type still answers for itself if there was one.
+            return chosen is null ? null : new ScreenScope(key, CaptionOf([chosen]), [chosen], [chosen]);
+        }
+
+        // Narrowed to one type when the reader asked for one — which is both the old single-type
+        // link and the new Organisation filter, and they are the same thing.
+        IReadOnlyList<DimensionTypeDocument> listed = chosen is null ? siblings : [chosen];
+
+        return new ScreenScope(key, CaptionOf(siblings), siblings, listed);
+    }
+
+    /// <summary>
+    /// What the screen calls the group: the first authored plural in it, else the singular.
+    /// </summary>
+    /// <remarks>
+    /// The same rule and the same order as <see cref="DimensionMenuGroup.Caption"/>, so the heading
+    /// on the screen is the words on the menu entry that opened it. Never derived — a plural is
+    /// authored on the dimension type editor or it is not had, which is ADR-0024.
+    /// </remarks>
+    private static string CaptionOf(List<DimensionTypeDocument> siblings)
+    {
+        var plural = siblings
+            .Select(type => type.PluralName)
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name.En) || !string.IsNullOrWhiteSpace(name.Ar));
+
+        var display = plural is null ? string.Empty : BilingualText.Display(plural.En, plural.Ar);
+
+        return string.IsNullOrWhiteSpace(display)
+            ? BilingualText.Display(siblings[0].Name.En, siblings[0].Name.Ar)
+            : display;
+    }
+
+    /// <summary>
+    /// The group's types as the Organisation filter offers them: each labelled by the chart it
+    /// belongs to, falling back to its own name.
+    /// </summary>
+    /// <remarks>
+    /// <b>Labelled by the organisation rather than by the type</b>, because within a group every
+    /// type has the same name — three of them are called Department — so a picker listing their
+    /// names would offer the same word three times. What tells them apart is whose chart they are a
+    /// level of, which is the same thing the menu puts in brackets after a value.
+    ///
+    /// A type on no chart, or on several, has no single organisation to name and falls back to its
+    /// code: unusual, and better than a blank option.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionGroupTypeViewModel>> GroupChoicesAsync(
+        IReadOnlyList<DimensionTypeDocument> siblings,
+        CancellationToken cancellationToken)
+    {
+        if (siblings.Count < 2)
+        {
+            return [];
+        }
+
+        var structures = await _structures.ListAsync(cancellationToken);
+        var choices = new List<DimensionGroupTypeViewModel>();
+
+        foreach (var type in siblings)
+        {
+            var onIt = structures
+                .Where(structure => structure.OrdinalOf(type.DimensionTypeId) is not null)
+                .ToList();
+
+            choices.Add(new DimensionGroupTypeViewModel(
+                type.DimensionTypeId,
+                onIt.Count == 1
+                    ? BilingualText.Display(onIt[0].Name.En, onIt[0].Name.Ar)
+                    : type.Code));
+        }
+
+        return choices;
     }
 
     /// <summary>
@@ -382,6 +540,13 @@ public sealed class DimensionRecordsAdminController : Controller
         var shown = model.ShownColumns;
         var rows = new List<DimensionRecordRowViewModel>();
 
+        // Which organisation each row belongs to, when the screen is showing more than one type's
+        // records. The same rule the menu uses for its brackets: a type on exactly one chart is that
+        // chart's, and a type on several has no single answer, so the cell stays empty rather than
+        // naming one of them.
+        var organisationOfType = model.GroupTypes.ToDictionary(
+            choice => choice.DimensionTypeId, choice => choice.Organisation, StringComparer.Ordinal);
+
         foreach (var record in records)
         {
             var values = new List<string>();
@@ -400,6 +565,8 @@ public sealed class DimensionRecordsAdminController : Controller
             rows.Add(new DimensionRecordRowViewModel
             {
                 RecordId = record.RecordId,
+                DimensionTypeId = record.DimensionTypeId,
+                Organisation = organisationOfType.GetValueOrDefault(record.DimensionTypeId, string.Empty),
                 Code = record.Code,
                 NameEn = record.NameEn,
                 NameAr = record.NameAr,
@@ -416,6 +583,175 @@ public sealed class DimensionRecordsAdminController : Controller
         }
 
         return rows;
+    }
+
+    // ---- one value's own page ----------------------------------------------------------
+
+    /// <summary>
+    /// What one dimension value is: its code, names, alias, type, parent, status, head and
+    /// headcount — with Edit, Move and Retire beside the facts. Decision D23 C.
+    /// </summary>
+    /// <remarks>
+    /// <b>Where the Organisation menu's values land.</b> The menu expands to a dimension's own
+    /// values, and clicking <em>Civil</em> opens this. Nothing else in the module answered "what is
+    /// this unit" without first being navigated to: the list is about a dimension, the editor is a
+    /// form, and the designer is a chart.
+    ///
+    /// <b>Read-only, and every action is a link to a screen that already owns its rules.</b> Edit is
+    /// this controller's own editor; Move and Retire are the designer's, with their dated dry runs
+    /// intact. There is no write here, so there is no second write path to keep in step — the same
+    /// promise the list screen makes.
+    ///
+    /// <b>Dated, like everything else.</b> <paramref name="asAt"/> defaults to today in the tenant's
+    /// time zone, and the head, the headcount and the parent path are all resolved on it, so the
+    /// page answers "what was this in March" by changing one query-string value.
+    /// </remarks>
+    /// <param name="structureId">
+    /// Which chart the parent, the head and the headcount are about. Defaulted when the type is a
+    /// level of exactly one, which is the ordinary tenant; left unanswered rather than guessed when
+    /// it is a level of several.
+    /// </param>
+    public async Task<IActionResult> Details(
+        string? id,
+        string? structureId,
+        string? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await CanViewAsync())
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrEmpty(id))
+        {
+            return NotFound();
+        }
+
+        var record = await _records.GetAsync(id, null, cancellationToken);
+
+        if (record is null)
+        {
+            return NotFound();
+        }
+
+        var type = await _types.GetAsync(record.DimensionTypeId, cancellationToken: cancellationToken);
+
+        if (type is null)
+        {
+            return NotFound();
+        }
+
+        var date = IsoDate.TryParse(asAt, out var parsed) ? parsed : await _authorisation.TodayAsync();
+        var structures = await StructuresForAsync(type, cancellationToken);
+        var scope = ResolveStructure(structures, structureId);
+        var siblings = await ResolveGroupAsync(type.DimensionTypeId, group: null, cancellationToken);
+
+        var model = new DimensionRecordDetailsViewModel
+        {
+            RecordId = record.RecordId,
+            Code = record.Code,
+            NameEn = record.NameEn,
+            NameAr = record.NameAr,
+            AliasEn = record.AliasEn,
+            AliasAr = record.AliasAr,
+            DimensionTypeId = type.DimensionTypeId,
+            TypeName = BilingualText.Display(type.Name.En, type.Name.Ar),
+            Group = siblings?.GroupKey ?? string.Empty,
+            GroupCaption = siblings?.Caption ?? BilingualText.Display(type.Name.En, type.Name.Ar),
+            Organisation = siblings is { Siblings.Count: > 1 }
+                ? (await GroupChoicesAsync(siblings.Siblings, cancellationToken))
+                    .FirstOrDefault(choice => string.Equals(
+                        choice.DimensionTypeId, type.DimensionTypeId, StringComparison.Ordinal))
+                    ?.Organisation ?? string.Empty
+                : string.Empty,
+            IsEffective = record.EffectiveRange.Contains(date),
+            IsActive = record.IsActive,
+            From = record.EffectiveRange.From,
+            To = record.EffectiveRange.To,
+            AsAtIso = date.ToIso(),
+            StructureId = scope?.StructureId,
+            Structures = structures,
+            CanEdit = await CanEditAsync(),
+            CanMove = await _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords),
+            CanViewEmployees = await CanViewEmployeesAsync(),
+        };
+
+        var placements = new List<DimensionRecordPlacementViewModel>();
+
+        foreach (var structure in structures)
+        {
+            var ancestors = (await _graph.GetAncestorPathsAsync(
+                structure.StructureId, [record.RecordId], date, cancellationToken))
+                .GetValueOrDefault(record.RecordId) ?? [];
+
+            var onIt = (await _graph.GetDepthsAsync(
+                structure.StructureId, [record.RecordId], date, cancellationToken))
+                .ContainsKey(record.RecordId);
+
+            placements.Add(new DimensionRecordPlacementViewModel(
+                structure.StructureId,
+                structure.Name,
+                string.Join(BilingualDisplay.PathSeparator,
+                    ancestors.Select(ancestor => BilingualDisplay.Name(ancestor.NameEn, ancestor.NameAr))),
+                !onIt
+                    ? DimensionRecordPlacementState.Unplaced
+                    : ancestors.Count == 0
+                        ? DimensionRecordPlacementState.TopLevel
+                        : DimensionRecordPlacementState.Placed));
+        }
+
+        model.Placements = placements;
+
+        // The head and the headcount are questions about one chart, so they are only asked when the
+        // page is reporting on one. See the view model's StructureId for why that is a refusal to
+        // guess rather than a gap.
+        if (scope is not null)
+        {
+            if (await _assignments.GetHeadAsync(scope.StructureId, record.RecordId, date, cancellationToken)
+                is { } head)
+            {
+                var employee = await ResolveEmployeeAsync(head.EmployeeId, cancellationToken);
+
+                model.HeadName = employee?.ForCulture() ?? head.EmployeeId;
+                model.HeadFrom = head.Range.From;
+                model.HeadTo = head.Range.To;
+            }
+
+            var counts = await _assignments.CountEmployeesAtAsync(
+                scope.StructureId, [record.RecordId], date, cancellationToken);
+
+            model.EmployeeCount = counts.GetValueOrDefault(record.RecordId, 0);
+        }
+
+        var values = (await _records.GetAttributeValuesAsync(record.RecordId, cancellationToken))
+            .ToDictionary(attribute => attribute.Name, StringComparer.Ordinal);
+
+        model.Attributes =
+        [
+            .. type.AttributeSchema.Select(definition => new DimensionRecordAttributeViewModel(
+                BilingualText.Display(definition.Label.En, definition.Label.Ar),
+                values.TryGetValue(definition.Name, out var value)
+                    ? BilingualText.Display(value.Value, value.ValueAr)
+                    : string.Empty)),
+        ];
+
+        return View(model);
+    }
+
+    /// <summary>
+    /// The head's name, asked of the module that owns employees, or null on a tenant without it.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="IEmployeeLookup"/> rather than a reference to <c>WorkMate.Records</c>,
+    /// which this module must not have — the same seam the designer card resolves its head name
+    /// through. A tenant with the employee module disabled resolves nothing, and the page shows the
+    /// appointment's employee id rather than a blank, which is at least something to act on.
+    /// </remarks>
+    private async Task<EmployeeRef?> ResolveEmployeeAsync(string employeeId, CancellationToken cancellationToken)
+    {
+        var lookup = _employeeLookups.FirstOrDefault();
+
+        return lookup is null ? null : await lookup.GetAsync(employeeId, cancellationToken);
     }
 
     // ---- creating one ------------------------------------------------------------------
@@ -880,12 +1216,23 @@ public sealed class DimensionRecordsAdminController : Controller
     /// whether or not anybody has created a record yet, and a screen that hid an empty structure
     /// would hide the one somebody is about to fill in.
     /// </remarks>
-    private async Task<IReadOnlyList<StructureChoiceViewModel>> StructuresForAsync(
+    private Task<IReadOnlyList<StructureChoiceViewModel>> StructuresForAsync(
         DimensionTypeDocument type,
+        CancellationToken cancellationToken) =>
+        StructuresForAsync([type], cancellationToken);
+
+    /// <inheritdoc cref="StructuresForAsync(DimensionTypeDocument, CancellationToken)"/>
+    /// <remarks>
+    /// The union across a group's types, for the <em>All Departments</em> screen: a chart that any
+    /// of them is a level of is a chart this screen can report on. Distinct, because two types in a
+    /// group can perfectly well be levels of the same chart.
+    /// </remarks>
+    private async Task<IReadOnlyList<StructureChoiceViewModel>> StructuresForAsync(
+        IReadOnlyList<DimensionTypeDocument> types,
         CancellationToken cancellationToken) =>
         [
             .. (await _structures.ListAsync(cancellationToken))
-                .Where(structure => structure.OrdinalOf(type.DimensionTypeId) is not null)
+                .Where(structure => types.Any(type => structure.OrdinalOf(type.DimensionTypeId) is not null))
                 .OrderBy(structure => structure.Code, StringComparer.Ordinal)
                 .Select(structure => new StructureChoiceViewModel(
                     structure.StructureId,

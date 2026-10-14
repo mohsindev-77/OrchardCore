@@ -90,8 +90,10 @@ public sealed class OrganisationDesignerAdminTenantTests
             _fixture.Administrator, $"/Admin/Dimensions/Designer/Index?structureId={structureId}");
 
         indexPage.Should().Contain("Designer Division One", "the division is this axis's only root");
-        indexPage.Should().NotContain("Designer Department One", "a non-root type is not rendered until its parent is expanded");
         indexPage.Should().Contain("Designer Orphan Department", "the unplaced panel lists it even though the tree does not");
+
+        DesignerOnly(indexPage).Should().NotContain(
+            "Designer Department One", "a non-root type is not rendered until its parent is expanded");
 
         var divisionChildren = await BaseTenantFixture.GetPageAsync(
             _fixture.Administrator, $"/Admin/Dimensions/Designer/Children?structureId={structureId}&recordId={divisionId}");
@@ -219,7 +221,33 @@ public sealed class OrganisationDesignerAdminTenantTests
         var pageOnTheDay = await BaseTenantFixture.GetPageAsync(
             _fixture.Administrator, $"/Admin/Dimensions/Designer/Index?structureId={structureId}&asAt={dayOf}");
 
-        pageOnTheDay.Should().NotContain("Dated Department One", "placed on that date, so it is in the tree rather than the unplaced panel");
+        DesignerOnly(pageOnTheDay).Should().NotContain(
+            "Dated Department One", "placed on that date, so it is in the tree rather than the unplaced panel");
+    }
+
+    /// <summary>
+    /// The designer's own region of the page, without the admin shell around it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Needed since decision D23.</b> The Organisation menu now expands to each dimension's own
+    /// values, so every unit in the tenant appears in the sidebar of every admin page — which means
+    /// "this page does not contain <em>Designer Department One</em>" stopped being a statement about
+    /// the designer and became one about the whole shell. The assertions that care about what the
+    /// designer <em>renders</em> are scoped to it; the ones that care about what is on the page at
+    /// all are left alone.
+    ///
+    /// Parsed rather than string-sliced, because the markup between the shell and the surface is not
+    /// this test's business and a substring boundary would be one more thing to keep in step.
+    /// </remarks>
+    private static string DesignerOnly(string html)
+    {
+        var surface = new AngleSharp.Html.Parser.HtmlParser()
+            .ParseDocument(html)
+            .QuerySelector(".designer-surface");
+
+        surface.Should().NotBeNull("the designer page renders its surface");
+
+        return surface!.InnerHtml;
     }
 
     [Fact]

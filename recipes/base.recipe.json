@@ -159,7 +159,14 @@
         "the rest are deliberately absent: what a customer calls their levels is theirs to decide, and",
         "a base recipe that guessed would leave every tenant deleting three types before starting.",
         "Re-running is safe per ADR-0008: an identical row is skipped, a divergent one fails naming",
-        "the difference rather than overwriting what the customer has since changed."
+        "the difference rather than overwriting what the customer has since changed.",
+        "pluralEn/pluralAr/menuOrder are the Organisation menu entry, per ADR-0024. The plural is",
+        "AUTHORED, never derived: the per-dimension menu shipped once with a guessed plural and was",
+        "withdrawn because it read Branchs in English and had no Arabic plural at all. A type with",
+        "no authored plural falls back to its singular, which is short and never wrong.",
+        "menuOrder 90 puts Cost centre after the organisational levels the shipped set adds in",
+        "slice F5 (Business Unit 10, Division 20, Department 30, ...) and before anything a",
+        "customer invents, which lands unordered at 0 and sorts by name."
       ],
       "name": "dimension-types",
       "types": [
@@ -167,6 +174,9 @@
           "code": "cost-centre",
           "nameEn": "Cost centre",
           "nameAr": "مركز التكلفة",
+          "pluralEn": "Cost centres",
+          "pluralAr": "مراكز التكلفة",
+          "menuOrder": 90,
           "allowsSelfNesting": true,
           "attributes": []
         }

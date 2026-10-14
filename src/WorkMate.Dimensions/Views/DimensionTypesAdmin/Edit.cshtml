@@ -29,9 +29,41 @@
        written as a plain chain still uses it to derive its map, but nothing here sets it and
        nothing reads it when deciding a placement. *@
 
-    @* No "In the menu" block. A menu entry per dimension type was tried and withdrawn — see
-       Navigation/AdminMenu for what it read like on a real tenant. A type's units are reached from
-       the Dimension types list's "View units" link instead, so there is nothing here to configure. *@
+    @* The menu entry (ADR-0024). This block was built in prompt 4 session D, withdrawn with the
+       feature, and is back because FRS v2.5 §1.2 and decision D3 ask for one entry per dimension.
+       What is different is the plural: it is authored here, in both languages, rather than guessed
+       by appending an "s" — which is what produced "Branchs" and is why the feature was pulled. *@
+    <fieldset class="mb-3" id="dimension-type-menu">
+        <legend class="fs-5">@T["In the Organisation menu"]</legend>
+
+        <div class="form-check mb-3">
+            <input asp-for="ShowInMenu" type="checkbox" class="form-check-input" id="dimension-type-show-in-menu" />
+            <label asp-for="ShowInMenu" class="form-check-label" for="dimension-type-show-in-menu">
+                @T["Give this dimension its own menu item"]
+            </label>
+            <div class="form-text">
+                @T["Turn it off for a dimension this tenant does not use. Its values stay reachable from this list's \"View units\" link."]
+            </div>
+        </div>
+
+        @{ var pluralHint = T["Optional. Left empty, the menu reads the singular above — which is never wrong, only short."].Value; }
+        <workmate-bilingual for-en="PluralEn" for-ar="PluralAr" label="@T["Plural, as the menu shows it"]"
+                            hint="@pluralHint" max-length="200" />
+
+        <div class="mb-3" style="max-width: 10rem;">
+            @* "Menu order", not "Position in the menu". Decision D20 makes Position a product noun —
+               one concept, the thing an employee holds — and a label using the word in its ordinary
+               English sense is exactly the ambiguity D20 exists to remove. D23 E. *@
+            <label asp-for="MenuOrder" class="form-label">@T["Menu order"]</label>
+            <input asp-for="MenuOrder" type="number" class="form-control" dir="ltr" id="dimension-type-menu-order" />
+            <span asp-validation-for="MenuOrder" class="text-danger"></span>
+            @* A number rather than an alphabetical sort, because the order of an organisation's
+               levels is a fact about the organisation — Business Unit above Division above
+               Department — and sorting by caption gives an Arabic reader a different order from an
+               English one. *@
+            <div class="form-text">@T["Lower first. The same order in every language."]</div>
+        </div>
+    </fieldset>
 
     @if (!Model.IsNew)
     {

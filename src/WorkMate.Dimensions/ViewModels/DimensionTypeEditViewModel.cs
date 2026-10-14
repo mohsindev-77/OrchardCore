@@ -53,6 +53,35 @@ public sealed class DimensionTypeEditViewModel
     [BindNever]
     public bool AllowsSelfNesting { get; set; }
 
+    /// <summary>
+    /// Whether this dimension gets its own entry in the Organisation menu (ADR-0024).
+    /// </summary>
+    /// <remarks>
+    /// A checkbox posts nothing when it is unticked, so the default here has to be <c>false</c> and
+    /// the form has to render the box — which is the opposite of
+    /// <see cref="DimensionTypeDocument.ShowInMenu"/>'s default of <c>true</c>, and deliberately so.
+    /// A posted model is a complete statement of what the form showed; a stored document with no
+    /// statement about it yet is a dimension nobody has hidden.
+    /// </remarks>
+    public bool ShowInMenu { get; set; }
+
+    /// <summary>
+    /// The plural the menu entry reads, authored in both languages. Optional.
+    /// </summary>
+    /// <remarks>
+    /// Nullable for the reason <see cref="NameEn"/> is: an empty box binds to null, and a
+    /// non-nullable reference property gets an implicit <c>required</c> in model state, which would
+    /// refuse a blank plural before the controller ran. Blank is a legitimate answer and means
+    /// "read as the singular" — never "guess one".
+    /// </remarks>
+    public string? PluralEn { get; set; }
+
+    /// <inheritdoc cref="PluralEn"/>
+    public string? PluralAr { get; set; }
+
+    /// <summary>Where this dimension sits among the others in the menu. Lower first.</summary>
+    public int MenuOrder { get; set; }
+
     [BindNever]
     public bool IsSystemDefined { get; set; }
 
@@ -74,6 +103,20 @@ public sealed class DimensionTypeEditViewModel
     /// </remarks>
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
+    /// <summary>
+    /// The posted menu settings as the service's value.
+    /// </summary>
+    /// <remarks>
+    /// Never null: this form always shows the menu block, so a post from it is always a complete
+    /// statement about the menu. <c>IDimensionTypeService.UpdateAsync</c> treats null as "I am not
+    /// describing the menu" and leaves the stored settings alone, which is what a recipe row or an
+    /// API call that says nothing about it needs — and precisely what this screen must not do.
+    /// </remarks>
+    public DimensionTypeMenu ToMenu() => new(
+        ShowInMenu,
+        new BilingualText(PluralEn?.Trim() ?? string.Empty, PluralAr?.Trim() ?? string.Empty),
+        MenuOrder);
+
     public static DimensionTypeEditViewModel Of(DimensionTypeDocument document) => new()
     {
         DimensionTypeId = document.DimensionTypeId,
@@ -83,7 +126,21 @@ public sealed class DimensionTypeEditViewModel
         AllowsSelfNesting = document.AllowsSelfNesting,
         IsSystemDefined = document.IsSystemDefined,
         ContentTypeName = document.ContentTypeName,
+        ShowInMenu = document.ShowInMenu,
+        PluralEn = document.PluralName.En,
+        PluralAr = document.PluralName.Ar,
+        MenuOrder = document.MenuOrder,
         AttributeSchema = [.. document.AttributeSchema.Select(DimensionAttributeRowViewModel.Of)],
+    };
+
+    /// <summary>
+    /// A new type's defaults, so the Create form opens with the menu block already saying what
+    /// will happen rather than with an unticked box that means "invisible".
+    /// </summary>
+    public static DimensionTypeEditViewModel ForNew() => new()
+    {
+        ShowInMenu = DimensionTypeMenu.Default.ShowInMenu,
+        MenuOrder = DimensionTypeMenu.Default.MenuOrder,
     };
 
     /// <summary>

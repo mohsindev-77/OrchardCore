@@ -338,6 +338,14 @@ until there is a number to justify taking it on.
   rather than one per id, because types and structures change rarely enough that evicting all of a
   tenant's cached types on any one write to them costs nothing worth avoiding, and it is far
   simpler to get right than tracking which cached entries one write could have affected.
+- **The Organisation menu is the third signal, and the only cached *dated* read (ADR-0024, D23 D).**
+  `MenuSignal(tenant)` tags one entry per tenant per day, `Menu(tenant, isoDate)`. It needs its own
+  signal because it is built from three things — types, structures and **values** — and values have
+  none of their own: nothing else here caches a record. Cancelled by `DimensionTypeService`,
+  `StructureService` and `DimensionRecordHandler`, the last on the **content hooks** so that
+  creating, renaming, correcting and retiring a value are covered by one place rather than by
+  eleven success paths that each have to remember. Moving and cancelling a move touch only links,
+  so `DimensionService` signals for those two itself.
 - **The signal is sent again once the write has committed — ADR-0019, and this module had the
   defect too.** Both services used to call `ISignal.SignalTokenAsync` directly, which fires while
   the write is still staged on the session: a read arriving between that and the commit refills the
@@ -389,7 +397,10 @@ until there is a number to justify taking it on.
 Four screens, each calling the same services the API and the recipe steps
 use — no screen holds a privileged path:
 
-- **`DimensionTypesAdminController`** — list and editor for dimension types.
+- **`DimensionTypesAdminController`** — list and editor for dimension types. The
+  editor carries the **In the Organisation menu** block since ADR-0024: whether
+  the dimension gets its own entry, the authored bilingual plural the entry reads,
+  and where it sits. Reached from **Organisation → Settings → Dimension types**.
 - **`DimensionRecordsAdminController`** — one list and one editor, serving every
   type the tenant has, reached from the Dimension types list. See *A list and a
   New button, per type* below.
@@ -994,6 +1005,104 @@ is rendered hidden and unhidden by the script, because without the script there 
 no round trip behind it and a control that visibly does nothing is worse than one
 that is not there.
 
+### The Organisation menu: one expandable entry per dimension name (ADR-0024, decision D23, slice F2)
+
+```
+Organisation
+    Organisation designer      ← unchanged, and first, exactly where it was before slice F2
+    (Organisation tree)        ← position reserved; slice F8 builds the read-only enquiry report
+    Departments                ┐
+        All Departments        │  the list screen, over every dimension type in the group
+        Civil (Zenith …)       │  the dimension's own active values, at most fifteen,
+        Credit (Crescent …)    │  alphabetical in the reader's own language
+        …                      │
+        Show all (17)          ┘  only when there are more
+    Divisions
+        …
+    Settings
+        Dimension types
+        Structures
+        (Mapping)              ← position reserved; slice F3
+```
+
+**This shipped once, was withdrawn by the product owner on sight, and is back in a different
+shape.** On a real tenant the withdrawn version read *Branchs, Cost centres, Departments,
+Departments, Departments, Divisions, Divisions, Divisions, Projects, Regions, Sections, Teams*.
+FRS v2.5 §1.2 and decision D3 ask for it again; decision D17 diagnosed what went wrong and decision
+**D23** settled the remedy after the first one was built and reverted.
+
+| What went wrong | What it is now |
+| --- | --- |
+| **The plural was guessed.** English gained an "s"; Arabic gained nothing, because قسم pluralises to أقسام by changing the word | **Authored**, in both languages, on the dimension type editor. A group with no authored plural falls back to the **singular** — wrong-looking, never wrong. No rule invents a word |
+| **The tenant really did hold three Department types**, one per demo organisation | **The menu groups them.** Types sharing an English singular name, compared case-insensitively, are one entry (`DimensionMenuComposition`). Where the entry's values span several charts, each value names its own — *Civil (Zenith Engineering & Construction)* |
+| **Nobody could shorten it** | `ShowInMenu` is the switch D3 asks for. A hidden dimension's screens stay reachable from the Dimension types list's **View units** link, which is why the list screen resolves a group from the *types* rather than from the menu |
+
+**D17's remedy was built and reverted, and that is worth knowing before proposing it again.** It
+asked the demo recipes to share the standard dimension types so the tenant would hold one Department.
+A dimension type is a **level of every structure that declares it**, and `CreateAsync` writes a self
+closure pair on all of them — so a shared `division` type put every Crescent division on the Zenith
+axis as a parentless root and the Zenith chart drew them. `DemoCompanyRecipesTenantTests` caught it.
+That is ADR-0005 working as designed; the demo tenant, holding two unrelated companies, is the odd
+case. A second attempt gave each recipe a company-qualified plural — *Zenith Departments* — which
+worked and was also wrong, because a tenant should not read its own company name on every entry.
+
+**Each entry expands (D23 C).** *All &lt;plural&gt;* opens the ordinary list screen scoped to the
+group rather than to one type — which is what gives it an **Organisation column and filter** when
+more than one type is grouped — then the dimension's own active values, then *Show all (N)* when
+there are more than `DimensionMenuGroup.MaxValues`. Clicking a value opens
+`DimensionRecordsAdminController.Details`: that value's code, names, alias, parent, status, head,
+headcount and attributes, with **Edit**, **Move** and **Retire** linking to the screens that already
+own those rules.
+
+**The three properties were revived, not re-invented.** `ShowInMenu`, `PluralName` and `MenuOrder`
+have been on `DimensionTypeDocument` since `UpdateFrom7Async`, read by nothing, because ADR-0009
+made that step unremovable. They are now read by `Navigation.AdminMenu` and written by the editor.
+
+**`Migrations.UpdateFrom10Async` un-guesses what `UpdateFrom7Async` guessed**, and it is a repair
+rather than a destruction. It asks the frozen `DimensionTypeMenu.DefaultFor` what it *would* have
+produced for each type's name: a stored plural that matches exactly is machine output and is
+replaced by the singular; one that differs is something a person typed on session D's editor and is
+**left alone**. Using the frozen function as the detector for its own output is the only rule that
+cannot drift from what the frozen step actually did — which is the one job that function now has,
+and the reason it is still here rather than merely unremovable.
+
+**Positions are explicit numbers, never `LocalizedString.PrefixPosition()`.** That orders by the
+caption in whatever language the reader is in, so an Arabic reader got a different order from an
+English one. The same reasoning makes `MenuOrder` a number a customer sets rather than a sort by
+name, and makes the ordering tiebreak the **English name** rather than the caption.
+`OrganisationMenuTenantTests` builds the menu under both cultures and compares the two sequences *by
+code*; `OrganisationMenuBrowserTests` does the same against a real rendered page, in both languages,
+on a tenant with both demo companies loaded — which is the exact configuration that produced the
+original complaint.
+
+**Read through a cached service, not a query.** The menu is built on every admin request, so
+`AdminMenu` takes `IDimensionMenuService` — `CachedDimensionMenuService` over `DimensionMenuService`,
+the same decorator pattern as the two lookups — rather than querying a dimension's values while a
+page waits to render. Two reasons beyond speed: it applies no permission check, which is right
+because Orchard filters each entry by the `Permission` it declares; and it needs no authorisation
+scope, which a navigation provider has no business entering. That is also why `AdminMenu` is
+`internal`: the service is.
+
+**This is the one dated read in the module that is cached**, and the rule above — *dated graph
+queries are not cached* — still holds. It is the exception that proves it: the menu is only ever
+asked about **today**, and it is read on every admin request. The date is part of the cache key
+(`DimensionCacheKeys.Menu(tenant, isoDate)`) rather than a sliding expiry, because a menu built on
+Monday is a correct answer about Monday and Tuesday should ask a different question.
+
+**Invalidated on every write that shapes it (D23 D).** One signal, `MenuSignal`, cancelled through
+`CacheSignals.SignalNowAndAfterCommitAsync` (ADR-0019) by `DimensionTypeService` (a type's name,
+plural or menu settings), `StructureService` (which charts a type is a level of, which decides the
+organisation suffix) and `DimensionRecordHandler` (a value created, renamed, corrected or retired).
+The last of those is on the **content hooks** rather than on each of `DimensionService`'s eleven
+success paths, so one place that cannot be forgotten covers them all; moving and cancelling a move
+touch only links and signal for themselves.
+
+**A null `menu` on `IDimensionTypeService.UpdateAsync` means "I am not describing the menu"**, not
+"reset it". A recipe row or an API call that says nothing must not clear an authored plural — the
+same rule `allowsSelfNesting` is carried through a save under, and the same rule
+`StructureShape.EmployeeAttachableDimensionTypeIds` states for its own nullable. The editor always
+posts a complete statement, so its `ToMenu()` is never null.
+
 ### A list and a New button, per type — reached from the Dimension types list
 
 Until this, a Department could only be created or edited inside the organisation
@@ -1002,39 +1111,28 @@ navigated by expanding branches, and finding one department by a half-remembered
 code means opening the branch it is in first. HR administrators asked for the
 shape every other list in the product has, and that is what this is.
 
-**The way in is the `View units` link on each row of the Dimension types list.**
-It was briefly a menu entry per type, built from the tenant's own configuration,
-and that was withdrawn: on a real tenant the Organisation menu read *Branchs,
-Cost centres, Departments, Departments, Departments, Divisions, Divisions,
-Divisions, Projects, Regions, Sections, Teams* — several structures legitimately
-use types of the same name, and no rule pluralises an English noun correctly
-(Branch, Company, Analysis), while Arabic pluralises by changing the word rather
-than by adding to it (قسم → أقسام). A navigation menu is a short list somebody
-scans; it is the wrong place to enumerate configuration. The link is one click
-further in, in the place where somebody is already looking at the list of types.
+**There are two ways in, and both are deliberate.** The dimension's own **menu
+entry** (ADR-0024, above) is the short one; the **`View units` link** on each row
+of the Dimension types list is the other, one click further in and in the place
+where somebody configuring a type already is. A dimension hidden from the menu is
+still reachable by the second, which is what makes hiding safe rather than
+destructive.
 
-`OrganisationMenuTenantTests` and `OrganisationMenuBrowserTests` assert that the
-group has exactly three entries, in order, in both languages, on a tenant with
-nine dimension types on it — so this does not come back unnoticed.
+The per-type menu was briefly withdrawn between those two slices, and that history
+is worth keeping because it is why the entry looks the way it does — see **The
+Organisation menu** above for the three defects and their fixes.
 
-Three things survive that withdrawal and are worth knowing about:
+Two things from that period survive and are worth knowing about:
 
-- **`DimensionTypeDocument.ShowInMenu`, `PluralName` and `MenuOrder` are still
-  on the document and nothing reads them.** `Migrations.UpdateFrom7Async` has
-  shipped and sets them, and ADR-0009 makes a shipped step uneditable — tenants
-  are recorded past it and will never run it again. Deleting the properties would
-  stop it compiling; a step to clear them would be a migration whose whole purpose
-  is to destroy data, running on every tenant including those that never had the
-  feature. So they stay, inert.
-- **The three fixed menu entries keep their explicit numeric positions.** They
-  used `PrefixPosition()`, which orders by the caption in whatever language the
+- **The fixed entries keep their explicit numeric positions.** They used
+  `PrefixPosition()`, which orders by the caption in whatever language the
   reader is in, so an Arabic reader got a different order from an English one.
-  That was found while the per-type entries were being built and is worth keeping
-  on its own merits.
-- **The screens name a type by its singular** — "Department units", not
-  "Departments". The stored plural was maintained by the editor that went with
-  the menu, so reading it now would be reading a field a customer can no longer
-  correct.
+  That was found while the per-type entries were being built, and it is the same
+  reason `MenuOrder` is a number rather than an alphabetisation.
+- **The screens still name a type by its singular** — "Department units", not
+  "Departments". The heading identifies *this* type's list; the plural is what the
+  menu shows, and a heading that read "Departments units" or that silently
+  switched between the two would be a second reading of a field with one job.
 
 The list shows code, bilingual name, **alias**, parent (the full path, per
 structure), status with its dates, the headcount as a link into the employee
@@ -1261,6 +1359,17 @@ resolves its level types by code, a record resolves its type and structure, and
 the last two resolve units — and people, through `IEmployeeLookup`, which means
 `WorkMate.Records`' own `employees` step has to come before either of them.
 
+**`dimension-types` carries the menu entry since ADR-0024**: `pluralEn`,
+`pluralAr`, `showInMenu` and `menuOrder`, all nullable so that *absent* and
+*stated* are different things. A row that states **none** of them is not describing
+the menu and leaves a tenant's authored plural alone; a row that states **any** of
+them is describing it, and the ones it leaves out take the documented default
+rather than the stored value — because a half-stated menu is still a statement, and
+guessing which half was meant is worse than taking the default. The export states
+all four unconditionally, for the reason ADR-0008's sort-order addendum gives:
+"this dimension is hidden" and "this file says nothing about the menu" are
+different tenants, and an export reproduces a tenant.
+
 **A change, not a placement, is `employee-assignments`' unit.** Each entry is one
 employee on one axis carrying dated changes, and each change is the whole set of
 concurrent placements from that date — one row ordinarily, several for a split
@@ -1371,7 +1480,28 @@ the suite adds beneath, so it is the one that can carry the diagonal without
 changing another test's journey. That is worth remembering before giving a second
 demo type a diagonal.
 
-Two worked company examples sit beside it:
+**Its dimension types stay prefixed `demo-`**, as every demo recipe's do. This
+recipe is a self-contained **sample** rather than a reference company: its stated
+selling point is that it runs on any tenant without colliding with anything, and
+sharing a type code would give that up.
+
+**All three recipes keep prefixed type codes, and that is the second thing slice F2
+got wrong and had to undo.** Decision D17 asked them to share the standard types so
+a tenant with all three loaded would hold one Department. It was built, and it put
+every Crescent division on the Zenith chart — a dimension type is a level of every
+structure that declares it, and `CreateAsync` writes a self closure pair on all of
+them, so one record ends up on several axes exactly as ADR-0005 intends.
+`DemoCompanyRecipesTenantTests` caught it. A second attempt renamed the data
+instead — *Demo Division*, *Zenith Departments* — which disambiguated the menu by
+making a tenant read its own company name on every entry.
+
+**Decision D23 fixes it in the menu**, so the names here are plain again: every
+recipe says *Division*, *Department*, *Section*, and the types sharing a name share
+one menu entry whose values name the chart they are on. Each type carries an
+**authored bilingual plural** — identical across the types that share an entry,
+because the group reads the first authored one it finds — and a `menuOrder`.
+
+Two worked company examples sit beside the sample:
 
 - **`organisation-designer-zenith`** — two kinds of unit at one level. Under a
   Division sits either a Department or a Project; a Project contains Teams.
@@ -1587,6 +1717,30 @@ with different content.
   operation that would throw "no column named AliasEn" on a tenant the migration
   had missed, which is the same failure on the same table that ADR-0009 exists
   because of.
+
+- **ADR-0024, slice F2** — the per-dimension Organisation menu, revived.
+  `Migrations.UpdateFrom10Async` (schema version 11) replaces the plurals
+  `UpdateFrom7Async` guessed with the singular.
+
+  **Not a schema change**, so there is no column and nothing for
+  `ColumnExistsAsync` to look at: `ShowInMenu`, `PluralName` and `MenuOrder` have
+  been document properties since version 8. It is a data repair, and the only one
+  in this module's history that touches values a previous step wrote.
+
+  **Why it does not count as destroying data (ADR-0009).** What it clears is one
+  frozen function's output, and it detects that by asking the same function —
+  `DimensionTypeMenu.DefaultFor` — what it would have produced for the type's name.
+  A stored plural that matches is a guess; one that differs is something a person
+  typed on the editor that shipped with the withdrawn menu, and is left alone.
+  Using the frozen function as the detector for its own output is the only rule
+  that cannot drift from what the frozen step actually did.
+  `DimensionsMigrationUpgradeTenantTests.ATenantWithGuessedPluralsHasThemReplaced
+  AndAuthoredOnesLeftAlone` asserts both halves on one tenant.
+
+- **ADR-0020** — *withdrawn* by decision D19 before any of it was built. A value
+  has exactly one parent; `DimensionLinkDocument.ParentOn` keeps returning one and
+  the closure index keeps one path per pair. The ADR file is kept for the analysis
+  in it, and ADR-0021 is amended to a single parent, Required or Optional.
 
 ## Open questions this module is waiting on
 

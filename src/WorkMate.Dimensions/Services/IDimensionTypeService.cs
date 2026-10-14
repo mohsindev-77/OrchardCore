@@ -21,6 +21,11 @@ public interface IDimensionTypeService
     /// draftable. Records both the type change and the content-definition change in the audit
     /// trail.
     /// </summary>
+    /// <param name="menu">
+    /// How this dimension appears in the Organisation menu (ADR-0024). Null means
+    /// <see cref="DimensionTypeMenu.Default"/>: shown, no authored plural, unordered — so the entry
+    /// reads as the singular until somebody authors a plural.
+    /// </param>
     Task<DimensionResult<DimensionTypeDocument>> CreateAsync(
         string code,
         BilingualText name,
@@ -28,17 +33,26 @@ public interface IDimensionTypeService
         bool allowsSelfNesting,
         bool isSystemDefined = false,
         DimensionValidationBatch? batch = null,
+        DimensionTypeMenu? menu = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Changes a type's name, self-nesting rule and attribute schema, and brings the backing
-    /// content type into line. The code is not changeable: the content type is named for it.
+    /// Changes a type's name, self-nesting rule, attribute schema and menu entry, and brings the
+    /// backing content type into line. The code is not changeable: the content type is named for it.
     /// </summary>
+    /// <param name="menu">
+    /// As on <see cref="CreateAsync"/>, with one difference that matters: <b>null leaves the stored
+    /// menu settings exactly as they are</b> rather than resetting them to the default. A caller
+    /// that is not describing the menu must not silently clear a tenant's authored plural — the
+    /// same rule <c>allowsSelfNesting</c> is carried through a save under, and the same rule
+    /// <c>StructureShape.EmployeeAttachableDimensionTypeIds</c> states for its own nullable.
+    /// </param>
     Task<DimensionResult<DimensionTypeDocument>> UpdateAsync(
         string dimensionTypeId,
         BilingualText name,
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
+        DimensionTypeMenu? menu = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

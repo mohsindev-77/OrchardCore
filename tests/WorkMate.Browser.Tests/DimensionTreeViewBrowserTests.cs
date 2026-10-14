@@ -43,7 +43,7 @@ public sealed class DimensionTreeViewBrowserTests
         await using var context = await _tenant.SignedInContextAsync();
         var page = await context.NewPageAsync();
 
-        await AdminMenu.ClickAsync(page, "Organisation", "Dimension types");
+        await AdminMenu.ClickAsync(page, "Dimension types", "Organisation", "Settings");
 
         await page.Locator(".dimension-type-row[data-type-code='demo-department'] .dimension-type-units")
             .ClickAsync();
@@ -105,7 +105,7 @@ public sealed class DimensionTreeViewBrowserTests
         await using var context = await _tenant.SignedInContextAsync();
         var page = await context.NewPageAsync();
 
-        await AdminMenu.ClickAsync(page, "Organisation", "Dimension types");
+        await AdminMenu.ClickAsync(page, "Dimension types", "Organisation", "Settings");
 
         await page.Locator(".dimension-type-row[data-type-code='demo-section'] .dimension-type-units")
             .ClickAsync();
@@ -132,6 +132,41 @@ public sealed class DimensionTreeViewBrowserTests
     }
 
     /// <summary>
+    /// A dimension's own menu entry opens that dimension's screen — ADR-0024, by clicking.
+    /// </summary>
+    /// <remarks>
+    /// <b>The journey the FRS actually asks for</b>, and the one the "View units" route above is
+    /// the second way into. §1.2: <em>"All dimensional master tables … should appear as separate
+    /// menu items."</em>
+    ///
+    /// Two things are asserted and both matter. The entry reads the <b>authored plural</b> —
+    /// <em>Sections</em>, which this tenant's recipe states and which no suffix rule produces from
+    /// شعبة — and clicking it lands on <b>that</b> dimension's list rather than on the first one,
+    /// which is what a menu built from a shared route and a forgotten route value would do.
+    ///
+    /// <b>Two clicks since decision D23</b>: the dimension's entry expands, and <em>All
+    /// Sections</em> under it opens the list. The entry itself is a group now, because the values
+    /// hang off it.
+    /// </remarks>
+    [Fact]
+    public async Task ADimensionsOwnMenuEntryOpensItsOwnScreen()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await AdminMenu.ClickAsync(page, "All Sections", "Organisation", "Sections");
+
+        await Assertions.Expect(page.Locator("#record-list-heading")).ToContainTextAsync("Section");
+
+        // That dimension's values, not another's: a section the demo recipe seeds, and no department.
+        await Assertions.Expect(
+            page.Locator("tr.record-row[data-record-code='demo-sec-instore']")).ToBeVisibleAsync();
+
+        await Assertions.Expect(
+            page.Locator("tr.record-row[data-record-code='demo-dept-retail']")).ToHaveCountAsync(0);
+    }
+
+    /// <summary>
     /// The toolbar's Edit acts on the row the reader ticked.
     /// </summary>
     /// <remarks>
@@ -146,7 +181,7 @@ public sealed class DimensionTreeViewBrowserTests
         await using var context = await _tenant.SignedInContextAsync();
         var page = await context.NewPageAsync();
 
-        await AdminMenu.ClickAsync(page, "Organisation", "Dimension types");
+        await AdminMenu.ClickAsync(page, "Dimension types", "Organisation", "Settings");
 
         await page.Locator(".dimension-type-row[data-type-code='demo-department'] .dimension-type-units")
             .ClickAsync();

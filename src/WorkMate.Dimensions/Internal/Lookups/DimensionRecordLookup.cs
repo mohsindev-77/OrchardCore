@@ -34,6 +34,24 @@ internal sealed class DimensionRecordLookup : IDimensionRecordLookup
         return row is null ? null : DimensionNodeRef.FromIndex(row);
     }
 
+    public async Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index =>
+                index.DimensionTypeId == dimensionTypeId && index.Latest)
+            .ListAsync(cancellationToken);
+
+        return
+        [
+            .. rows
+                .Select(DimensionNodeRef.FromIndex)
+                .OrderBy(record => record.SortOrder)
+                .ThenBy(record => record.NameEn, StringComparer.Ordinal),
+        ];
+    }
+
     public async Task<bool> CodeExistsAsync(
         string code,
         string? excludingRecordId,

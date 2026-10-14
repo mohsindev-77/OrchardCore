@@ -24,6 +24,23 @@ internal interface IDimensionRecordLookup
     Task<DimensionNodeRef?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Every record of one dimension type, in sort order then by English name. Undated.
+    /// </summary>
+    /// <remarks>
+    /// <b>Added for the Organisation menu (ADR-0024), which needs a dimension's values without
+    /// needing a permission check or a date.</b> The menu is built once per tenant and cached, by a
+    /// navigation provider that has no authorisation scope to enter — see
+    /// <c>Navigation.AdminMenu</c> — so it cannot go through <c>IDimensionService.ListByTypeAsync</c>,
+    /// whose whole job includes the check this caller must not make.
+    ///
+    /// Undated like everything else here: the caller filters by effective range on the date it is
+    /// about, which is the same division of labour <see cref="GetAsync"/> already has.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Whether a record other than <paramref name="excludingRecordId"/> already holds this code.
     /// </summary>
     /// <remarks>

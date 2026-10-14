@@ -12,6 +12,9 @@
     "The shape this exists to demonstrate: Department and Project are siblings under a Division, not one above the other. Before ADR-0010 that was inexpressible — the only way to allow a Project under a Division was to turn on level skipping, which also allowed a Team under one.",
     "Stated as rootTypeCodes + containment, never allowSkipLevel. The two are different descriptions of the same thing and the structures step refuses a row that gives both.",
     "Project carries a real attribute schema — start date, end date, cost code, site location — and the records carry values for it. Both halves travel through export and import since ADR-0011.",
+    "The dimension TYPE codes stay prefixed zenith-, and sharing them with organisation-designer-crescent was TRIED AND REVERTED while building slice F2. Decision D17 asked the demos to share the standard types so each dimension appears once in the menu, and sharing them does fix the menu — but a dimension type belongs to the structures that declare it as a level, and IDimensionService.CreateAsync writes a self pair on every one of them. So a shared Division type puts every Crescent division on the Zenith axis as a parentless root, and the Zenith chart draws Crescent's divisions. That is the engine working exactly as ADR-0005 designed it — one record, several axes — and it is the demo data that is the odd case: two UNRELATED organisations in one tenant, which no real tenant is. DemoCompanyRecipesTenantTests caught it.",
+    "So the menu fixes it in the menu instead, which is decision D23 and ADR-0024: dimension types sharing an English singular name are ONE menu entry, and where that entry's values span more than one chart each value names its own — Civil (Zenith Engineering & Construction). That is why the plurals here are plain Divisions and Departments rather than the Zenith Divisions and Zenith Departments an earlier attempt used: a company-qualified caption disambiguated the menu by making a tenant read its own company name on every entry, which is a worse menu than the one being fixed.",
+    "Each type carries an authored bilingual plural and a menuOrder. Nothing derives a plural any more: ADR-0024 brought the per-dimension menu back with the plural authored rather than guessed, because the guess produced Branchs in English and no plural at all in Arabic. Types that share a menu entry should carry identical plurals — the group reads the first authored one it finds, in menuOrder then code order.",
     "Headcounts are deliberately absent: employees do not exist until prompt 4. The figures to seed are recorded in the prompt library's prompt 4 backlog note, alongside the matrix assignment this organisation is the example for."
   ],
 
@@ -19,12 +22,15 @@
     {
       "name": "dimension-types",
       "types": [
-        { "code": "zenith-division", "nameEn": "Division", "nameAr": "قطاع", "allowsSelfNesting": false },
-        { "code": "zenith-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
+        { "code": "zenith-division", "nameEn": "Division", "nameAr": "قطاع", "pluralEn": "Divisions", "pluralAr": "القطاعات", "menuOrder": 10, "allowsSelfNesting": false },
+        { "code": "zenith-department", "nameEn": "Department", "nameAr": "إدارة", "pluralEn": "Departments", "pluralAr": "الإدارات", "menuOrder": 20, "allowsSelfNesting": false },
         {
           "code": "zenith-project",
           "nameEn": "Project",
           "nameAr": "مشروع",
+          "pluralEn": "Projects",
+          "pluralAr": "المشاريع",
+          "menuOrder": 40,
           "allowsSelfNesting": false,
           "attributes": [
             { "name": "StartDate", "labelEn": "Start date", "labelAr": "تاريخ البدء", "kind": "Date", "isRequired": true },
@@ -33,7 +39,7 @@
             { "name": "SiteLocation", "labelEn": "Site location", "labelAr": "موقع العمل", "kind": "Text", "isRequired": false }
           ]
         },
-        { "code": "zenith-team", "nameEn": "Team", "nameAr": "فريق", "allowsSelfNesting": false }
+        { "code": "zenith-team", "nameEn": "Team", "nameAr": "فريق", "pluralEn": "Teams", "pluralAr": "الفرق", "menuOrder": 50, "allowsSelfNesting": false }
       ]
     },
 

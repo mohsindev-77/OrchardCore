@@ -2,6 +2,7 @@ using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
 using OrchardCore.Data.Migration;
+using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Internal.Graph;
@@ -663,6 +664,63 @@ public sealed class Migrations : DataMigration
         }
 
         return 10;
+    }
+
+    /// <summary>
+    /// ADR-0024: replaces the plurals <see cref="UpdateFrom7Async"/> guessed with the singular, so
+    /// the revived per-dimension menu never reads <em>Branchs</em>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The problem this exists for.</b> <see cref="UpdateFrom7Async"/> shipped with the per-type
+    /// menu and wrote a plural onto every dimension type a tenant had: the English name plus an
+    /// "s", and the Arabic name unchanged. The menu was withdrawn on sight — on a real tenant it
+    /// read <em>Branchs, Cost centres, Departments, Departments, Departments, Divisions…</em> — and
+    /// the fields have sat unread ever since. FRS v2.5 §1.2 and D3 ask for the feature again, and
+    /// ADR-0024 brings it back with the plural <b>authored</b> rather than guessed. Reading the
+    /// stored value without this step would resurrect every one of those guesses on the first
+    /// tenant that upgraded through version 8.
+    ///
+    /// <b>Why this is a repair and not a destruction.</b> ADR-0009's rule is that a migration never
+    /// destroys data. What this clears is not data anybody entered: it is one frozen function's
+    /// output, and the step detects it by asking that same function —
+    /// <c>DimensionTypeMenu.DefaultFor</c> — what it would have produced for this type's name. A
+    /// stored plural that matches exactly is a guess; one that differs is something a person typed
+    /// on session D's editor before it was withdrawn, and <b>is left alone</b>. Using the frozen
+    /// function as the detector for its own output is the only rule that cannot drift from what the
+    /// frozen step actually did.
+    ///
+    /// <b>What replaces a guess is the singular, not an empty string.</b> Both read correctly —
+    /// <see cref="DimensionTypeDocument.MenuCaption"/> falls back to the singular when the plural is
+    /// empty — but writing the singular makes what the menu will say visible on the dimension type
+    /// editor, where somebody can correct it, rather than leaving a blank box beside a menu entry
+    /// that already has words in it.
+    ///
+    /// <b>Not a schema change</b>, so there is no column to add and nothing for
+    /// <see cref="ColumnExistsAsync"/> to check: <c>ShowInMenu</c>, <c>PluralName</c> and
+    /// <c>MenuOrder</c> are document properties and have been since version 8. Re-running it is
+    /// harmless — once a guess has been replaced by the singular it no longer matches what
+    /// <c>DefaultFor</c> produces, so a second pass changes nothing.
+    /// </remarks>
+    public async Task<int> UpdateFrom10Async()
+    {
+        foreach (var type in await _session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+        {
+            var guessed = DimensionTypeMenu.DefaultFor(type.Name).PluralName;
+
+            if (!string.Equals(type.PluralName.En, guessed.En, StringComparison.Ordinal) ||
+                !string.Equals(type.PluralName.Ar, guessed.Ar, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // A fresh instance, never a shared one — ADR-0007. Two types whose names happened to
+            // produce equal guesses would otherwise end up sharing one object.
+            type.PluralName = new BilingualText(type.Name.En, type.Name.Ar);
+
+            await _session.SaveCheckedAsync(type);
+        }
+
+        return 11;
     }
 
     /// <summary>

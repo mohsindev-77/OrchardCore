@@ -122,8 +122,17 @@ internal sealed class DimensionTypeService : IDimensionTypeService
     /// thirty tests in this module, which is how the rule got its shape.
     /// <c>DimensionCachingTenantTests</c> now covers both halves.
     /// </remarks>
-    private Task InvalidateCacheAsync() =>
-        _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.TypesSignal(_shellSettings.Name));
+    /// <remarks>
+    /// <b>Two signals, because the Organisation menu is built from types and is cached separately.</b>
+    /// A type's name decides which menu group it joins, its plural decides what the group reads and
+    /// its <c>ShowInMenu</c> decides whether there is a group at all — so every write here can change
+    /// the menu, and the menu's own entry has to go with the type entries. ADR-0024, decision D23 D.
+    /// </remarks>
+    private async Task InvalidateCacheAsync()
+    {
+        await _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.TypesSignal(_shellSettings.Name));
+        await _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.MenuSignal(_shellSettings.Name));
+    }
 
     /// <inheritdoc />
     public async Task<DimensionResult<DimensionTypeDocument>> CreateAsync(
@@ -133,6 +142,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         bool allowsSelfNesting,
         bool isSystemDefined = false,
         DimensionValidationBatch? batch = null,
+        DimensionTypeMenu? menu = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -174,9 +184,11 @@ internal sealed class DimensionTypeService : IDimensionTypeService
                     contentTypeName]));
         }
 
-        // Nothing is written to the retired menu fields. See DimensionTypeDocument.ShowInMenu for
-        // why they are still on the document and why a new type simply leaves them at their
-        // defaults.
+        // The menu entry (ADR-0024). Null means the default — shown, no authored plural, unordered
+        // — so the entry reads as the singular until somebody authors one. Nothing is guessed here;
+        // DimensionTypeMenu.DefaultFor records what guessing cost last time.
+        var entry = menu ?? DimensionTypeMenu.Default;
+
         var document = new DimensionTypeDocument
         {
             DimensionTypeId = _idGenerator.GenerateUniqueId(),
@@ -186,6 +198,9 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             AllowsSelfNesting = allowsSelfNesting,
             AttributeSchema = [.. attributeSchema],
             ContentTypeName = contentTypeName,
+            ShowInMenu = entry.ShowInMenu,
+            PluralName = entry.PluralName,
+            MenuOrder = entry.MenuOrder,
         };
 
         await _session.SaveCheckedAsync(document, cancellationToken);
@@ -205,6 +220,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         BilingualText name,
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
+        DimensionTypeMenu? menu = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -283,9 +299,17 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         document.AllowsSelfNesting = allowsSelfNesting;
         document.AttributeSchema = [.. attributeSchema];
 
-        // The retired menu fields are left exactly as they are rather than cleared — ADR-0009: a
-        // write never destroys stored data, and a tenant that upgraded through UpdateFrom7Async has
-        // values here that cost nothing to carry. See DimensionTypeDocument.ShowInMenu.
+        // The menu entry, and only when the caller is describing it. Null is "I am not talking
+        // about the menu" rather than "reset it": a recipe row or an API call that says nothing
+        // about the plural must not clear one somebody authored, which is the same rule
+        // allowsSelfNesting is carried through a save under and the same rule
+        // StructureShape.EmployeeAttachableDimensionTypeIds states for its own nullable.
+        if (menu is not null)
+        {
+            document.ShowInMenu = menu.ShowInMenu;
+            document.PluralName = menu.PluralName;
+            document.MenuOrder = menu.MenuOrder;
+        }
 
         await _session.SaveCheckedAsync(document, cancellationToken);
 

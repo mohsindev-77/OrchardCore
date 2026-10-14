@@ -1,8 +1,12 @@
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Handlers;
 using OrchardCore.ContentManagement.Metadata;
+using OrchardCore.Environment.Cache;
+using OrchardCore.Environment.Shell;
+using WorkMate.Dimensions.Internal.Lookups;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
+using WorkMate.Platform.Services;
 
 namespace WorkMate.Dimensions.Handlers;
 
@@ -39,17 +43,76 @@ public sealed class DimensionRecordHandler : ContentHandlerBase
     private readonly IDimensionTypeService _dimensionTypeService;
     private readonly IContentDefinitionManager _contentDefinitionManager;
     private readonly ITypeActivatorFactory<ContentPart> _partFactory;
+    private readonly ISignal _signal;
+    private readonly ShellSettings _shellSettings;
 
     public DimensionRecordHandler(
         DimensionRecordPartHandler rules,
         IDimensionTypeService dimensionTypeService,
         IContentDefinitionManager contentDefinitionManager,
-        ITypeActivatorFactory<ContentPart> partFactory)
+        ITypeActivatorFactory<ContentPart> partFactory,
+        ISignal signal,
+        ShellSettings shellSettings)
     {
         _rules = rules;
         _dimensionTypeService = dimensionTypeService;
         _contentDefinitionManager = contentDefinitionManager;
         _partFactory = partFactory;
+        _signal = signal;
+        _shellSettings = shellSettings;
+    }
+
+    /// <summary>
+    /// Drops the cached Organisation menu whenever a dimension value is written. ADR-0019,
+    /// ADR-0024, decision D23 D.
+    /// </summary>
+    /// <remarks>
+    /// <b>Here rather than at each of <c>DimensionService</c>'s eleven success paths.</b> The menu
+    /// lists a dimension's values by name, so adding one, renaming one, correcting one and retiring
+    /// one all change it — and every one of those writes the record's content item, which is this
+    /// hook. One place that cannot be forgotten beats eleven that can; a twelfth write path added
+    /// next year gets the invalidation for nothing.
+    ///
+    /// <b>What this does not cover is a write that touches only links.</b> Moving a unit rewrites
+    /// <c>DimensionLink</c> and leaves the item alone, so <c>DimensionService.MoveAsync</c> and
+    /// <c>CancelMoveAsync</c> signal for themselves. D23 D asks for a move to invalidate the menu
+    /// even though today's menu does not render a value's parent — the contract is "the menu is
+    /// never stale", not "the menu is never stale about the things it currently shows".
+    ///
+    /// Guarded on the part, because every content item on the tenant passes through here and an
+    /// employee record is none of this handler's business.
+    /// </remarks>
+    private Task InvalidateMenuAsync(ContentItem contentItem) =>
+        contentItem.Has<DimensionRecordPart>()
+            ? _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.MenuSignal(_shellSettings.Name))
+            : Task.CompletedTask;
+
+    public override Task CreatedAsync(CreateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return InvalidateMenuAsync(context.ContentItem);
+    }
+
+    public override Task UpdatedAsync(UpdateContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return InvalidateMenuAsync(context.ContentItem);
+    }
+
+    public override Task PublishedAsync(PublishContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return InvalidateMenuAsync(context.ContentItem);
+    }
+
+    public override Task RemovedAsync(RemoveContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return InvalidateMenuAsync(context.ContentItem);
     }
 
     /// <summary>

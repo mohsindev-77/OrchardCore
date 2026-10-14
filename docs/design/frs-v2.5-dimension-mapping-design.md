@@ -15,6 +15,30 @@ figures — the figures are screenshots and were extracted and read, not inferre
 
 ---
 
+> # ⚠ Amended 13 October 2026 — read this first
+>
+> Two product decisions have overruled FRS text that this document was written to honour. They are
+> recorded as **D19** and **D20** in `docs/requirements/frs-v2.5-decisions.md`, each quoting what it
+> overrides. **Where this document and they disagree, they win.**
+>
+> | | Decision | What it does to this document |
+> | --- | --- | --- |
+> | **D19** | **A dimension value has exactly one parent.** Multi-parent mapping (FRS §3, Rule 3, figures 3 and 9) is dropped | **§2.2 is withdrawn** with ADR-0020. §2.1 and §5.5 are amended to one parent, Required or Optional. §2.5's per-parent counting goes; §2.6 loses the DAG cycle case. Conflict **C1 is withdrawn, not reconciled** — ADR-0005 stands and was never departed from. **Slice F4 is deleted** |
+> | **D20** | **Position = Job Title = Designation**, one concept, always "Position" / "المنصب" | **§4.3's Job Title dimension is dropped.** No Job Title dimension, no Position Title dimension, no designation field. §3.1's `position → job-title` mapping goes. §4.4 gains the job-title move, which lands in **F6** as **D22** |
+>
+> **A third, pending product owner confirmation: D21.** A position's link to a **grade** is a
+> *reference*, not a parent — it never enters the closure index and never appears on any tree, and
+> `OneOrMore` survives there and nowhere else so that a grade **range** (G7–G8) stays expressible.
+> The employee's dated grade step stays on its own Grade axis.
+>
+> **Slice order is now `F1 ✓ → F2 → F3 → F8 → F5 → F6 → F7 → F9`** (D18 as revised). §10.3 carries
+> the detail.
+>
+> Sections not named above are unaffected. The amendments are marked in place as well as listed
+> here, so a reader arriving at a section mid-document is not misled by it.
+
+---
+
 ## How to read this
 
 Sections **A** to **E** are written for a reviewer who does not read code: what the FRS asks for,
@@ -80,18 +104,26 @@ is **no Alias field**; and **Position, Grade and Job Title are not modelled at a
 ## The four genuine conflicts, named
 
 Per CLAUDE.md the FRS wins on *what* is built, and a conflict with an ADR or with the architecture is
-flagged and reconciled by a new or amended ADR rather than absorbed quietly. There are four.
+flagged and reconciled by a new or amended ADR rather than absorbed quietly. There were four.
+
+**C1 is withdrawn (D19), leaving three.** CLAUDE.md's rule is that the FRS wins *unless the product
+owner says otherwise*, and here they have: multi-parent mapping is dropped, so the FRS text that
+conflicted with ADR-0005 is simply not built. That is the one outcome a conflict table has no row
+shape for — not "the FRS wins" and not "the ADR wins", but "the requirement is withdrawn" — so it is
+struck through rather than rewritten.
 
 | | The FRS says | We decided | Proposed reconciliation |
 | --- | --- | --- | --- |
-| **C1** | A Branch belongs to one Division **and** one Department at the same time (§3, figure 3, Rule 3) | A record has at most one parent per axis; several parents means several axes (ADR-0005, architecture decision 4) | **ADR-0020** — one axis becomes a directed acyclic graph. The storage already supports it; the arithmetic and three service methods do not |
+| ~~**C1**~~ | ~~A Branch belongs to one Division **and** one Department at the same time (§3, figure 3, Rule 3)~~ | A record has at most one parent per axis; several parents means several axes (ADR-0005, architecture decision 4) | **WITHDRAWN (D19).** The product owner has overruled the FRS text, not the recorded decision: a value has exactly one parent, so there is no conflict to reconcile. ADR-0005 stands as written and was never departed from; **ADR-0020 is withdrawn** and slice F4 is deleted |
 | **C2** | The system ships a ready-made list of 14 dimensions (§2, figure 2) | `base.recipe.json` ships **Cost centre only**, on the stated reasoning that "what a customer calls their levels is theirs to decide, and a base recipe that guessed would leave every tenant deleting three types before starting" | **ADR-0023** — ship them, because the FRS's own Rule 6 (rename) and D3 (hide) are the answer to that objection: a tenant renames or hides rather than deletes |
 | **C3** | Every dimension is its own menu item (§1.2, D3) | Per-type menu entries shipped in prompt 4 session D and were **withdrawn by the product owner on sight** — the menu read *Branchs, Cost centres, Departments, Departments, Departments, Divisions…* | **ADR-0024** — bring them back, with the three things that caused the withdrawal fixed: an authored bilingual plural (no suffix guessing), a fixed order, and one entry per *dimension* rather than per type-per-structure |
 | **C4** | Delete is on the toolbar; a used value becomes Inactive and the user is told why (D4) | Architecture §6 has three outcomes — Clean (delete), Referenced-by-history-only (retire), Referenced-by-live-data (**blocked**) | **ADR-0025** — keep the three-way assessment, change what the screen does with the third: offer "make inactive from…" as the next action instead of a refusal with no way forward |
 
 Three smaller divergences are recorded in the gap table (A6, A7, B4) rather than here: the Alias
 field, the "Position Title" entry in figure 2, and the figure 9 node with two parents of the *same*
-dimension.
+dimension. **The last two are now settled rather than divergences**: D20 removes Position Title (and
+Job Title) as dimensions outright, and D19 removes the figure 9 node's second parent along with
+every other second parent.
 
 ---
 
@@ -225,33 +257,39 @@ Read-only. No Add, no Edit, no drag.
 │   │ Cayman HQ │ Division │ MENA Region │      │   Department          👤 219 │
 │   └───────────┘          └──────┬──────┘      │   Branch              👤  96 │
 │                     ┌───────────┴────────┐    │   Position            👤 227 │
-│               ┌─────▼─────┐      ┌────────▼┐  │                              │
-│               │  Finance  │      │  Retail │  │  CURRENTLY VIEWING           │
-│               └─────┬─────┘      └────┬────┘  │   MENA Region                │
-│                     └──────┬──────────┘       │   118 employees in this      │
-│                    ┌───────▼────────┐         │   branch                     │
-│                    │  Seef Branch   │ 2 parents                              │
-│                    └───────┬────────┘         │                              │
-│                   ┌────────▼────────┐         │                              │
-│                   │Retail Supervisor│Position │                              │
-│                   └────────┬────────┘         │                              │
-│            ┌───────────────┴────────┐         │                              │
-│      ┌─────▼──────┐          ┌──────▼─────┐   │                              │
-│      │Ahmed Salman│ Employee │Fatima Noor │   │                              │
-│      └────────────┘          └────────────┘   │                              │
+│               ┌─────▼─────┐      ┌───────▼──┐ │                              │
+│               │  Finance  │      │  Retail  │ │  CURRENTLY VIEWING           │
+│               └───────────┘      └─────┬────┘ │   MENA Region                │
+│                  Department            │      │   118 employees in this      │
+│                                 ┌──────▼─────┐│   branch                     │
+│                                 │ Seef Branch││                              │
+│                                 └──────┬─────┘│                              │
+│                              ┌─────────▼────────┐                            │
+│                              │ Retail Supervisor│ Position                   │
+│                              └─────────┬────────┘                            │
+│                      ┌─────────────────┴──────┐│                             │
+│                ┌─────▼──────┐          ┌──────▼─────┐                        │
+│                │Ahmed Salman│ Employee │Fatima Noor │                        │
+│                └────────────┘          └────────────┘                        │
 └───────────────────────────────────────────────┴──────────────────────────────┘
 ```
 
 Three things the mock implies and this design makes explicit:
 
-- **Seef Branch is drawn once, with two incoming edges.** Not twice. Drawing it twice would make
-  every count below it double, which is precisely what D1 exists to prevent.
+- **It is a plain tree. Every node has one parent (D19).** The mock draws Seef Branch under two
+  departments with dashed edges; that is not built. Seef sits under Retail and nowhere else, so
+  nothing is ever drawn twice, no count below a node can double, and the renderer needs no
+  already-drawn set to protect itself. The 12 October draft's *"drawn once, with two incoming
+  edges"* was the careful answer to a problem that no longer exists.
 - **The counts in "View by" are per dimension.** The *Department* row counts every employee whose
-  position rolls up to some department, counting each person once; the *Branch* row does the same
-  for branches. Two rows can legitimately disagree (not everybody is under a branch). The
-  *Full Organisation* row is unique employees across the whole chart. That is D1, stated.
+  position rolls up to some department; the *Branch* row does the same for branches. Two rows can
+  legitimately disagree, because not everybody is under a branch. The *Full Organisation* row is
+  unique employees across the whole chart. `DISTINCT EmployeeId` stays in every one of those queries
+  — not for the tree, which now has one path per node, but because **an employee may hold several
+  positions** and be reached through two different leaves (§2.5).
 - **Employees are leaves and are not a dimension** (D6). They come from the employee record and
-  appear under their position.
+  appear under their position. **Slice F8 ships the tree without them**; F6 adds them when employees
+  start joining through a position.
 
 **How you reach it:** Organisation → *Organisation tree*. Clicking any node re-renders from that
 node; the breadcrumb and **Clear selection** go back.
@@ -342,7 +380,7 @@ Legend: **Done** — works now, no change. **Partial** — mechanism exists, nee
 | A2 | All dimensional master tables appear as separate menu items | Three fixed entries; per-type entries shipped and were withdrawn | `Navigation/AdminMenu.cs`; `DimensionTypeDocument.ShowInMenu/PluralName/MenuOrder` are stored, written by `UpdateFrom7Async`, and **read by nothing** | **Conflict (C3)** — ADR-0024 |
 | A3 | Each dimension can have unlimited records | Unlimited, paged | `DimensionRecordsAdminController.Index` | **Done** |
 | A4 | Step 1 — a record links to its own parent dimension (nesting within itself) | The `X → X` diagonal on the containment grid | ADR-0010 addendum; `ContainmentRules.Decide` | **Done** |
-| A5 | Step 2 — the record maps to parent nodes in *other* dimensions | Containment permits it; a record can hold **one** parent per structure | `DimensionLinkDocument.ParentOn` returns a single `ParentLink` | **Conflict (C1)** — ADR-0020 |
+| A5 | Step 2 — the record maps to a parent node in *another* dimension | Containment permits it; a record holds **one** parent per structure | `DimensionLinkDocument.ParentOn` returns a single `ParentLink` | **Done**, after D19. The FRS asked for *several* parents and C1 recorded the conflict; the product owner has withdrawn that, so what the engine already does is what is wanted |
 | A6 | Each dimension viewable as a tree showing links | Per-type list has a **Parent** column (full path per structure); the tree is the cross-type designer | `DimensionRecordsAdminController`, `OrganisationDesignerAdminController` | **Partial** — no single-dimension tree rendering |
 | A7 | One combined tree built automatically from every mapping | Designer draws **one structure**, cross-type, with lazy-loaded children, search and pan | `OrganisationDesignerAdminController`, `_DesignerNode.cshtml` | **Partial** — it is editable, it is per-structure, and it has no View-by panel or counts |
 | A8 | Effective start mandatory, end optional, on every record | Exactly this; `DimensionRecordPartHandler` rejects a missing start and an end before the start | `DimensionRecordPart.EffectiveFrom/EffectiveTo` | **Done** |
@@ -361,7 +399,7 @@ Legend: **Done** — works now, no change. **Partial** — mechanism exists, nee
 | --- | --- | --- |
 | **1** Every dimension has a tree view | Only the cross-type designer | **Partial** (see A6) |
 | **2** A tree view shows only that dimension's values | Nothing shows only one dimension's values as a tree | **Missing** |
-| **3** Mapped to >1 parent ⇒ one value from **each** before save | Containment permits a parent; it never **requires** one. `AddUnitAsync` happily creates a unit with no parent (that is the "unplaced" state, a deliberate feature) | **Missing** — needs cardinality, ADR-0021 |
+| **3** ~~Mapped to >1 parent ⇒ one value from **each**~~ → **a Required mapping must be satisfied before save** (D19) | Containment permits a parent; it never **requires** one. `AddUnitAsync` happily creates a unit with no parent (that is the "unplaced" state, a deliberate feature) | **Missing** — needs cardinality, ADR-0021 as amended. The obligation survives; the plural does not |
 | **4** No mapped parent ⇒ skip the step | Already how `AddUnitAsync` behaves | **Done** |
 | **5** Combined tree generated from existing linking, no separate setup | True of the designer within one structure | **Partial** |
 | **6** Renaming a dimension's label updates its name everywhere | `DimensionTypeDocument.Name` is the single source; every screen reads it; `Code` is separate and immutable (the content type is named for it) | **Done** — and worth saying so, because this is the rule most likely to be assumed broken |
@@ -378,8 +416,8 @@ Legend: **Done** — works now, no change. **Partial** — mechanism exists, nee
 | **D3** | One menu item per dimension, fixed order, bilingual plurals, hideable; tree first; Settings last | Withdrawn; the three fields survive on the document, inert | **Conflict (C3)** |
 | **D4** | Delete really deletes an unused value; a used one goes Inactive with an end date and the user is told why | `AssessDeletionAsync` returns Clean / RetireOnly / **Blocked**, with blockers named | **Conflict (C4)** |
 | **D5a** | Grade Steps is a dimension, grades as parents, steps as children | `grade` is a **lookup list** bound to `JobDetails.GradeCode` (slice B2) | **Conflict** — see §4; resolved by ADR-0026 and a documented data move |
-| **D5b** | Position mapped to a grade; employee holds a dated step | — | **Missing** |
-| **D5c** | Job Title is a dimension positions point to | `job-title` ships as a lookup list **bound to nothing**, deliberately, "because a code-keyed job title is a position by another name" | **Partial** — the session-B design predicted this exact move and left the door open |
+| **D5b** | Position **references** a grade (D21 — a reference, not a parent); employee holds a dated step on a Grade axis | — | **Missing** |
+| ~~**D5c**~~ | ~~Job Title is a dimension positions point to~~ | `job-title` ships as a lookup list **bound to nothing**, deliberately, "because a code-keyed job title is a position by another name" | **STRUCK OUT BY D20.** Position = Job Title = Designation, one concept. The list is retired (D22); nothing was ever bound to it, so nothing changes on a screen |
 | **D5d** | Lookup lists remain for non-organisational values | Ten lists ship; D5's list and B2's shipped list differ slightly — see §7.1 | **Done**, with one reconciliation |
 | **D6** | Employees stay employee records and appear as leaves of the org tree | They are employee records; they are not drawn on any tree | **Partial** |
 
@@ -389,7 +427,7 @@ Legend: **Done** — works now, no change. **Partial** — mechanism exists, nee
 | --- | --- | --- |
 | Alias, as a stored field | `DimensionRecordPart` has eleven standard fields and none of them is an alias | **Missing** — new column, new migration, new upgrade test |
 | A pre-configured dimension set | `base.recipe.json` ships `cost-centre` only, deliberately | **Conflict (C2)** |
-| "Position Title" as a dimension | Figure 2 lists *Position Title* and *Job Title* as separate dimensions while the feedback note says Position is the one master | **Conflict** — see Q-c and §4.3 |
+| "Position Title" **and "Job Title"** as dimensions | Figure 2 lists both as separate dimensions while the feedback note says Position is the one master | **Settled by D20** — neither ships. One concept, always *Position* |
 | "Employees" as a dimension | Figure 2 lists *Employees* among the dimensions; D6 says employees are not a dimension | **Conflict** — D6 wins; the entry is dropped and the reason recorded |
 | A "Position" entry in figure 2 | Figure 2's list has **no Position row**, yet §4.1.4 shows a Position tree and figure 9 puts Position above Employee | **Inconsistency in the FRS** — Q-g |
 
@@ -405,10 +443,14 @@ types may be *my* parent" — that is exactly figure 3's arrows. Nothing new is 
 *which* dimensions a dimension is mapped to.
 
 What is new is **obligation**. Containment today is permissive: *a Branch may sit under a Division*.
-Rule 3 is compulsory: *a Branch must name one Division and one Department before it can be saved.*
+Rule 3 is compulsory: *a Branch must name a Division before it can be saved.*
+
+> **Amended by D19.** Rule 3's original words are *"one value from **each** mapped parent"*. A value
+> now has exactly one parent, so the rule survives in the singular and the plural does not.
 
 ```csharp
 // StructureDocument gains one list. Containment is untouched.
+// At most one entry per ChildDimensionTypeId — enforced in IStructureService, not on the screen.
 public IReadOnlyList<StructureMapping> Mappings { get; set; } = [];
 
 public sealed record StructureMapping(
@@ -418,18 +460,26 @@ public sealed record StructureMapping(
 
 public enum MappingCardinality
 {
-    Optional,     // may name one; may name none. What every existing pairing becomes.
-    ExactlyOne,   // Rule 3: must name exactly one before save
-    OneOrMore,    // Q-f: must name at least one, may name several
+    Optional,   // a parent may be chosen or left empty. What every existing pairing becomes.
+    Required,   // Rule 3, in the singular: one must be chosen before the value can be saved.
 }
 ```
+
+**Three things the 12 October draft had and this does not**, each for its own reason:
+
+| Gone | Why |
+| --- | --- |
+| `OneOrMore` | It meant "several parents of one dimension", which D19 removes. The name survives in **D21** for something that is not a parent — a position's **grade reference**, where a range G7–G8 is wanted and is expressible exactly because a reference is not a placement. That is a separate list on the structure and it never enters the closure index or any tree |
+| `IsPrimary` | It answered "several parents, one needed, which?". D10 records that the premise is gone |
+| `ExactlyOne` as a name | Renamed `Required`. "Exactly one" was a count across a set of parents; with one parent type the only question is whether it may be left empty |
 
 **Why a separate list rather than a flag on `StructureContainment`.** Three reasons. Self-nesting is
 a containment pair (`Department → Department`) and is never a *mapping* in the FRS's sense — a
 Department is not required to name a parent Department. A pairing can be permitted without being a
 mapping at all, which is what every structure written before today is. And a mapping needs a stated
 order (figure 8's groups are numbered A, B, …) that containment has no place for; the list's own
-order supplies it.
+order supplies it. **The third reason is weaker after D19** — with one parent there is one group and
+nothing to order — but the first two carry the decision on their own.
 
 **Existing tenants are untouched by construction.** A structure written before this field exists
 deserialises `Mappings` to empty, and empty means *every declared pairing is optional* — which is
@@ -438,64 +488,29 @@ opens the Mapping screen and ticks something. This is the same "empty means unco
 `EmployeeAttachableDimensionTypeIds` already uses, and the same rule ADR-0008's 11 October addendum
 applies to a recipe row that states nothing.
 
-## 2.2 Several parents at once — the real change (ADR-0020)
+## 2.2 ~~Several parents at once — the real change (ADR-0020)~~ — WITHDRAWN (D19)
 
-Today a record has at most one parent per structure per date. `DimensionLinkDocument.Parents` is a
-list, but it is a list **over time**: `ParentOn(asAt)` takes the first entry whose range contains the
-date, and `InsertLink` closes whatever it displaces the day before.
+**This section is withdrawn in full, before any of it was built.** A dimension value has exactly one
+parent; ADR-0020 is withdrawn with it; slice F4 is deleted. The text it held — the `MappingKey` on
+`ParentLink`, the DAG closure arithmetic, `GetDepthAsync` becoming the shortest path, the
+`ParentDimensionTypeId` migration — described work that no longer has a reason to exist.
 
-For a Branch to belong to a Division **and** a Department at once, entries must be allowed to overlap
-— but only across different mappings.
+**It is withdrawn rather than deleted from the repository.** The analysis in
+`docs/adr/0020-a-value-may-have-several-parents-at-once.md` is kept there in full, for the reason
+that ADR gives: if multi-parent is ever asked for again, the expensive finding — that ADR-0005's
+storage already generalises, because `DimensionClosureDocument.Ancestors` is a list whose own comment
+permits one ancestor at several depths — is done. Read it there rather than here.
 
-```csharp
-internal sealed record ParentLink(
-    string? ParentRecordId,
-    EffectiveRange Range,
-    string? MappingKey = null);   // the parent's dimension type id; null = the legacy single slot
-```
+**What survives, and is built.** One thing: the `DISTINCT EmployeeId` guarantee on *"employees under
+a node"*. It was introduced here for the DAG and it earns its place without one, because an employee
+may hold several positions — a split allocation, the Zenith matrix — and that is a different source
+of double counting which one parent per value does not remove.
 
-**The invariant moves from "one parent per date" to "one parent per date *per mapping key*".** Every
-rule, every displacement and every piece of range arithmetic that `InsertLink` performs today
-continues to hold — within a key. Backdated moves still split rather than overwrite (ADR-0005's
-addendum), because splitting is now per-key arithmetic over the same `ParentLink` ranges.
-
-**`MappingKey` is nullable and that is load-bearing.** Every `ParentLink` already stored deserialises
-with it null. Null means "the one unkeyed parent slot", which is precisely what a pre-FRS tenant has:
-a Department under a Division, with no mapping named. Zenith and Crescent keep working with no data
-written. A tenant that later declares mappings gets keyed links for new placements; the unkeyed link
-remains valid and is treated as the parent for every mapping that does not have a keyed link of its
-own. That rule is stated once, in `DimensionLinkDocument`, and is what makes this migration additive
-rather than a rewrite.
-
-### What this does to the three readers
-
-| Reader | Today | After |
-| --- | --- | --- |
-| `ParentOn(asAt)` | the single parent | **replaced** by `ParentsOn(asAt)` → a list, and `ParentOn(asAt, mappingKey)` → one. Callers that genuinely want "the" parent (the list's Parent column) ask for the **primary mapping** — Q-d |
-| `ComputeAncestorsAsync` | walks one chain up | walks **every** chain up, breadth-first, intersecting ranges along each path, and emits one `ClosureAncestor` per (ancestor, depth, range) reached. Already expressible: the document explicitly allows one ancestor at several depths |
-| cycle detection | "is the proposed parent already a descendant" | unchanged in meaning, and it must already consider **every** path — the existing check runs against the closure, which after this change holds every path. It must also continue to run across **every date**, which it does today |
-
-### The closure index after the change
-
-**No schema change.** `DimensionClosureIndex` is `(StructureId, AncestorId, DescendantId, Depth,
-EffectiveFrom, EffectiveToInclusive)` and a DAG simply produces more rows for the same descendant.
-
-| Question | Query today | After |
-| --- | --- | --- |
-| All descendants of a node | rows where `AncestorId = node` | **`DISTINCT DescendantId`** — a node reachable by two paths appears twice |
-| All ancestors of a node | rows where `DescendantId = node` | unchanged in shape; returns more rows, which is the point |
-| Is A under B | one row lookup | unchanged |
-| Depth of a node | the depth on its root pair | **ambiguous now.** `GetDepthAsync` returns the **shortest** path and is renamed to say so; the tree view uses it only for indentation |
-| Employees under a node | assignment joined to closure on `DescendantId` | **must distinct on employee**, which is D1's org-total rule enforced in the query rather than left to a caller |
-
-**Storage growth** is the honest cost. A value with two parents contributes roughly twice the closure
-rows, and the whole subtree beneath it does too. For the FRS's own shape — Business Unit → Division →
-Department → Branch → Position, with Branch doubly parented — that is a constant factor of about two
-on one level, not an explosion. It is bounded by (number of paths from root to node), which the
-cycle rule already keeps finite. The 200ms-at-5,000-records acceptance criterion in architecture §4
-must be re-measured against a seeded doubly-parented tenant before this slice is accepted; if it
-fails, that is a finding, not something to design around in advance. **This also makes architecture
-open question 6 (retention of closure rows) materially more urgent**, as ADR-0005 already warned.
+**What stands instead.** `DimensionLinkDocument.ParentOn(asAt)` keeps returning a single parent. The
+closure index keeps one path per `(ancestor, descendant)` pair, so `GetDepthAsync` stays unambiguous,
+no node is ever drawn twice, storage stays proportional to the live structure plus its history rather
+than to the number of root-to-node paths, and architecture open question 6 — the retention policy for
+closure rows — goes back to being a question that should be answered rather than one that must be.
 
 ## 2.3 Nesting within a dimension
 
@@ -536,7 +551,7 @@ one structure carries it, and `base.recipe.json` already creates it. Every new F
 per-dimension trees, the Add form's mapping groups, the combined tree — reads the primary
 organisation axis and does not ask the user which axis they meant.
 
-## 2.5 How D1's counting works
+## 2.5 How D1's counting works — amended by D19
 
 Three different numbers, computed three different ways, and the design says which is which so that
 two screens cannot disagree.
@@ -544,24 +559,36 @@ two screens cannot disagree.
 | Number | Where it appears | How it is computed |
 | --- | --- | --- |
 | **At a node** | the Branch screen's headcount column; a card's count | assignments whose `NodeId` is that record, on that date. Unchanged, already batched |
-| **Under a node** | the tree's "118 employees in this branch" | assignments joined to closure on `DescendantId`, **`DISTINCT EmployeeId`**. A person reachable by two paths is one person |
-| **View by `<dimension>`** | the side panel | for each value of that dimension, count-under as above; **sum them**. A value with two parents is a *child* counted twice at the parent level — which is D1 exactly: "a value counts under EACH of its parents, but only within that parent dimension's own View by" |
-| **Full organisation** | the panel's first row | `DISTINCT EmployeeId` over the whole axis. D1's "organisation-wide totals count UNIQUE employees" |
+| **Under a node** | the tree's "118 employees in this branch" | assignments joined to closure on `DescendantId`, **`DISTINCT EmployeeId`** |
+| **View by `<dimension>`** | the side panel | for each value of that dimension, count-under as above; **sum them** |
+| **Full organisation** | the panel's first row | `DISTINCT EmployeeId` over the whole axis |
 
-The panel's rows can therefore legitimately differ from each other and from the total, and the screen
-says so in a sentence rather than leaving a reader to decide which number is the broken one. That
-sentence is part of the deliverable, not a nicety: two plausible numbers that disagree with nothing
-explaining why is the failure mode this whole engine is written against.
+**D19 removes one of the two reasons `DISTINCT` is there, and leaves the other.** A value has one
+parent, so nobody is reachable by two paths through the *tree* and the "a value counts under EACH of
+its parents" half of D1 has nothing to describe. What remains is that **an employee may hold several
+positions** — a split allocation, the Zenith matrix — so the same person can be reached through two
+different leaves. That is a different source of double counting and one parent per value does not
+touch it, which is why the guarantee stays in the query rather than being dropped with the DAG.
+
+The panel's rows can still legitimately differ from each other and from the total — the Department
+row counts everybody whose position rolls up to a department, the Branch row everybody under a
+branch, and not everybody is under a branch — so the screen still says so in a sentence rather than
+leaving a reader to decide which number is the broken one. That sentence is part of the deliverable,
+not a nicety: two plausible numbers that disagree with nothing explaining why is the failure mode
+this whole engine is written against.
 
 ## 2.6 Cycle and date rules
 
+*Amended by D19: the DAG rows are gone, and what is left is a shorter list than the 12 October draft
+had.*
+
 | Rule | Today | After |
 | --- | --- | --- |
-| No cycles, across every date | enforced; a node may never become its own ancestor on any date | **unchanged in statement**, broader in effect: with several parents, A→B and B→A can now be reached by two different mappings and must still be refused. The check already runs against the closure, which holds every path, so this follows rather than needing new code — and it needs a test per mapping pair, which it does not have |
+| No cycles, across every date | enforced; a node may never become its own ancestor on any date | **unchanged**, and unchanged in effect too. The 12 October draft noted that with several parents A→B and B→A could be reached by two different mappings and would need a test per mapping *pair*; with one parent there is one path and the existing check and its existing tests cover it |
 | Parent must be effective when the child is | advisory, not blocking | unchanged |
-| A mapping's parent must be of the mapped dimension | — | **new**: a Branch's Division slot may only hold a Division. Falls out of `ContainmentRules.Decide`, which is already the one implementation both the validator and every picker read |
-| Rule 3 — one from each required mapping | — | **new**, in `IDimensionValidator`, so the Add form, the recipe step and any future API are refused in the same words |
-| Effective ranges must not overlap | per employee per structure (assignments); per record per structure (links) | links become **per record per structure per mapping key** |
+| A mapping's parent must be of the mapped dimension | — | **new**: a Branch's Division slot may only hold a Division. Falls out of `ContainmentRules.Decide`, which is already the one implementation both the validator and every picker read — asked once rather than per key, so it needs one test per mapping |
+| Rule 3 — a required mapping must be satisfied | — | **new**, in `IDimensionValidator`, so the Add form, the recipe step and any future API are refused in the same words |
+| Effective ranges must not overlap | per employee per structure (assignments); per record per structure (links) | **unchanged.** The draft had links becoming "per record per structure per mapping key"; there is no mapping key |
 | Code uniqueness within the tenant, including against retired records | enforced | unchanged |
 
 **One rule is deliberately *not* added.** A value is still allowed to exist with no parent at all,
@@ -584,32 +611,55 @@ be pointed at by employees. Every one of those is what a dimension type already 
 aggregate, no new table, no new service.**
 
 ```
-Organisation axis, containment map after the FRS work:
+Organisation axis (the primary one), after D19 and D20:
 
-   business-unit → division
-   division      → department, branch
-   department    → department        (self-nest: HR → Recruitment)
-   department    → branch
-   branch        → position
-   department    → position
-   position      → position          (self-nest: THE REPORTING LINE)
+   containment              business-unit → division
+                            division      → department
+                            department    → department   (self-nest: HR → Recruitment)
+                            department    → branch
+                            branch        → position
 
-Mappings (the required half):
-   branch    mapped to division     ExactlyOne
-   branch    mapped to department   ExactlyOne
-   position  mapped to branch       ExactlyOne   (or department — Q-h)
-   position  mapped to grade        ExactlyOne   (§4)
-   position  mapped to job-title    Optional
+   mapping (one parent)     branch   under division     Required
+                            position under branch       Required     ← Crescent
+                                                                       (Zenith: under department)
+
+Reporting axis (a second structure), after D19:
+
+   containment              position → position          THE REPORTING LINE
+   mapping                  position under position      Optional     (the CEO has none)
+
+References, which are NOT parents and never reach a tree (D21):
+
+   position → grade         Required, OneOrMore permitted for a range G7–G8
 ```
 
-The reporting line is the `position → position` diagonal. The Position screen's tree view renders it
-and nothing else, which is figure 4.1.4 exactly: POS → EXE → CEO, COO → RDIR; MGT → BMGR → BSUP.
+**D19 forces a second axis here, and that is the right answer rather than a workaround.** FRS §4.1.4
+draws the Position tree as a reporting line — POS → EXE → CEO, COO → RDIR; MGT → BMGR → BSUP — while
+figure 9 draws the organisation tree as Business Unit → … → Branch → **Position** → Employee. A
+position therefore genuinely needs two places at once: *who it reports to*, and *where in the
+business it sits*. On 12 October those were two concurrent `ParentLink`s with different mapping keys.
+With one parent per value they cannot be.
 
-**Two kinds of edge on one record, and they do not collide.** A Branch Supervisor position has a
-parent Position (Branch Manager, the reporting line) *and* a parent Branch (Seef, the org placement).
-Under §2.2 those are two `ParentLink`s with different `MappingKey`s, concurrent, both legal. On the
-Position screen the tree is built from the `position` key only; on the combined tree, every key is
-followed. One storage mechanism, two readings, and neither needs to know about the other.
+They are two structures instead, which is precisely the mechanism ADR-0005 scoped links to a
+structure for — *"one record can sit on several axes at once, which a single parent field makes
+impossible"* — and which D19 itself points at. Nothing new is needed: a record on two axes is what
+the engine has always done, the two trees are independent, and neither needs to know about the other.
+
+| | Organisation axis | Reporting axis |
+| --- | --- | --- |
+| A position's parent | its Branch (or Department) | the position it reports to |
+| Renders | figure 9's combined tree | the Position screen's own tree, §4.1.4 |
+| Employees attach | yes — `EmployeeAttachableDimensionTypeIds = [position]` | no |
+| Headcount rolls up | yes | **no** — a reporting line is not a containment, and counting staff "under the COO" is a different question from counting them in a division |
+
+That last row is worth stating because it is the thing a reader will assume otherwise. It also
+removes an ambiguity the 12 October draft carried: with both edges on one axis, "employees under
+this node" had two meanings and the closure index could not tell them apart.
+
+**A question for the product owner falls out of this**, and it is in §10.2 as **Q-j**: does the
+reporting axis ship as a second structure in the base recipe, or is it a tenant's to create? Shipping
+it means every tenant gets a Reporting structure whether or not they use reporting lines; not
+shipping it means the Position screen has no tree until somebody builds one.
 
 ## 3.2 Approved headcount and vacancies
 
@@ -786,28 +836,33 @@ demonstration of why Structure survives §2.4 — a second axis is exactly what 
 The alternative, a dated field on the employee, was rejected for the reason the employee record holds
 no department: a field has no dates and a re-step would overwrite rather than record.
 
-## 4.3 Q-c — Job Title vs Position Title vs Position
+## 4.3 Q-c — Job Title vs Position Title vs Position — SETTLED BY D20
 
 The FRS creates this problem itself: figure 2 lists **Job Title** and **Position Title** as separate
 dimensions, while the feedback note says *"the system should maintain Positions as the main master
 and not duplicate/separate out from the Org. Role Setup."* Three nouns, one thing.
 
-**Recommendation — two masters, not three, and the third is a name:**
+**This recommended two masters. The product owner has settled it at one (D20).**
 
-| Noun | What it is | Where it lives |
+| Noun | 12 October recommendation | **D20 — binding** |
 | --- | --- | --- |
-| **Position** | A post somebody holds. Has a code, a reporting line, an org placement, a grade, an approved headcount, and employees. Org Role is this | A dimension type. The master |
-| **Job Title** | The occupational classification several positions share — *Engineer*, *Supervisor* — used for grouping, salary benchmarking and reporting | A dimension type. Positions map to it, Optional |
-| **Position Title** | What this particular post is called — *Retail Supervisor, Seef* | **The Position record's own bilingual name.** Not a master |
+| **Position** | A dimension type. The master | **Unchanged.** The one concept, always called *Position* — **المنصب** in Arabic |
+| **Job Title** | A second dimension type; positions map to it, Optional | **Dropped.** No Job Title dimension, nothing maps to one. *Job title* is a label for Position, not a thing beside it |
+| **Position Title** | The Position record's own bilingual name, not a master | **Unchanged** |
+| **Designation** | not considered | **Dropped.** The same concept under a third name; no designation field anywhere |
 
-So figure 2's *Position Title* row is dropped as a dimension. That is a divergence from the FRS's own
-figure and it is flagged rather than absorbed: **Q-c** asks the product owner to confirm. If they want
-the row visible, it ships hidden by default under D3's hide mechanism and the design is unaffected —
-which is a good reason to build D3's hide switch early.
+So **both** of figure 2's extra rows go, not one. The feedback note had already said one master; this
+takes it to its conclusion, and the three nouns a customer uses interchangeably now map to one thing
+the product also calls one thing.
 
-The session-B design predicted this exact decision and left room for it: *"a code-keyed job title is
-a position by another name, and introducing one as a side-effect of a lookup list would settle that
-question by accident."* It is now being settled deliberately.
+What changes in the rest of this document: §3.1 loses `position mapped to job-title`; §4.4 gains the
+job-title move alongside the grade move; §6.4's shipped dimension set loses the `job-title` row; §7.1
+retires the `job-title` lookup list; and **F7 is grades and steps only**.
+
+The session-B design predicted this and left room for it: *"a code-keyed job title is a position by
+another name, and introducing one as a side-effect of a lookup list would settle that question by
+accident."* It is now settled deliberately — and the other way from the way this section recommended,
+which is why the recommendation is kept above rather than overwritten.
 
 ## 4.4 Moving from today's state without losing data
 
@@ -833,16 +888,37 @@ it has always been, holding a plain string, and the binding is two settings. So:
    shape — profile, propose, dry run, apply — applied to a much smaller problem, and it is a *tool*
    because what the right grades are is a business question.
 
-**`job-title` ships as a lookup list bound to nothing**, deliberately. It becomes the seed for the
-Job Title dimension through the same import, and the list is then left in place, unbound, for a
-tenant that has not moved. Nothing has to be deleted for this to be correct.
+### The job title, after D20 — designed here, built in F6 (D22)
+
+**`job-title` ships as a lookup list bound to nothing**, deliberately. ~~It becomes the seed for the
+Job Title dimension~~ — **D20 removes the Job Title dimension**, so there is nothing for it to seed
+and the list is **retired** instead, through `ILookupListService`'s existing retire path. ADR-0014
+guarantees an entry is only ever retired and never deleted, so a tenant that typed entries into it
+keeps them; and since the list is bound to nothing, no screen changes when it goes.
+
+The free-text `JobDetails.JobTitle` field moves the same way the grade does, and for the same reason:
+
+1. **Retired from the editor, not removed from the type.** It stays a stored `BilingualTextField`
+   holding whatever anybody typed. A tenant's job-title history *is* those typed values, and deleting
+   the field would destroy them (ADR-0009). The same shape as `HeadEmployeeId` after ADR-0012 and
+   `AllowsSelfNesting` after ADR-0010's addendum.
+2. **The employee's Position is shown read-only**, resolved from their dated position assignment
+   through `GetOrgPlacementsAsync` — the same read that gives the derived division, department and
+   cost centre. Nothing is typed and nothing is copied forward.
+3. **Where a tenant has typed values and no positions yet**, the old field is still the only answer
+   and the screen shows it, marked as historical, with a line saying where Position now comes from.
+4. **The typed values seed the Position dimension** through the same operator-run import — profile,
+   propose, dry run, apply — because what the right positions are is a business question.
+5. **The relabelling.** Every user-facing *Job title*, *Designation* and *Org role* becomes
+   **Position** / **المنصب**, in both PO files, in the slice that owns the screen: F6 for the employee
+   record and the job details section, F5 for the dimension type's own shipped name.
 
 **What the Job details section shows afterwards:** Employment type, Work location, Effective from,
-Effective to, Probation ends. Grade and Job title leave it and appear in the read-only block at the
-top of the employee record, sourced from the position. The `BagPart` alternate
+Effective to, Probation ends. **Grade and Job title both leave it** and appear in the read-only block
+at the top of the employee record, sourced from the position. The `BagPart` alternate
 (`ContentPart-Employee-BagPart.Edit.cshtml`) is already generic over the sections and needs no change
-— the Records README anticipated this: *"it will: the FRS work on positions moves grade off the job
-details section."*
+— the Records README anticipated the first half: *"it will: the FRS work on positions moves grade off
+the job details section."* D20 makes it both.
 
 ---
 
@@ -867,15 +943,39 @@ The three defects that caused the withdrawal, each named and each fixed:
 | *Departments, Departments, Departments* — one entry per type **per structure** | **One entry per dimension type**, which is what the FRS means by "dimension". A type used by three axes is one menu item |
 | An unreadably long menu on a tenant with twelve types | `ShowInMenu` is the hide switch D3 asks for, set on the dimension type editor, and the shipped set (§6.2) turns off the ones a starter tenant does not use |
 
-Order: *Organisation tree* at a fixed low position; dimensions by `MenuOrder` then by the authored
-plural; *Settings* at a fixed high position. Explicit numeric positions, never
+Order: *Organisation tree* at a fixed low position; dimensions by `MenuOrder`, then by the
+**English name**; *Settings* at a fixed high position. Explicit numeric positions, never
 `LocalizedString.PrefixPosition()`, which orders by the caption and so gives an Arabic reader a
 different order — a defect already found once and recorded in `AdminMenu`'s own remarks.
+
+> **Amended while building F2.** This originally said the tiebreak was "the authored plural", which
+> is the same defect one level down: two dimensions sharing a `MenuOrder` would have sorted by
+> caption, and so differently in each language. The tiebreak is the English name — ordinal, not
+> culture-aware — because it is the one value that is the same for every reader. The test compares
+> the two cultures' sequences **by code** rather than by caption, which is what makes "the same
+> order" a statement with content rather than a comparison of two different lists of words.
 
 `OrganisationMenuTenantTests` and `OrganisationMenuBrowserTests` currently assert *exactly three
 entries, in order, in both languages*. They are rewritten, not deleted, to assert the new contract:
 tree first, settings last, one entry per shown dimension, authored plurals, same order in both
 languages, and **nothing pluralised by rule**.
+
+> **Superseded in part while building F2, by decision D23 and ADR-0024.** Three things in this
+> section are no longer what was built:
+>
+> - **The entry is per dimension *name*, not per dimension *type*.** Types sharing an English
+>   singular name are one entry. The row above about "one entry per type" was necessary and not
+>   sufficient — see the amended D17 note under §10.2.
+> - **The menu's first item is the organisation designer**, unchanged and in the place it occupied
+>   before this slice. F2 briefly moved it under Settings; D23 A put it back.
+> - **Each entry expands**: *All &lt;plural&gt;*, then the dimension's own active values —
+>   alphabetical in the reader's own language, at most fifteen, each suffixed with its organisation
+>   when the entry spans more than one — then *Show all (N)*. Clicking a value opens that value's own
+>   page. The list screen behind *All &lt;plural&gt;* gains an Organisation column and filter when
+>   more than one type is grouped.
+>
+> What this section gets right and D23 keeps: the authored plural with its singular fallback, the
+> `ShowInMenu` switch, explicit numeric positions, and the English-name tiebreak.
 
 ## 5.2 A dimension's Tree/List screen
 
@@ -905,23 +1005,27 @@ and persisting it is a cookie per dimension per user for no benefit a reader wou
 
 **Click path:** Organisation → *Branch* → **Add**.
 
-Rendered as B3 draws it. Three engineering notes:
+Rendered as B3 draws it, **with one parent group rather than figure 8's stacked set (D19)**. Four
+engineering notes:
 
 - **One form, one write.** Saving calls `IDimensionService.AddUnitAsync`, which already writes the
   record and its placement together and validates them together, so a value can never exist having
-  failed to reach its parents. It gains the N keyed placements of §2.2; the all-or-nothing property
-  is what makes Rule 3 honest.
-- **The groups come from the mapping, in its stated order**, and are numbered A, B, … per figure 8.
-  A dimension with no mapping renders no block at all (Rule 4), with no empty heading left behind.
-- **Each group's options are that parent dimension's values**, filtered by `ContainmentRules.Decide`
+  failed to reach its parent. The all-or-nothing property is what makes Rule 3 honest.
+- **One group, and it is always a radio set.** Figure 8's numbered, stacked groups were a layout for
+  an unknown number of parents; with one there is nothing to number and nothing to stack. The
+  reasoning in §B3 that chose radios over the mock's checkboxes — *"pick exactly one from this group"
+  is what a radio group means* — now has no exception, because the `OneOrMore` case that would have
+  rendered as checkboxes is gone. A dimension with no mapping renders no block at all (Rule 4), with
+  no empty heading left behind.
+- **The group's options are the parent dimension's values**, filtered by `ContainmentRules.Decide`
   read forwards — the same decision function the validator reads backwards, which is ADR-0010's whole
   lesson. The picker never offers a parent the save would refuse.
-- **Edit does not offer the mapping groups.** Changing which Division a Branch belongs to is a
+- **Edit does not offer the mapping group.** Changing which Division a Branch belongs to is a
   **move**: it rewrites what every historical report under that branch resolves to, it needs
   `MoveDimensionRecords`, and it needs the dated dry run that already exists. The Edit form carries a
-  link — *"Seef is mapped to Bahrain (Division) and Retail Network (Department). Change a
-  mapping…"* — to the move screen, with the mapping pre-selected. This keeps the existing split
-  between "edit a name" and "reorganise the company", which `Permissions.cs` exists to express.
+  link — *"Seef sits under Bahrain (Division). Move it…"* — to the move screen. This keeps the
+  existing split between "edit a name" and "reorganise the company", which `Permissions.cs` exists to
+  express, and D19 makes the sentence simpler: one parent, one link, no mapping to pre-select.
 
 ## 5.4 Delete (D4)
 
@@ -943,35 +1047,64 @@ act with*, on the same screen.
 
 This is today's `StructuresAdmin` editor, re-presented. Four blocks become three:
 
+*Amended by D19 and D20: one parent per dimension, so the "what is required" question moves off the
+grid and into a column of its own. No Job Title row.*
+
 ```
 Mapping — Organisation                      [ axis: Organisation ▾ ]  ← only if >1 axis
 
   Which dimensions this organisation uses, in reading order
-     Business Unit · Division · Department · Branch · Position · Grade · Job Title
+     Business Unit · Division · Department · Branch · Position · Grade
      [ + add a dimension ]
 
   Which may sit at the top
      ☑ Business Unit    ☐ Division    ☐ Department    …
 
-  What may sit under what, and what is required
+  Each dimension's parent                          ← one row per dimension, one parent each
+     ┌───────────────┬──────────────────┬────────────────────┐
+     │ Dimension     │ sits under       │                    │
+     ├───────────────┼──────────────────┼────────────────────┤
+     │ Business Unit │ — (a root)       │                    │
+     │ Division      │ Business Unit ▾  │ ◉ Required ○ Optional │
+     │ Department    │ Division      ▾  │ ◉ Required ○ Optional │
+     │ Branch        │ Department    ▾  │ ◉ Required ○ Optional │
+     │ Position      │ Branch        ▾  │ ◉ Required ○ Optional │
+     │ Grade         │ — (a root)       │                    │
+     └───────────────┴──────────────────┴────────────────────┘
+     The dropdown offers only dimensions the grid below permits as a parent.
+
+  What may sit under what                          ← containment, ADR-0010, unchanged
      ┌───────────────┬──────┬──────┬──────┬──────┬──────┐
      │ parent ↓ child│ Div  │ Dept │ Brnch│ Posn │ Grade│
      ├───────────────┼──────┼──────┼──────┼──────┼──────┤
-     │ Business Unit │ ☑ ◦  │ ☐    │ ☐    │ ☐    │ ☐    │
-     │ Division      │ ☐    │ ☑ ●  │ ☑ ●  │ ☐    │ ☐    │
-     │ Department    │ ☐    │ ☑ ◦  │ ☑ ●  │ ☑ ◦  │ ☐    │
-     │ Branch        │ ☐    │ ☑ ◦  │ ☐    │ ☑ ●  │ ☐    │
-     │ Position      │ ☐    │ ☐    │ ☐    │ ☑ ◦  │ ☐    │
+     │ Business Unit │ ☑    │ ☐    │ ☐    │ ☐    │ ☐    │
+     │ Division      │ ☐    │ ☑    │ ☐    │ ☐    │ ☐    │
+     │ Department    │ ☐    │ ☑    │ ☑    │ ☑    │ ☐    │   ← Department ☑ Department: self-nest
+     │ Branch        │ ☐    │ ☐    │ ☐    │ ☑    │ ☐    │
      └───────────────┴──────┴──────┴──────┴──────┴──────┘
-       ☑ permitted     ● required (one from this dimension)     ◦ optional
      [ build from a simple chain ]
+
+  References — not parents, never on a tree (D21)
+     Position  →  Grade      ◉ Required ○ Optional     ☑ allow a range (G7–G8)
 ```
 
-The grid is the existing one with a second state per ticked cell. The existing rules carry over
-unchanged: it is server-rendered first and kept in step by `structures.js`, so it works with no
-script; a post with no ticks at all is read as "describe this as a chain" and the map is derived; a
-change that live placements rely on previews its impact first (`PlanLevelChangeAsync`) and refuses
-outright, naming the record at fault, if a live placement would be invalidated.
+**Two blocks rather than one state per cell**, and the reason is D19. With several parents the
+required flag genuinely belonged on the cell, because each pairing carried its own obligation. With
+one parent per dimension the question is about the *dimension*, not the pairing — "what does a Branch
+sit under, and must it?" — and a per-cell marker would invite a reader to tick two and then be
+refused. A row per dimension cannot express the invalid state at all, which is the better way to
+enforce a rule than catching it afterwards.
+
+**The references block is new, and is deliberately below and apart from the grid.** A grade is not a
+level of the organisation (D21): it never enters the closure index, nothing rolls up through it, and
+it is the one place `OneOrMore` survives — as *allow a range*, which is what D8 asks for. Putting it
+in the grid would make it look like a parent, which is exactly the confusion D21 exists to prevent.
+
+The containment grid is the existing one, unchanged. The existing rules carry over: it is
+server-rendered first and kept in step by `structures.js`, so it works with no script; a post with no
+ticks at all is read as "describe this as a chain" and the map is derived; a change that live
+placements rely on previews its impact first (`PlanLevelChangeAsync`) and refuses outright, naming
+the record at fault, if a live placement would be invalidated.
 
 **Making a mapping required is itself a change that needs the dry run.** Ticking `Branch → Division`
 required on a tenant with 40 branches, six of which have no division, must say so before it saves —
@@ -1002,9 +1135,10 @@ What it does:
   the leaf positions from `GetAssignmentsAtAsync`.
 - **Lazily loads a branch as it opens**, which the designer already does and which is the only way
   this screen survives a 5,000-record tenant.
-- **Draws a doubly-parented value once**, with two incoming edges (figure 9's dashed lines). The
-  renderer keeps a set of already-drawn record ids per level; the second edge is drawn to the
-  existing node. Without that the counts below it double, which is D1's whole concern.
+- **Draws a plain tree (D19).** Every node has one parent, so there is no already-drawn set to keep
+  and no second edge to route — the whole of what the 12 October draft needed here is gone, along
+  with the defect it existed to prevent. What stays is `DISTINCT EmployeeId` in the counting queries,
+  for the different reason §2.5 gives: an employee may hold two positions.
 - **Re-roots on click**, showing a breadcrumb (*Full Organisation › MENA Region*) and a **Clear
   selection** button. Re-rooting is a server round trip with the node id in the URL, so the view is
   linkable and the back button works — this is an enquiry report, and a report somebody cannot send a
@@ -1113,18 +1247,24 @@ Neither requires deleting anything. So:
   difference. A tenant that has already created its own `department` type hits the divergence and is
   told, rather than being overwritten.
 
-The fourteen, from figure 2, reconciled against D5/D6 and Q-c:
+The set, from figure 2, reconciled against D5/D6 and **D20**:
 
 ```
 business-unit  division  department  branch  section  position  grade  grade-step
-job-title  employees-group  projects  sponsorship  territory  warehouse
+employees-group  projects  sponsorship  territory  warehouse
 + cost-centre (already shipped)
 ```
 
-Dropped, with the reason recorded in the ADR: **Employees** (D6 — employees are records, not a
-dimension) and **Position Title** (Q-c — it is the Position record's name). **Added**, because §4.1.4
-and figure 9 need it and figure 2 omits it: **Position** (Q-g). **Split from Grade Steps**: `grade`
-and `grade-step` (Q-a, option B).
+**Dropped**, with the reason recorded in the ADR:
+
+| Row in figure 2 | Why it is not shipped |
+| --- | --- |
+| **Employees** | D6 — employees are records, not a dimension |
+| **Position Title** | D20 — it is the Position record's own bilingual name |
+| **Job Title** | **D20** — Position, Job Title and Designation are one concept, always *Position* |
+
+**Added**, because §4.1.4 and figure 9 need it and figure 2 omits it: **Position** (D13). **Split
+from Grade Steps**: `grade` and `grade-step` (D7), shown under one menu entry.
 
 ## 6.5 Demo recipes
 
@@ -1135,15 +1275,15 @@ one person, each head shape and a clean re-run, and those assertions are worth k
 
 | Recipe | Added |
 | --- | --- |
-| `…-zenith` | `position` and `grade`/`grade-step` types; mappings `position → department` ExactlyOne and `position → grade` ExactlyOne; a dozen positions with reporting lines and approved headcounts; grades G5–G9 with five steps each |
-| `…-crescent` | the same, plus the doubly-parented case the FRS is about — a **Branch mapped to a Division and a Department**, which is figure 3 made real and which the closure tests then exercise for free |
+| `…-zenith` | `position` and `grade`/`grade-step` types; `position` under **Department**, Required (D14); the `position → grade` **reference**, Required (D21); a Reporting structure carrying the position reporting line (§3.1); a dozen positions with approved headcounts; grades G5–G9 with five steps each |
+| `…-crescent` | the same, with `position` under **Branch** (D14). ~~Plus the doubly-parented case~~ — **D19 removes it**; there is no Branch under both a Division and a Department, and nothing in the demos is doubly parented. What Crescent still demonstrates, and is the point of it, is a **ragged** tree: Departments under one Division, Regions under its sibling, Departments again four levels down |
 | `…-zenith-employees` | each person's assignment repointed at a position; the matrix preserved (primary at a departmental position, secondary at a team position); a dated step each |
-| `…-crescent-employees` | the same, plus one employee under the doubly-parented branch, so D1's counting has a real case |
+| `…-crescent-employees` | the same. ~~Plus one employee under the doubly-parented branch~~ — gone with D19. The counting case that still matters is the **Zenith matrix**: one engineer with a primary position in their home department and a secondary in a site team, which is what `DISTINCT EmployeeId` is actually protecting against (§2.5) |
 
 `tools/generate-demo-employees.sh` is where the figures are edited and stays the one place.
 
 A **third** demo recipe is proposed: `organisation-designer-frs-demo`, which builds exactly figure 9 —
-KKT Group / Cayman HQ / MENA Region / Finance / Retail Network / Seef Branch (two parents) / Retail
+KKT Group / Cayman HQ / MENA Region / Finance / Retail Network / Seef Branch / Retail
 Supervisor / Ahmed Salman and Fatima Noor. Small, named for what it is, never referenced by
 `base.recipe.json` or any edition, and it lives in the module's own `Recipes/` folder so it appears on
 `/Admin/Recipes` — per `recipes/demo/README.md`, which explains at length why the repository root does
@@ -1155,9 +1295,9 @@ not work for this. It is what a reviewer runs to compare the screen against the 
 | --- | --- |
 | `dimension-types` | `pluralEn` / `pluralAr`, `showInMenu`, `menuOrder`. Absent means "not stated" and leaves the tenant's value alone, which is ADR-0008's existing rule and the reason `isActive`/`sortOrder` are nullable in the lookup-list step |
 | `structures` | a `mappings` block: child code, parent code, cardinality. Stating `mappings` together with a chain-shaped `levelTypeCodes` is **permitted** (they describe different things); stating it twice is refused naming the conflict, as `containment` + `allowSkipLevel` already is |
-| `dimension-records` | `aliasEn` / `aliasAr`; and a record's placement becomes **a list** of `{ parentCode, mappingTypeCode }` rather than a single parent code. A bare `parentCode` keeps working and means the unkeyed slot — old recipes apply unchanged, which is the property that keeps every shipped demo and every customer file valid |
+| `dimension-records` | `aliasEn` / `aliasAr`, shipped in F1. **A placement keeps its single `parentCode`** — the 12 October draft turned it into a list of `{ parentCode, mappingTypeCode }`, and D19 removes the reason, so every shipped demo and every customer file stays valid because nothing about the format changes |
 | `employee-assignments` | unchanged. A position is a record and a placement is a placement |
-| Export (`DimensionsDeploymentStep`) | emits the new fields; the **records-parents-first** walk becomes a topological order over *every* parent a record has ever had on *any* mapping. `DimensionExportRoundTripTenantTests` gains the doubly-parented case and compares closure on dates either side of every change — which is exactly what that test exists to catch |
+| Export (`DimensionsDeploymentStep`) | emits the new fields. The **records-parents-first** walk is **unchanged** — the draft made it a topological order over every parent on every mapping, and with one parent the existing walk over every parent a record has ever had is already that order. `DimensionExportRoundTripTenantTests` keeps comparing closure on dates either side of every change, which is what it exists for; it gains the Reporting axis rather than a doubly-parented branch |
 
 ADR-0011's rule is untouched: **export writes the import format**, so there is one description of a
 tenant's organisation rather than two that can drift.
@@ -1379,19 +1519,18 @@ multiplied by four new suites is a build nobody trusts.
 New numbers start at **0020**: 0014 and 0019 are taken, 0015–0018 are reserved by the session-B
 design. Each would be written at the start of the slice that implements it, not retrospectively.
 
-**ADR-0020 — A value may have several parents at once: an axis is a directed acyclic graph.**
-FRS §3 and Rule 3 require a Branch to belong to one Division *and* one Department simultaneously.
-`DimensionLinkDocument.ParentOn` returns a single parent per date and ADR-0005's closure intersects
-ranges along *the* path, so this is a change to a recorded decision, not an extension of it.
-`ParentLink` gains a nullable `MappingKey` — the parent's dimension type id — and the invariant moves
-from "one parent per date" to "one parent per date per mapping key"; null is the legacy unkeyed slot,
-so every stored link stays valid and every existing tenant behaves identically until a mapping is
-declared. The closure index needs **no schema change** (`DimensionClosureDocument.Ancestors` is a list
-and its own comment already allows one ancestor at several depths); what changes is the arithmetic in
-`ComputeAncestorsAsync`, the `DISTINCT` on descendant and employee queries, and `GetDepthAsync`
-becoming explicitly the *shortest* path. Storage grows with the number of root-to-node paths, which
-makes architecture open question 6 (retention) urgent rather than noted, and the 200ms acceptance
-criterion must be re-measured against a doubly-parented seed. Amends architecture §4 and ADR-0005.
+**~~ADR-0020 — A value may have several parents at once: an axis is a directed acyclic graph.~~
+WITHDRAWN (D19), before any of it was built.** It was written to honour FRS §3 and Rule 3 —
+*"mapped to one parent dimension, or to more than one"* — and the product owner has overruled that
+text rather than the recorded decision it conflicted with. So **ADR-0005 stands as written and was
+never departed from**: one parent per record per axis, one path per closure pair, no `MappingKey`.
+Conflict **C1 is withdrawn, not reconciled**, and slice F4 is deleted. The ADR file is kept rather
+than removed, for the reason it gives in its own withdrawal note: the expensive finding in it — that
+ADR-0005's storage already generalises, because `DimensionClosureDocument.Ancestors` is a list whose
+own comment permits one ancestor at several depths — is the part worth having if multi-parent is ever
+asked for again, and the costs it weighed are the reasons the single-parent model is the better
+trade. One thing from it is kept and built: the `DISTINCT EmployeeId` guarantee, which earns its
+place without a DAG because an employee may hold two positions.
 
 **ADR-0021 — Mapping is containment plus a cardinality, and lives on the structure.**
 The FRS's "Branch is mapped to Division and Department" is ADR-0010's containment map read
@@ -1409,8 +1548,9 @@ rather than failing the import. Amends ADR-0010.
 The FRS's feedback note says Org Role and Position are one master; D2 says employees join by a dated
 position assignment and that division, department, cost centre and grade are derived. Position is
 modelled as a **dimension type** — no new aggregate, no new table, no new service — with its reporting
-line as the `position → position` diagonal and its org placement as a second keyed link under
-ADR-0020. The employee's hold on it is an ordinary `EmployeeAssignment`: dated, allocatable,
+line on a **second structure** (§3.1 — D19 gives a value one parent per axis, so the reporting line
+and the org placement are two axes, which is what ADR-0005 scoped links to a structure for) and its
+org placement under a Branch or a Department. The employee's hold on it is an ordinary `EmployeeAssignment`: dated, allocatable,
 main/additional, many-per-position, already enforcing "exactly one primary" and "allocations total
 100". `EmployeeAttachableDimensionTypeIds = [position]` is the single line that makes every picker and
 every placement screen offer positions and nothing else. Approved headcount is an attribute on the
@@ -1440,6 +1580,14 @@ not use. Positions stay explicit numbers, never `PrefixPosition()`, which orders
 gives an Arabic reader a different order. `OrganisationMenuTenantTests` is rewritten to assert the new
 contract in both languages, not deleted.
 
+> **As written, 13 October 2026.** The middle fix above was necessary and not sufficient: one entry
+> per dimension *type* still reads *Departments, Departments, Departments* on a tenant that holds
+> three Department types, which the demo tenant does. **Decision D23** makes it one entry per
+> dimension **name** — types sharing an English singular name are grouped — and adds the rest of the
+> menu's shape: each entry expands to *All &lt;plural&gt;*, its own values and *Show all (N)*, a
+> value opens its own page, and the organisation designer stays at the top where it was. The ADR as
+> written carries all of that.
+
 **ADR-0025 — Delete deletes, and a used value is made inactive with the reason on the screen.**
 D4 gives Delete two outcomes; architecture §6 gives deletion three, of which the third — referenced by
 live data — is **blocked**. The assessment is kept exactly as it is, including the rule that the
@@ -1450,12 +1598,12 @@ three-way question about the units underneath, on every structure the record sit
 becomes the one operation in this module that destroys a record, so it gains a mandatory audit event
 with a reason and the acting user — the same standard `MoveCancelled` already holds.
 
-**ADR-0026 — Grades, steps and job titles are dimensions; the employee's step is a dated assignment.**
-D5 makes Grade Steps and Job Title dimensions, which supersedes slice B2's binding of
+**ADR-0026 — Grades and steps are dimensions; the employee's step is a dated assignment.**
+**No job titles (D20).** D5 makes Grade Steps a dimension, which supersedes slice B2's binding of
 `JobDetails.GradeCode` to the `grade` lookup list. Nothing is migrated and nothing is deleted: ADR-0016
 made binding an editor setting over a plain `TextField`, so unbinding is two settings and every stored
 value stays readable, exportable and auditable while the field is retired from the editor (ADR-0009 —
-a migration never destroys data). The lists become the seed for an **operator-run import**, following
+a migration never destroys data). The `grade` list becomes the seed for an **operator-run import**, following
 architecture §8's profile/propose/dry-run/apply, because what the right grades are is a business
 question. The employee's dated step is an `EmployeeAssignment` on a **Grade axis** — which is both the
 cheapest implementation and the clearest demonstration of why `Structure` survives the FRS. Q-a
@@ -1481,17 +1629,22 @@ relationship between `Containment` and `Mappings`, so a future reader does not c
 
 ## 10.1 Risks
 
+**D19 closes the top three outright**, which is the clearest measure of what the single-parent model
+buys: the two most dangerous risks in the list were both consequences of the DAG.
+
 | | Risk | Mitigation |
 | --- | --- | --- |
-| 1 | **The DAG breaks the 200ms descendant-resolution acceptance criterion.** Closure rows grow with the number of root-to-node paths | Measure before accepting the slice, on a seeded tenant with a doubly-parented level at 5,000 records. If it fails, that is a finding and a design conversation — not something to pre-solve by guessing at an index |
-| 2 | **A doubly-parented value is drawn twice and every count below it doubles.** The most likely visible defect in the whole FRS, and both numbers stay plausible | D1 made explicit in §2.5; `DISTINCT` enforced in the query rather than left to callers; the FRS demo recipe exists so a reviewer can check figure 9's numbers by eye |
-| 3 | **Cycle detection has a wider surface.** A→B by one mapping and B→A by another is a cycle nothing currently tests for | The check already runs against the closure, which holds every path, so this follows rather than needing new code — but it needs a test per ordered mapping pair, property-style, the way `DimensionContainmentTenantTests` already does for containment |
+| ~~1~~ | ~~**The DAG breaks the 200ms descendant-resolution acceptance criterion.**~~ | **Closed by D19.** Closure rows no longer grow with the number of root-to-node paths, because there is one path. The acceptance criterion is measured against the same shape the engine already has |
+| ~~2~~ | ~~**A doubly-parented value is drawn twice and every count below it doubles.**~~ Was "the most likely visible defect in the whole FRS, and both numbers stay plausible" | **Closed by D19.** No value has two parents, so no node is drawn twice. `DISTINCT EmployeeId` stays for the *other* double-counting source — an employee holding two positions (§2.5) — which D19 does not touch |
+| ~~3~~ | ~~**Cycle detection has a wider surface.**~~ A→B by one mapping and B→A by another | **Closed by D19.** One parent, one path; the existing check and its existing tests cover it, and the per-mapping-pair property test is not needed |
 | 4 | **Removing the Organisation designer would delete seven dated operations.** "No Data Entry!" is about the enquiry report | §5.7 keeps both and says so explicitly. A reviewer who wants the designer gone should say so, with the rebuild cost visible |
 | 5 | **Rule 3 made retrospective would invalidate live data.** Ticking "required" on a tenant with untidy branches | Rule 3 governs the Add form, not existing rows (§2.6). The Mapping screen previews the impact and warns; it does not refuse |
-| 6 | **The menu erodes again.** It was withdrawn once for exactly this | Authored plurals, one entry per dimension, a hide switch, and `OrganisationMenuTenantTests` rewritten rather than deleted |
-| 7 | **Figure 2's list and D5/D6 disagree** (Employees, Position Title, no Position) | Q-c, Q-g; ADR-0023 records what was dropped and why, so the decision is readable rather than inferred from a recipe |
+| 6 | **The menu erodes again.** It was withdrawn once for exactly this | Authored plurals, one entry per dimension, a hide switch, and `OrganisationMenuTenantTests` rewritten rather than deleted. **Slice F2** |
+| 7 | ~~Figure 2's list and D5/D6 disagree~~ | **Closed by D20**: Employees, Job Title and Position Title are all settled, and ADR-0023 records what was dropped and why |
 | 8 | **Two slices change the employee read surface** (F6's derived fields, §8.1's type split) | They are the same slice, deliberately |
 | 9 | **The Grade move touches live data in B2 tenants** | Nothing is migrated; the lists stay, the field is retired not removed, and the move is an operator tool with a dry run |
+| **10** | **D19 forces the position reporting line onto a second structure**, and a tenant that never set one up has a Position screen with no tree | §3.1 and **Q-j**: decide whether the Reporting structure ships in the base recipe or is the tenant's to create. Either answer works; silently shipping neither is the failure |
+| **11** | **D20's relabelling is spread across slices**, so a tenant mid-upgrade could see *Job title* on one screen and *Position* on another | One PO entry per label, changed in the slice that owns the screen (D22 step 6), and `LocalisationResourceTests` fails the build on an orphaned or missing msgid — so a half-done rename is a build failure rather than a screen somebody has to notice |
 
 ## 10.2 Open questions — **all answered 12 October 2026**
 
@@ -1506,25 +1659,51 @@ The five the brief names, plus four found while reading the PDF and the code.
 | --- | --- | --- | --- |
 | **Q-a** | Grade Steps: one dimension type, self-nesting (G7 → G7-S1…S5)? Or two types — Grade and Grade step — shown as one dimension? | **D7 — two types, one menu entry.** As recommended | **Two types, one menu entry** (§4.1). A depth rule breaks the first time a customer puts a band above their grades |
 | **Q-b** | Is grade mapped to the position, or chosen per employee? May a position allow a range (G7–G8)? Are steps optional per tenant? | **D8 — position; ranges allowed via `OneOrMore`; steps optional by not configuring them; the dated step is an `EmployeeAssignment` on a Grade axis.** As recommended | **Position**, with `OneOrMore` giving ranges for free, and steps optional by not configuring them (§4.2) |
-| **Q-c** | Job Title vs Position Title vs Position — figure 2 lists two of them as dimensions while the feedback note says Position is the one master | **D9 — Position is the master; Job Title is a dimension positions map to (Optional); Position Title is the Position's own name. A `position-title` row ships only if asked for, hidden by default.** As recommended | **Position is the master; Job Title is a dimension positions map to; Position Title is the Position record's own name** (§4.3). If the row must stay visible, it ships hidden |
-| **Q-d** | When a value has two parents and a report needs exactly one, which is primary? | **D10 — declared per mapping on the Mapping screen.** As recommended; `StructureMapping.IsPrimary` in ADR-0021 | **Mark one mapping per child dimension as primary on the Mapping screen** — "a Branch's Division is its primary parent". Declared, not derived: deriving it from mapping order would make a screen's layout decide payroll attribution |
+| **Q-c** | Job Title vs Position Title vs Position | **SETTLED AGAIN, FURTHER, BY D20 (13 Oct).** Position, Job Title and Designation are **one concept**, always *Position* / *المنصب*. No Job Title dimension, no Position Title dimension, no designation field. D9 kept two masters; D20 keeps one | **Position is the master; Job Title is a dimension positions map to; Position Title is the Position record's own name** (§4.3). If the row must stay visible, it ships hidden |
+| **Q-d** | When a value has two parents and a report needs exactly one, which is primary? | **NOT APPLICABLE AFTER D19 (13 Oct).** A value has one parent, so every report that needs one already has it. `StructureMapping.IsPrimary` is not built | **Mark one mapping per child dimension as primary on the Mapping screen** — "a Branch's Division is its primary parent". Declared, not derived: deriving it from mapping order would make a screen's layout decide payroll attribution |
 | **Q-e** | Unit heads (ADR-0012): keep as a dated appointment, or model "head" as a position? | **D11 — keep the dated appointment. ADR-0012 stands; revisit in prompt 5 when approval routing makes the cost of either answer visible.** ADR-0027 stays unwritten | **No recommendation — this is genuinely balanced.** A head is a post, which argues for a position; ADR-0012 exists because a head need not be a *member*, which an assignment cannot express. ADR-0027 is reserved for the answer |
-| **Q-f** | Figure 9 shows Seef Branch with two parents that are **both Departments** (Finance and Retail Network), while figure 3 maps Branch to Division *and* Department and Rule 3 says "one value from each mapped parent". May a value have several parents within **one** mapped dimension? | **D12 — figure 9 is a loose mock. Default cardinality is `ExactlyOne` (Rule 3); `OneOrMore` is available per mapping.** Radios for the first, checkboxes for the second | The storage supports both (`OneOrMore`). **Please confirm which figure 9 means** — a mock drawn loosely, or a real requirement |
+| **Q-f** | May a value have several parents within **one** mapped dimension? | **SETTLED AT THE STRONGER LEVEL BY D19 (13 Oct).** A value has exactly one parent — not one per mapped dimension, and not two within one. Figure 3 is as loosely drawn as figure 9. `OneOrMore` survives only for a grade **reference** (D21), which is not a parent | The storage supports both (`OneOrMore`). **Please confirm which figure 9 means** — a mock drawn loosely, or a real requirement |
 | **Q-g** | Figure 2's dimension list has **no Position row**, yet §4.1.4 shows a Position tree and figure 9 puts Position above Employee | **D13 — ship Position.** As recommended | **Ship it.** §4.1.4 and the feedback note both require it; figure 2 looks like an omission |
 | **Q-h** | Figure 3 maps Position to **Branch**. Crescent has departments that are not under a branch, and Zenith has no branches at all. Is Position mapped to Branch, to Department, or to both (whichever the customer uses)? | **D14 — per tenant. Zenith maps Position → Department and Team; Crescent maps Position → Branch and Department. `AtLeastOneAcross` is not added unless a slice proves it is needed** | **Both, each Optional, with at least one required** — which is a cardinality `MappingCardinality` does not express today and would be a fourth member (`AtLeastOneAcross`). Only worth adding if the answer is "both" |
 | **Q-i** | Two small ones. Does approved headcount need to be **dated** ("what was it last March")? And **which browser test was the intermittent failure** — nothing in the repository records one (§8.2) | **D15 — undated for now, stated as a limitation.** On the flake: one of three full-suite runs had a single browser test fail, and the test was not named in the report. The §8.2 helper fix lands in **F1** regardless, since it is a real defect on its own | Undated for the first slice, stated as a limitation. For the flake, the helper fix in §8.2 is worth doing regardless |
 
-### One answer the design did not anticipate (D17)
+### Two questions D19 and D20 open — **for the product owner**
+
+| | Question | Why it matters | Recommendation |
+| --- | --- | --- | --- |
+| **Q-j** | **Does the Reporting structure ship in the base recipe, or is it the tenant's to create?** D19 puts the position reporting line on a second axis (§3.1), because a position's one parent on the organisation axis is its Branch or Department | Ship it and every tenant gets a Reporting structure whether or not they use reporting lines. Do not ship it and the Position screen's tree view is empty until somebody builds one — on a screen FRS §4.1.4 draws as a reporting hierarchy | **Ship it**, on the same reasoning as ADR-0023's shipped dimension set: a tenant that does not use it hides it (D3), which is cheaper than a tenant that needs it discovering it has to invent one. Confirm, because it is a second structure in every tenant |
+| **Q-k** | **D21 — is a grade ever a level of the organisation tree?** The design says no: a position *references* a grade, the reference never enters the closure index, and that is what lets a position carry a grade **range** | If grades should appear in the organisation tree, the reference becomes a parent — and then a position cannot have both a grade parent and a branch parent under D19, so it would need a third axis, and the range goes | **No — keep it a reference.** Recorded as D21, **pending your confirmation** |
+| **Q-l** | **Does a structure need a short name for the menu?** D23 C suffixes a menu value with its organisation when a dimension spans more than one — the example given was *Civil (Zenith)*, and what is built is *Civil (Zenith Engineering & Construction)*, the structure's authored name | A long company name in brackets on every value of a shared dimension makes the sidebar wide and the entries hard to scan. Nothing here abbreviates it: a rule that shortens a customer's company name will shorten one wrongly, which is the same reasoning that stopped the plural being derived | **If a short form is wanted, add an authored `shortName` to the structure** — one field, one editor row, the same shape as the dimension's plural. Built in no slice until you say so |
+
+### One answer the design did not anticipate (D17) — **remedy superseded by D23**
 
 The menu duplication that caused the per-type entries to be withdrawn — *Departments, Departments,
 Departments* — **came from the demo data, not from the menu mechanism**: three demo organisations
 each defined their own Department and Division dimension types in one tenant. §5.1 treats "one entry
 per dimension type rather than per type per structure" as the fix, and that is still right, but it is
-only half of it. The other half is that **the demo recipes must share the standard dimension types**
-rather than prefixing their own, so each dimension genuinely exists once. Record codes stay prefixed
-— that is what keeps the three companies' *values* from colliding — and only the type codes are
-shared. A test with base + Zenith + Crescent loaded into one tenant asserts each dimension appears in
-the menu exactly once. This lands in **F2** with the menu and in **F9** with the demo rebuild.
+only half of it.
+
+**As recorded 12 October 2026**, the other half was that the demo recipes must share the standard
+dimension types rather than prefixing their own, so each dimension genuinely exists once.
+
+> **Amended while building F2 (13 October 2026).** That was built and **reverted**. A dimension type
+> is a *level of every structure that declares it*, and `CreateAsync` writes a self closure pair on
+> all of them — so a shared `division` type put every Crescent division on the Zenith axis as a
+> parentless root and the Zenith chart drew them. `DemoCompanyRecipesTenantTests` caught it. It is
+> ADR-0005 working as designed; the demo tenant, holding two unrelated companies, is the odd case.
+>
+> A second attempt gave each recipe a company-qualified plural — *Zenith Departments* — which worked
+> and was also wrong: a tenant should not read its own company name on every menu entry.
+>
+> **Decision D23 B is the remedy**: dimension types sharing an **English singular name** become one
+> menu entry, and where that entry's values span several charts each value names its own. The demo
+> recipes keep their prefixed type codes and author plain plurals. The test D17 asked for exists and
+> is stronger — base + Zenith + Crescent + the demo sample, twelve types, **eight** entries.
+>
+> **D23 also replaces the menu's shape**, which §5.1 describes as it was first built. Each entry now
+> expands to *All &lt;plural&gt;*, the dimension's own values and *Show all (N)*; a value opens its
+> own page; and the **organisation designer is back at the top of the menu**, where it was before
+> slice F2 moved it under Settings. **ADR-0024** carries the whole decision.
 
 ## 10.3 Slice plan
 
@@ -1535,30 +1714,36 @@ independently shippable.
 
 | | Slice | What lands | What a reviewer can click and see at the end |
 | --- | --- | --- | --- |
-| **F1** | **Alias, Status, and the dimension screen's two views** | `AliasEn`/`AliasAr` on the part and the index (`UpdateFrom9Async` + upgrade test); validator; recipe step and export fields; the Tree/List toggle; the Alias column; the five toolbar buttons. Plus the browser-helper fix (§8.2) | Organisation → Dimension types → *Department* → **View units** → a tree of departments with Code, Name, Alias, Status, and a toggle to a flat list. No model change beyond one column |
-| **F2** | **The menu (D3, ADR-0024)** | Authored bilingual plural, `ShowInMenu` and `MenuOrder` on the dimension type editor; the menu provider; *Organisation tree* reserved at the top and *Settings* at the bottom; `OrganisationMenuTenantTests` rewritten | The Organisation menu lists this tenant's dimensions, correctly pluralised in both languages, in the same order in each; ticking a box hides one |
-| **F3** | **Mapping, with one parent (ADR-0021)** | `StructureDocument.Mappings`; `MappingCardinality`; Rule 3 and Rule 4 in `IDimensionValidator`; the Mapping screen with its required/optional column and its impact preview; the Add form's numbered groups; `UpdateFrom11Async`; recipe `mappings` block | Settings → **Mapping** → mark `Department → Division` required → Organisation → *Department* → **Add** → the form shows a numbered Division group and refuses Save until one is chosen |
-| **F4** | **Several parents at once (ADR-0020)** | `ParentLink.MappingKey`; `ParentsOn`; `ComputeAncestorsAsync` over a DAG; `DISTINCT` on descendants and employees; cycle tests per mapping pair; `UpdateFrom10Async`; export's topological walk; the performance re-measurement | Mark `Branch → Division` **and** `Branch → Department` required; add Seef under Bahrain and Retail Network; Seef appears under both on the designer and once on the Branch screen's own tree; the Crescent demo still resolves identically on every historical date |
-| **F5** | **The shipped dimensions and Position (ADR-0022, ADR-0023)** | The `dimension-types` step in `base.recipe.json`; the Position type with `approvedHeadcount`; the `position → position` reporting line; vacancies, batched; the Position list's three columns | A **new** tenant's Organisation menu already lists Business Unit, Division, Department and Position; Organisation → *Position* → a reporting tree CEO → COO → Regional Director, with Approved / Filled / Vacant columns |
-| **F6** | **Employees join through a position** | `EmployeeAttachableDimensionTypeIds = [position]`; `GetOrgPlacementsAsync`; the employee record's derived block; the list's position column; the placement screens' vocabulary. **Plus the `EmployeeSummary` split (§8.1), and the employee leaves on F8's tree** | People → Employees → a person → their position, and under it the division, department and cost centre, none of them typed; changing the position changes all of them; last year's record still shows last year's. Organisation → Organisation tree now reaches Ahmed Salman and Fatima Noor under Retail Supervisor |
-| **F7** | **Grades, steps and job titles (ADR-0026)** — *gated on Q-a and Q-b* | The Grade axis; `position → grade`; the employee's dated step; unbinding `grade`; retiring `GradeCode` from the editor; the operator import tool with its dry run | Organisation → *Grade Steps* → G7 with five steps; a position graded G7; an employee on G7-S3 from January, with G7-S2 still showing for last year |
-| **F8** | **The Organisation tree enquiry report (FRS §5)** — *runs after F4, per D18* | The new read-only controller and views; re-root with breadcrumb and Clear selection; the View-by panel and its batched counts; the `…-frs-demo` recipe. **Employee leaves are F6** | Organisation → **Organisation tree** → figure 9's unit levels on screen, with the FRS demo recipe applied; click MENA Region and the chart narrows; Clear selection restores it; the panel's counts match the FRS's |
-| **F9** | **Demo recipes, export and D4** | Zenith and Crescent extended with positions, grades and the doubly-parented branch; `DimensionExportRoundTripTenantTests` extended; the Delete screen's three outcomes (ADR-0025) and the new audit event | Apply the Zenith recipe to a fresh tenant and the whole model is there; export it, import it into a second tenant, and every historical date agrees; press Delete on a used value and get a sentence and a date box |
+| **F1** ✓ | **Alias, Status, and the dimension screen's two views** | `AliasEn`/`AliasAr` on the part and the index (`UpdateFrom9Async` + upgrade test); validator; recipe step and export fields; the Tree/List toggle; the Alias column; the five toolbar buttons. Plus the browser-helper fix (§8.2) | Organisation → Dimension types → *Department* → **View units** → a tree of departments with Code, Name, Alias, Status, and a toggle to a flat list. No model change beyond one column |
+| **F2** ✓ | **The menu (D3, **D23**, ADR-0024)** | Authored bilingual plural, `ShowInMenu` and `MenuOrder` on the dimension type editor (`UpdateFrom10Async` un-guesses session D's plurals); `IDimensionMenuService` + `DimensionMenuComposition`, cached per tenant per day and invalidated by `MenuSignal` (ADR-0019); the menu provider — **designer first**, one **grouped** entry per dimension name, each expanding to *All &lt;plural&gt;*, its values and *Show all (N)*, then *Settings*; the list screen's group scope with its Organisation column and filter; `DimensionRecordsAdminController.Details`, one value's own page | Organisation → *Departments* → *Civil (Zenith …)* opens Civil's own page: code, names, alias, parent, status, head, headcount, with Edit / Move / Retire. *All Departments* lists both companies' departments with an Organisation column. The same order in Arabic, and the designer still first |
+| **F3** | **Mapping, with one parent (ADR-0021)** | `StructureDocument.Mappings` (**one entry per child type**, enforced in `IStructureService`); `MappingCardinality` (**Required / Optional**); Rule 3 and Rule 4 in `IDimensionValidator`; the Mapping screen with its parent-per-dimension block, its Required/Optional column and its impact preview; **one** parent group on the Add form; `UpdateFrom11Async`; recipe `mappings` block | Settings → **Mapping** → set Departments parent to Division and mark it Required → Organisation → *Department* → **Add** → the form shows one Division group, a radio set, and refuses Save until one is chosen |
+| **F5** | **The shipped dimensions and Position (ADR-0022, ADR-0023)** | The `dimension-types` step in `base.recipe.json`; the Position type with `approvedHeadcount`; the **Reporting structure** carrying the position reporting line (§3.1, Q-j); vacancies, batched; the Position list's three columns | A **new** tenant's Organisation menu already lists Business Unit, Division, Department and Position; Organisation → *Position* → a reporting tree CEO → COO → Regional Director, with Approved / Filled / Vacant columns |
+| **F6** | **Employees join through a position** | `EmployeeAttachableDimensionTypeIds = [position]`; `GetOrgPlacementsAsync`; the employee record's derived block; the list's position column; the placement screens' vocabulary. **Plus the `EmployeeSummary` split (§8.1), the employee leaves on F8s tree, and D22 — Job title becomes Position, the `job-title` list retired, the labels renamed in EN and AR** | People → Employees → a person → their position, and under it the division, department and cost centre, none of them typed; changing the position changes all of them; last year's record still shows last year's. Organisation → Organisation tree now reaches Ahmed Salman and Fatima Noor under Retail Supervisor |
+| **F7** | **Grades and steps (ADR-0026)** — **no job title** (D20) | The Grade axis; the `position → grade` **reference** with its optional range (D21); the employees dated step; unbinding `grade`; retiring `GradeCode` from the editor; the operator import tool with its dry run | Organisation → *Grade Steps* → G7 with five steps; a position graded G7; an employee on G7-S3 from January, with G7-S2 still showing for last year |
+| **F8** | **The Organisation tree enquiry report (FRS §5)** — *runs after F3* | The new read-only controller and views; re-root with breadcrumb and Clear selection; the View-by panel and its batched counts; the `…-frs-demo` recipe. **Employee leaves are F6** | Organisation → **Organisation tree** → figure 9's unit levels on screen, with the FRS demo recipe applied; click MENA Region and the chart narrows; Clear selection restores it; the panel's counts match the FRS's |
+| **F9** | **Demo recipes, export and D4** | Zenith and Crescent extended with positions and grades — **no doubly-parented branch** (D19); `DimensionExportRoundTripTenantTests` extended; the Delete screen's three outcomes (ADR-0025) and the new audit event | Apply the Zenith recipe to a fresh tenant and the whole model is there; export it, import it into a second tenant, and every historical date agrees; press Delete on a used value and get a sentence and a date box |
 
-**Approved order (D18): F1 → F2 → F3 → F4 → F8 → F5 → F6 → F7 → F9.**
+**Order, as revised by D18 after D19: `F1 ✓ → F2 → F3 → F8 → F5 → F6 → F7 → F9`.**
 
-The proposal was F1…F9 in numeric order with a note that F8 could be pulled forward; the review took
-that option. **F8 moves to directly after F4**, so the combined tree lands as soon as the DAG it is
-built on exists — it is the single most persuasive screen in the FRS and there is no reason to hold
-it behind positions. It ships there **without employee leaves**, and **F6 adds them** when employees
-start joining through a position.
+**F4 is deleted.** It was the DAG and nothing else, and D19 removes the DAG. Nothing moves to fill
+the gap: F8 simply follows F3, which it always could have — it needed a tree to draw, not a graph,
+and the single-parent tree exists the moment F3's mapping does.
 
-**F7 was gated on Q-a and Q-b**, which are now answered (D7, D8), so the gate is lifted. Nothing else
-depends on it.
+**F8 still ships without employee leaves**, and **F6 still adds them** when employees start joining
+through a position. The reasoning is unchanged: the combined tree is the single most persuasive
+screen in the FRS and there is no reason to hold it behind positions.
 
-**If fewer slices are wanted:** F1 and F2 merge cleanly, and F8 and F9 do. F3 and F4 should **not**
-merge — F3 is a rule and a screen, F4 is a change to a recorded storage decision with a performance
-gate on it, and reviewing them together would bury the second.
+**F7 was gated on Q-a and Q-b**, which are answered (D7, D8), so the gate is lifted. D20 narrows it
+to grades and steps.
+
+**Three slices got smaller and one got a little larger.** F3 loses the per-parent grid state and the
+numbered groups; F8 loses the already-drawn set and the two-incoming-edge renderer; F9 loses the
+doubly-parented demo branch. F6 gains D22 — the job-title move and the relabelling — which belongs
+there because F6 is already the slice that changes the employee read surface and the job details
+section.
+
+**If fewer slices are wanted:** F2 and F3 merge cleanly, and F8 and F9 do. The 12 October note that
+F3 and F4 must not merge is moot.
 
 ---
 
@@ -1576,5 +1761,25 @@ All five asks were answered. Recorded as **D7–D18** in `docs/requirements/frs-
 One thing the design did not anticipate came back with the answers and is now **D17**: the menu
 duplication came from the demo data rather than the menu mechanism. See the note under §10.2.
 
-**Build order from here: F1 first, and F1 only.** Its scope is the row in §10.3, plus the browser
-helper fix in §8.2.
+---
+
+## Review outcome — 13 October 2026, and where the plan now stands
+
+**F1 is built and committed.** Alias, the Tree/List views, the toolbar, the shared admin-menu test
+helper, `UpdateFrom9Async` and its upgrade test.
+
+**Two product decisions then overruled FRS text**, which is the first time that has happened on this
+work. They are **D19** and **D20**, each quoting what it overrides, and the banner at the top of this
+document lists everything they change. In short:
+
+| | | Effect here |
+| --- | --- | --- |
+| **D19** | A dimension value has exactly one parent | **F4 deleted**, §2.2 withdrawn, ADR-0020 withdrawn, C1 withdrawn, risks 1–3 closed. F3, F8 and F9 all get smaller |
+| **D20** | Position = Job Title = Designation, one concept | No Job Title or Position Title dimension; §4.3 settled; F7 narrowed to grades and steps; **F6 gains D22** — the job-title move and the EN/AR relabelling |
+| **D21** | A position's grade is a **reference**, not a parent | *Pending your confirmation* (**Q-k**). It is what keeps a grade range expressible and keeps grades off the organisation tree |
+
+**Two new questions**, both in §10.2 and both from D19's consequences: **Q-j** (does the Reporting
+structure ship in the base recipe?) and **Q-k** (D21's confirmation).
+
+**Build order from here: `F1 ✓ → F2 → F3 → F8 → F5 → F6 → F7 → F9`.**
+Next is **F2** — the menu, ADR-0024 — and F2 only.

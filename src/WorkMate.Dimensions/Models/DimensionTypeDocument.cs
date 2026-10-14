@@ -70,34 +70,95 @@ public sealed class DimensionTypeDocument
     public string ContentTypeName { get; set; } = string.Empty;
 
     /// <summary>
-    /// <b>Retired.</b> Nothing reads this. It is kept so that the shipped
-    /// <c>Migrations.UpdateFrom7Async</c> still compiles and still means what it did.
+    /// Whether this dimension gets its own entry in the Organisation menu.
     /// </summary>
     /// <remarks>
-    /// <b>What it was.</b> A menu entry per dimension type, under Organisation, named by
-    /// <see cref="PluralName"/> and ordered by <see cref="MenuOrder"/>. It shipped and was
-    /// withdrawn: on a real tenant the menu read <em>Branchs, Cost centres, Departments,
-    /// Departments, Departments, Divisions, Divisions, Divisions, Projects, Regions, Sections,
-    /// Teams</em>, because several structures legitimately use types of the same name and because no
-    /// rule pluralises an English noun correctly. <c>Navigation.AdminMenu</c> now carries three
-    /// fixed entries, and a type's units are reached from the Dimension types list.
+    /// <b>Revived, not re-invented (ADR-0024).</b> FRS v2.5 §1.2 and decision D3 require every
+    /// dimension to be its own menu item. These three properties were built for exactly that in
+    /// prompt 4 session D, shipped, and were withdrawn by the product owner on sight: on a real
+    /// tenant the menu read <em>Branchs, Cost centres, Departments, Departments, Departments,
+    /// Divisions, Divisions, Divisions, Projects, Regions, Sections, Teams</em>. They have sat on
+    /// this document unread ever since, because ADR-0009 made the step that writes them
+    /// (<c>Migrations.UpdateFrom7Async</c>) unremovable.
     ///
-    /// <b>Why the properties are still here and still written to.</b> ADR-0009: a migration is
-    /// append-only and never destroys data. <c>UpdateFrom7Async</c> has shipped — tenants are
-    /// recorded past it and will never run it again — so it cannot be edited or removed, and it
-    /// sets these three. Deleting the properties would stop it compiling; adding a step to clear
-    /// them would be a migration whose whole purpose is to destroy data, for no benefit beyond
-    /// tidiness, and it would run on every tenant including the ones that never had the feature.
-    /// So they stay, inert: nothing writes them except that one frozen step, and nothing reads
-    /// them at all.
+    /// <b>The three things that caused the withdrawal, and what each one is now.</b>
+    ///
+    /// <list type="table">
+    /// <item>
+    ///   <term><em>Branchs</em></term>
+    ///   <description>The plural was guessed by appending "s", and Arabic was not pluralised at all
+    ///   (قسم pluralises to أقسام by changing the word). <see cref="PluralName"/> is now
+    ///   <b>authored</b>, in both languages, on the dimension type editor. A type with no authored
+    ///   plural falls back to its singular — wrong-looking, never wrong.</description>
+    /// </item>
+    /// <item>
+    ///   <term><em>Departments, Departments, Departments</em></term>
+    ///   <description>Not the menu's fault at all, which is what D17 established: three demo
+    ///   organisations each defined their own Department and Division types in one tenant, and the
+    ///   menu rendered one entry per dimension <em>type</em>. <b>D17 proposed that the demos share
+    ///   the standard types; that was built and reverted</b>, because a type is a level of every
+    ///   chart that declares it, so a shared Department put each company's units on the others'
+    ///   charts (ADR-0005). <b>Decision D23 groups the menu instead</b>: types sharing an English
+    ///   singular name become one entry. See <c>DimensionMenuComposition</c>.</description>
+    /// </item>
+    /// <item>
+    ///   <term>A menu nobody could shorten</term>
+    ///   <description>This flag is the switch D3 asks for. A tenant turns off what it does not
+    ///   use, and the dimension's screens stay reachable from the Dimension types list.</description>
+    /// </item>
+    /// </list>
+    ///
+    /// <b>Default: true.</b> A dimension a customer has gone to the trouble of defining is one they
+    /// use, so the useful default is to show it; the shipped set that F5 brings turns off the ones a
+    /// starter tenant does not need. Off-by-default would mean every new type is invisible until
+    /// somebody finds the checkbox, which is the kind of thing that reads as a missing screen.
     /// </remarks>
-    public bool ShowInMenu { get; set; }
+    public bool ShowInMenu { get; set; } = true;
 
-    /// <inheritdoc cref="ShowInMenu"/>
+    /// <summary>
+    /// What the menu entry reads, in both platform languages. Authored, never derived.
+    /// </summary>
+    /// <remarks>
+    /// Empty is a legitimate state and means "use the singular" — see
+    /// <see cref="MenuCaption"/>. Two kinds of tenant have it empty: one created after the per-type
+    /// menu was withdrawn, where nothing ever set it, and one whose guessed plural
+    /// <c>Migrations.UpdateFrom10Async</c> replaced with the singular.
+    /// </remarks>
     public BilingualText PluralName { get; set; } = new(string.Empty, string.Empty);
 
-    /// <inheritdoc cref="ShowInMenu"/>
+    /// <summary>
+    /// Where this dimension sits among the others in the menu. Lower first; ties break on the
+    /// caption.
+    /// </summary>
+    /// <remarks>
+    /// A number rather than an alphabetical order, because the order of the organisation's levels
+    /// is a fact about the organisation — Business Unit above Division above Department — and
+    /// sorting by caption gives an Arabic reader a different order from an English one. That is the
+    /// same defect <c>Navigation.AdminMenu</c> already avoids by giving its fixed entries explicit
+    /// numeric positions rather than using <c>LocalizedString.PrefixPosition()</c>.
+    /// </remarks>
     public int MenuOrder { get; set; }
+
+    /// <summary>
+    /// What this dimension's menu entry reads: the authored plural, falling back to the singular
+    /// rather than to a guess or a blank.
+    /// </summary>
+    /// <param name="culture">
+    /// The reader's language. Null means the current UI culture, which is what every caller but a
+    /// test wants.
+    /// </param>
+    /// <remarks>
+    /// <b>The fallback is the whole of why this is a method and not a property read.</b> Three
+    /// states have to produce something a person can read — an authored plural, a plural authored
+    /// in only one language, and no plural at all — and the one thing none of them may do is invent
+    /// a word. <c>BilingualText.Display</c> handles the second, and the singular handles the third.
+    /// </remarks>
+    public string MenuCaption(System.Globalization.CultureInfo? culture = null)
+    {
+        var plural = PluralName.Display(culture);
+
+        return string.IsNullOrWhiteSpace(plural) ? Name.Display(culture) : plural;
+    }
 
     /// <summary>
     /// The date this type stopped being offered, or null while it is current. Retiring is dated

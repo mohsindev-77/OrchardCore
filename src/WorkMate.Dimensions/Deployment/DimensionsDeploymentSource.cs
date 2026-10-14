@@ -305,6 +305,15 @@ internal sealed class DimensionsDeploymentSource : DeploymentSourceBase<Dimensio
                         ["nameEn"] = type.Name.En,
                         ["nameAr"] = type.Name.Ar,
                         ["allowsSelfNesting"] = type.AllowsSelfNesting,
+                        // The menu entry (ADR-0024), always stated — unlike a record's alias, which
+                        // is written only when there is one. An export reproduces a tenant rather
+                        // than expressing an intent, and "this dimension is hidden from the menu"
+                        // and "this recipe says nothing about the menu" are different tenants.
+                        // That is the judgement ADR-0008's sort-order addendum already made.
+                        ["showInMenu"] = type.ShowInMenu,
+                        ["pluralEn"] = type.PluralName.En,
+                        ["pluralAr"] = type.PluralName.Ar,
+                        ["menuOrder"] = type.MenuOrder,
                         ["attributes"] = new JsonArray(
                         [
                             .. type.AttributeSchema.Select(attribute => (JsonNode)new JsonObject

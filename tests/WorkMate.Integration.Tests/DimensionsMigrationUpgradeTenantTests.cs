@@ -6,6 +6,7 @@ using OrchardCore.Data.Migration.Records;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal.Graph;
+using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
 using Xunit;
@@ -461,6 +462,105 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             reread.Should().NotBeNull();
             reread!.AliasEn.Should().Be("Head Office");
             reread.AliasAr.Should().Be("المكتب الرئيسي");
+        });
+    }
+
+    /// <summary>
+    /// ADR-0024: a tenant that upgraded through the withdrawn per-type menu has its guessed plurals
+    /// replaced by the singular, and anything a person authored is left alone.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this guards.</b> <c>UpdateFrom7Async</c> shipped with the per-type menu and
+    /// wrote a plural onto every dimension type a tenant had: the English name plus an "s", and the
+    /// Arabic name unchanged. The menu was withdrawn, the fields went unread, and FRS v2.5 brought
+    /// the menu back. Reading the stored value without <c>UpdateFrom10Async</c> would put
+    /// <em>Branchs</em> back in the menu of every tenant that had upgraded through version 8 — the
+    /// exact word that got the feature pulled.
+    ///
+    /// <b>Both halves are asserted, and the second is the one worth having.</b> A guess is replaced;
+    /// a plural that differs from what the frozen derivation would have produced is something
+    /// somebody typed on session D's editor before it was withdrawn, and survives. A migration that
+    /// cleared both would be destroying data, which ADR-0009 forbids.
+    ///
+    /// Not a schema change, so there is no column to drop: this rolls the recorded version back and
+    /// writes the documents into the state <c>UpdateFrom7Async</c> left them in, which is what a
+    /// tenant at version 10 actually looks like.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantWithGuessedPluralsHasThemReplacedAndAuthoredOnesLeftAlone()
+    {
+        const string guessedCode = "plural-guessed-branch";
+        const string authoredCode = "plural-authored-branch";
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = services.GetRequiredService<IDimensionTypeService>();
+
+            foreach (var code in new[] { guessedCode, authoredCode })
+            {
+                var created = await types.CreateAsync(
+                    code, new BilingualText("Branch", "فرع"), [], allowsSelfNesting: false);
+
+                created.Succeeded.Should().BeTrue(string.Join("; ", created.Errors.Select(e => e.Message.Value)));
+            }
+        });
+
+        // The state UpdateFrom7Async left a tenant in: one type carrying its derived plural, one
+        // carrying a plural a person typed on the editor that shipped with it.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            foreach (var document in await session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+            {
+                if (document.Code == guessedCode)
+                {
+                    document.PluralName = DimensionTypeMenu.DefaultFor(document.Name).PluralName;
+                }
+                else if (document.Code == authoredCode)
+                {
+                    document.PluralName = new BilingualText("Branches", "الفروع");
+                }
+                else
+                {
+                    continue;
+                }
+
+                await session.SaveCheckedAsync(document);
+            }
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            migration.Version.Should().BeGreaterThanOrEqualTo(
+                11, "this test's premise is a schema that already includes the plural repair");
+
+            migration.Version = 10;
+            session.Save(record);
+            await session.SaveChangesAsync();
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var types = services.GetRequiredService<IDimensionTypeService>();
+
+            var guessed = await types.GetByCodeAsync(guessedCode);
+
+            guessed!.PluralName.En.Should().Be(
+                "Branch", "a derived plural is replaced by the singular, never left as Branchs");
+            guessed.PluralName.Ar.Should().Be("فرع");
+            guessed.MenuCaption(System.Globalization.CultureInfo.InvariantCulture).Should().Be("Branch");
+
+            var authored = await types.GetByCodeAsync(authoredCode);
+
+            authored!.PluralName.En.Should().Be(
+                "Branches", "a plural somebody typed is data, and a migration never destroys data");
+            authored.PluralName.Ar.Should().Be("الفروع");
         });
     }
 

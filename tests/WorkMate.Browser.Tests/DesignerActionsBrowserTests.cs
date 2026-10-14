@@ -139,7 +139,13 @@ public sealed class DesignerActionsBrowserTests
 
         await Assertions.Expect(page.Locator("#Disposition_Cascade_0")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator("#Disposition_Unplaced_0")).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByText("No Choice Section")).ToBeVisibleAsync();
+
+        // Scoped to the form, not the page. Since decision D23 the Organisation menu expands to
+        // each dimension's own values, so every section in the tenant is also in the sidebar of
+        // every admin page — and a page-wide GetByText matches twice. The question this asks is
+        // whether the retire form names the child it is about, which is a question about the form.
+        await Assertions.Expect(
+            page.Locator("form[action*='Retire']").GetByText("No Choice Section")).ToBeVisibleAsync();
 
         // Confirm without answering the question.
         await page.CheckAsync("#Confirmed");

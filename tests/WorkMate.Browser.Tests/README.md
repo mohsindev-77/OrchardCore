@@ -109,3 +109,20 @@ group — whose caption is in the reader's language, which is the very thing the
 Arabic passes exist to measure. Those tests wait for the link to be **attached**
 instead: attached rather than visible, because visible is a claim about the group
 being open and that is not their question.
+
+**The Organisation menu nests one level since ADR-0024**, so `ClickAsync` takes the
+groups to open as a list, outermost first. Since decision D23 a *dimension* is a
+group too — it expands to its own values — so reaching a dimension's list screen
+names the dimension as a group and `All <plural>` as the entry:
+
+```csharp
+await AdminMenu.ClickAsync(page, "Organisation designer", "Organisation");
+await AdminMenu.ClickAsync(page, "Dimension types", "Organisation", "Settings");
+await AdminMenu.ClickAsync(page, "All Sections", "Organisation", "Sections");
+await AdminMenu.ClickAsync(page, "Civil (Zenith Engineering & Construction)", "Organisation", "Departments");
+```
+
+Each group is opened in turn and the entry is only checked at the end. A nested
+entry is not visible until every group above it is open, so asking "is the entry
+visible yet?" between the two would answer no for a reason that has nothing to do
+with the group being checked.

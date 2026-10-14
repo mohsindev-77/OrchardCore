@@ -1,9 +1,10 @@
 # ADR-0021: Mapping is containment plus a cardinality, and it lives on the structure
 
-**Status:** accepted, **pending second review**
+**Status:** accepted, **pending second review**. **Amended 13 October 2026 for a single parent
+(D19, D20, D21)** — see the amendment at the end, which is the part that governs.
 **Date:** 2026-10-12
 **Deciders:** Project lead, on the product owner's confirmation of the design review of
-12 October 2026 (decisions D10, D12, D14)
+12 October 2026 (decisions D10, D12, D14), amended on the product owner's decisions D19 and D20
 
 ## Context
 
@@ -161,3 +162,86 @@ rather than a reopening of this one.
 
 **Pending second review**, per the definition of done's rule for a change carrying a migration and a
 new recipe-step field.
+
+---
+
+## Amendment — a dimension type has at most one parent dimension type (2026-10-13)
+
+**This amendment governs. Where it and the text above disagree, this wins.**
+
+### Context
+
+The product owner has overruled the FRS passages that made a mapping plural — §3's *"mapped to one
+parent dimension, **or to more than one**"* and Rule 3's *"one value from **each** mapped parent"*.
+`docs/requirements/frs-v2.5-decisions.md` **D19** records that with the text it overrides, **ADR-0020
+is withdrawn**, and slice F4 is deleted. ADR-0005's one-parent-per-axis model, which was never
+actually departed from, stands as written.
+
+That does not withdraw this ADR. Everything it decided is still needed: containment cannot say that
+a Branch *must* name a Division (Rule 3 survives in the singular, and Rule 4 survives untouched),
+the self-nesting diagonal must still be kept off the Mapping screen, and the Add form still needs a
+stated order. What changes is the shape of what is stored and how much of the screen it is.
+
+### Decision
+
+**A dimension type is mapped to at most one parent dimension type, per structure.**
+
+```csharp
+public sealed record StructureMapping(
+    string ChildDimensionTypeId,
+    string ParentDimensionTypeId,
+    MappingCardinality Cardinality);
+
+public enum MappingCardinality
+{
+    Optional,   // a parent may be chosen or left empty
+    Required,   // Rule 3, in the singular: one must be chosen before the value can be saved
+}
+```
+
+Three things go, and each for its own reason:
+
+| Gone | Why |
+| --- | --- |
+| **`OneOrMore`** | It meant "several parents of one dimension", which D19 removes. The name survives in **D21** for something that is *not* a parent — a position's grade **reference**, where a range (G7–G8) is wanted and is expressible precisely because a reference is not a placement. That is a separate list on the structure, not this one, and it never enters the closure index or any tree |
+| **`IsPrimary`** | It answered "when a value has several parents and a report needs exactly one, which?". **D10** records that the premise is gone: every report that needs one parent already has it |
+| **`ExactlyOne` as a name** | Renamed to **`Required`**. "Exactly one" was a count across a set of parents; with one parent type the question is only whether it may be left empty, and `Required` says that without implying there is a number to get right |
+
+**The invariant is enforced where the mapping is written**, not left to the screen: a structure may
+hold at most one `StructureMapping` per `ChildDimensionTypeId`. `IStructureService` refuses a second
+one naming the pairing already declared, so the Mapping screen, the `structures` recipe step and any
+future API are refused in the same words — the rule ADR-0010 established and this ADR already
+follows.
+
+### What this makes simpler, and what it does not change
+
+**The Add form has one group, and it is always a radio set.** Figure 8's numbered, stacked groups
+were a layout for an unknown number of parents; with one there is nothing to number and nothing to
+stack. The reasoning that chose radios over the mock's checkboxes — *"pick exactly one from this
+group" is what a radio group means* — now has no exception, because the `OneOrMore` case that would
+have rendered as checkboxes has gone.
+
+**Nothing else in the original decision changes.** `Mappings` is still a separate list from
+`Containment`, still for the three reasons given above: a self-nesting diagonal is a permitted
+pairing and never a mapping; a pairing may be permitted without being required; and empty still
+means every pairing is optional, so no existing tenant changes. Declaring a mapping on a tenant that
+already has data still previews and warns rather than refusing. And Rule 3 still governs the **Add
+form** rather than the existence of a row — an unmapped value from an import still goes to the
+unplaced panel with a reason rather than failing the import, which is the distinction a future
+reader is most likely to collapse.
+
+**One rule gets easier to test rather than harder.** "A mapping's parent must be of the mapped
+dimension" is `ContainmentRules.Decide` asked once rather than per key, so it needs one test per
+mapping rather than per mapping pair.
+
+### Consequences
+
+Slice **F3** ships this: `StructureMapping` with two cardinalities, the rule in `IDimensionValidator`,
+one parent group on the Add form, the Mapping screen's required column, and the
+`StructureIndex.MappingCount` migration. It is a smaller slice than the one designed on 12 October,
+and **F4 does not follow it**.
+
+The design document's §2.1, §2.2, §5.3 and §5.5 are amended to match; §2.2 and the DAG it describes
+are withdrawn with ADR-0020.
+
+**Still pending second review**, now for the amended shape.

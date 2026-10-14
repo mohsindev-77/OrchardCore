@@ -108,7 +108,8 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
                     type.Code,
                     new BilingualText(type.NameEn, type.NameAr),
                     type.ToAttributeSchema(),
-                    type.AllowsSelfNesting);
+                    type.AllowsSelfNesting,
+                    menu: type.ToMenu());
 
                 if (!result.Succeeded)
                 {
@@ -159,6 +160,29 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
             }
         }
 
+        // The menu settings, each only when the row states it — the same rule, for the same reason.
+        // A recipe written before ADR-0024 brought the per-dimension menu back states none of them,
+        // and must not refuse a re-run against a tenant whose types have since been given plurals.
+        if (type.PluralEn is { } pluralEn && !RecipeNameComparison.Same(existing.PluralName.En, pluralEn))
+        {
+            differences.Add(RecipeNameComparison.Describe("menu plural", existing.PluralName.En, pluralEn));
+        }
+
+        if (type.PluralAr is { } pluralAr && !RecipeNameComparison.Same(existing.PluralName.Ar, pluralAr))
+        {
+            differences.Add(RecipeNameComparison.Describe("Arabic menu plural", existing.PluralName.Ar, pluralAr));
+        }
+
+        if (type.ShowInMenu is { } showInMenu && existing.ShowInMenu != showInMenu)
+        {
+            differences.Add($"showInMenu is {existing.ShowInMenu} in the tenant but {showInMenu} in the recipe");
+        }
+
+        if (type.MenuOrder is { } menuOrder && existing.MenuOrder != menuOrder)
+        {
+            differences.Add($"menuOrder is {existing.MenuOrder} in the tenant but {menuOrder} in the recipe");
+        }
+
         return differences;
     }
 
@@ -197,6 +221,50 @@ internal sealed class DimensionTypeStepEntry
     /// export now writes, never consults it.
     /// </remarks>
     public bool AllowsSelfNesting { get; set; }
+
+    /// <summary>
+    /// The plural the Organisation menu shows for this dimension, in each language (ADR-0024).
+    /// </summary>
+    /// <remarks>
+    /// <b>Nullable, so that "absent" and "stated as empty" are different things</b> — the same
+    /// reason <c>sortOrder</c> and <c>aliasEn</c> are nullable on the <c>dimension-records</c> step.
+    /// A row written before the menu came back says nothing about a plural, and ADR-0008's
+    /// comparison is scoped to what a row states, so re-running it against a tenant whose types
+    /// have since been given plurals must skip rather than refuse. A row that states <c>""</c> is
+    /// claiming the dimension has no authored plural — which reads as the singular — and a tenant
+    /// where it has one is a difference the step reports.
+    /// </remarks>
+    public string? PluralEn { get; set; }
+
+    /// <inheritdoc cref="PluralEn"/>
+    public string? PluralAr { get; set; }
+
+    /// <summary>Whether this dimension gets its own entry in the Organisation menu.</summary>
+    /// <inheritdoc cref="PluralEn" path="/remarks"/>
+    public bool? ShowInMenu { get; set; }
+
+    /// <summary>Where it sits among the others. Lower first.</summary>
+    /// <inheritdoc cref="PluralEn" path="/remarks"/>
+    public int? MenuOrder { get; set; }
+
+    /// <summary>
+    /// The menu settings as the service's value, or null when the row states none of them.
+    /// </summary>
+    /// <remarks>
+    /// Null is what makes a row that says nothing about the menu leave a tenant's authored plural
+    /// alone, which is <c>IDimensionTypeService.UpdateAsync</c>'s rule for a null menu and the same
+    /// rule <c>StructureShape.EmployeeAttachableDimensionTypeIds</c> states for its own nullable. A
+    /// row that states <em>any</em> of the four is describing the menu, and the ones it leaves out
+    /// take the default rather than the stored value — because a half-stated menu is still a
+    /// statement, and guessing which half was meant is worse than taking the documented default.
+    /// </remarks>
+    public DimensionTypeMenu? ToMenu() =>
+        PluralEn is null && PluralAr is null && ShowInMenu is null && MenuOrder is null
+            ? null
+            : new DimensionTypeMenu(
+                ShowInMenu ?? DimensionTypeMenu.Default.ShowInMenu,
+                new BilingualText(PluralEn ?? string.Empty, PluralAr ?? string.Empty),
+                MenuOrder ?? DimensionTypeMenu.Default.MenuOrder);
 
     /// <summary>
     /// The fields this type's records carry beyond the standard ones, in order.

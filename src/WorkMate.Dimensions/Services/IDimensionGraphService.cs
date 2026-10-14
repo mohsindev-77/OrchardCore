@@ -333,6 +333,33 @@ public interface IDimensionGraphService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same page, over several dimension types at once — the "All <em>Departments</em>" screen
+    /// of decision D23 C, where a tenant's three Department types are one list.
+    /// </summary>
+    /// <remarks>
+    /// <b>Several types, not a group.</b> The grouping is a menu concept (see
+    /// <c>DimensionMenuGroup</c>) and nothing in the graph knows about it; what reaches here is the
+    /// set of type ids the group resolved to, so this method stays a plain widening of
+    /// <see cref="SearchRecordsOfTypeAsync"/> and the one-type call is the one-element case.
+    ///
+    /// Ordered across the whole set rather than type by type: the screen is a list of departments,
+    /// and clustering Zenith's before Crescent's would make the Organisation column the sort key
+    /// without saying so. Sort order first, then English name, which is what the single-type call
+    /// already does — ordinal and language-neutral, because paging has to agree with itself between
+    /// two readers.
+    /// </remarks>
+    Task<Page<DimensionNodeRef>> SearchRecordsOfTypesAsync(
+        IReadOnlyList<string> dimensionTypeIds,
+        string? searchText,
+        string? structureId,
+        string? withinRecordId,
+        DimensionRecordStatus status = DimensionRecordStatus.Active,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every unit on this structure that may be the parent of a record of
     /// <paramref name="childDimensionTypeId"/>, matching <paramref name="searchText"/>.
     /// </summary>

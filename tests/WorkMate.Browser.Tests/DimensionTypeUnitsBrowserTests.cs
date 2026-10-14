@@ -95,5 +95,5 @@ public sealed class DimensionTypeUnitsBrowserTests
     /// <see cref="AdminMenu"/> for the race that bought and what replaced it.
     /// </remarks>
     internal static Task OpenOrganisationMenuEntryAsync(IPage page, string text) =>
-        AdminMenu.ClickAsync(page, "Organisation", text);
+        AdminMenu.ClickAsync(page, text, "Organisation", "Settings");
 }

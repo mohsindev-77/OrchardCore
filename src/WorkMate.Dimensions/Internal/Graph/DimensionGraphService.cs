@@ -330,8 +330,23 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         return [.. units.OrderBy(record => record.SortOrder).ThenBy(record => record.NameEn, StringComparer.Ordinal)];
     }
 
-    public async Task<Page<DimensionNodeRef>> SearchRecordsOfTypeAsync(
+    public Task<Page<DimensionNodeRef>> SearchRecordsOfTypeAsync(
         string dimensionTypeId,
+        string? searchText,
+        string? structureId,
+        string? withinRecordId,
+        DimensionRecordStatus status = DimensionRecordStatus.Active,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default) =>
+        // The one-type case of the many-type call, so there is one implementation of "the page this
+        // list screen shows" rather than two that could drift on paging or on the status filter.
+        SearchRecordsOfTypesAsync(
+            [dimensionTypeId], searchText, structureId, withinRecordId, status, asAt, skip, take, cancellationToken);
+
+    public async Task<Page<DimensionNodeRef>> SearchRecordsOfTypesAsync(
+        IReadOnlyList<string> dimensionTypeIds,
         string? searchText,
         string? structureId,
         string? withinRecordId,
@@ -341,19 +356,26 @@ internal sealed class DimensionGraphService : IDimensionGraphService
         int take = 50,
         CancellationToken cancellationToken = default)
     {
-        var date = await ResolveDateAsync(asAt);
+        ArgumentNullException.ThrowIfNull(dimensionTypeIds);
 
-        // One indexed query for the type. See the interface for why this is not paged underneath:
-        // the bound is the number of records of one type, which is the number the screen is about.
-        var records = (await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
-            .Where(record => status switch
-            {
-                DimensionRecordStatus.Active => record.EffectiveRange.Contains(date),
-                DimensionRecordStatus.Retired => !record.EffectiveRange.Contains(date),
-                _ => true,
-            })
-            .Where(record => Matches(record, searchText))
-            .ToList();
+        var date = await ResolveDateAsync(asAt);
+        var matched = new List<DimensionNodeRef>();
+
+        // One indexed query per type. See the interface for why this is not paged underneath: the
+        // bound is the number of records of these types, which is the number the screen is about.
+        foreach (var dimensionTypeId in dimensionTypeIds.Distinct(StringComparer.Ordinal))
+        {
+            matched.AddRange((await RecordsOfTypeAsync(dimensionTypeId, cancellationToken))
+                .Where(record => status switch
+                {
+                    DimensionRecordStatus.Active => record.EffectiveRange.Contains(date),
+                    DimensionRecordStatus.Retired => !record.EffectiveRange.Contains(date),
+                    _ => true,
+                })
+                .Where(record => Matches(record, searchText)));
+        }
+
+        var records = matched;
 
         if (!string.IsNullOrEmpty(structureId) && !string.IsNullOrEmpty(withinRecordId))
         {

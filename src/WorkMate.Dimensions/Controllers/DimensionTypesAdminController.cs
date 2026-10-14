@@ -69,7 +69,7 @@ public sealed class DimensionTypesAdminController : Controller
 
         // Create and Edit share one view, EditorViewName: the editor looks identical either way
         // bar the code field's editability, which the view itself decides from IsNew.
-        return View(EditorViewName, new DimensionTypeEditViewModel());
+        return View(EditorViewName, DimensionTypeEditViewModel.ForNew());
     }
 
     [HttpPost]
@@ -95,7 +95,8 @@ public sealed class DimensionTypesAdminController : Controller
             model.ToAttributeSchema(),
             // A type created here carries no self-nesting flag. Nothing reads it when deciding a
             // placement any more, and the structure grid is where self-nesting is now said.
-            allowsSelfNesting: false,
+            allowsSelfNesting: false,
+            menu: model.ToMenu(),
             cancellationToken: cancellationToken);
 
         if (!result.IsAuthorised)
@@ -174,7 +175,8 @@ public sealed class DimensionTypesAdminController : Controller
             document.DimensionTypeId,
             model.Name,
             model.ToAttributeSchema(),
-            model.AllowsSelfNesting,
+            model.AllowsSelfNesting,
+            model.ToMenu(),
             cancellationToken);
 
         if (!result.IsAuthorised)

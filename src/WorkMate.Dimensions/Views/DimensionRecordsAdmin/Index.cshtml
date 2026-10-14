@@ -20,10 +20,21 @@
 }
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-    @* "Department units", not "Departments". A stored plural exists on the dimension type and is
-       read by nothing — reviving it is slice F2's job, with an authored plural in both languages
-       rather than a rule that turns Branch into Branchs. A whole sentence is translated as one. *@
-    <h1 id="record-list-heading" class="mb-0">@T["{0} units", Model.TypeName]</h1>
+    @* Two headings, because the screen answers two questions. Scoped to one dimension type it is
+       "Department units" — a whole sentence the localiser owns, built on the stored singular.
+       Opened from the menu's "All Departments" over several types of the same name it is the
+       authored plural itself, which is the words on the entry that got here. ADR-0024: the plural
+       is authored on the dimension type editor, never derived — deriving one produced "Branchs". *@
+    <h1 id="record-list-heading" class="mb-0">
+        @if (Model.ShowsOrganisation)
+        {
+            @Model.GroupCaption
+        }
+        else
+        {
+            @T["{0} units", Model.TypeName]
+        }
+    </h1>
 
     <div class="d-flex align-items-center gap-2" id="record-toolbar">
         @* The tree/list toggle, top right, as the FRS draws it. Two ordinary links rather than a
@@ -34,6 +45,7 @@
                aria-current="@(isTree ? "true" : null)"
                asp-action="Index"
                asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-group="@Model.Group"
                asp-route-search="@Model.Search"
                asp-route-structureId="@Model.StructureId"
                asp-route-within="@Model.Within"
@@ -44,6 +56,7 @@
                aria-current="@(isTree ? null : "true")"
                asp-action="Index"
                asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-group="@Model.Group"
                asp-route-search="@Model.Search"
                asp-route-structureId="@Model.StructureId"
                asp-route-within="@Model.Within"
@@ -65,6 +78,7 @@
             <a class="btn btn-sm btn-primary" id="record-new"
                asp-action="Create"
                asp-route-dimensionTypeId="@Model.DimensionTypeId"
+               asp-route-group="@Model.Group"
                asp-route-structureId="@Model.StructureId">@T["Add"]</a>
 
             <button class="btn btn-sm btn-outline-secondary" id="record-edit-selected"
@@ -79,6 +93,7 @@
         <a class="btn btn-sm btn-outline-secondary" id="record-refresh"
            asp-action="Index"
            asp-route-dimensionTypeId="@Model.DimensionTypeId"
+           asp-route-group="@Model.Group"
            asp-route-search="@Model.Search"
            asp-route-structureId="@Model.StructureId"
            asp-route-within="@Model.Within"
@@ -96,15 +111,41 @@
 <details id="record-filter-panel" class="mb-3" open="@(filtersApplied ? "open" : null)">
     <summary class="visually-hidden">@T["Filter"]</summary>
     <form method="get" class="row g-2 align-items-end" id="record-filter">
-        <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        <input type="hidden" name="group" value="@Model.Group" />
         <input type="hidden" name="asAt" value="@Model.AsAtIso" />
         <input type="hidden" name="view" value="@Model.View" />
+
+        @if (!Model.ShowsOrganisation)
+        {
+            <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        }
 
         <div class="col-sm-4">
             <label class="form-label" for="record-search">@T["Search"]</label>
             <input class="form-control" id="record-search" type="search" name="search" value="@Model.Search"
                    placeholder="@T["Code or name, in either language"]" />
         </div>
+
+        @if (Model.ShowsOrganisation)
+        {
+            @* Decision D23 C. This tenant has more than one dimension type called Department —
+               typically one per company — so the list shows all of them at once and this narrows it
+               to one. It is a filter on the dimension TYPE, because a type is one organisation's:
+               the two are the same question asked in the reader's words and in the engine's. *@
+            <div class="col-sm-3">
+                <label class="form-label" for="record-organisation">@T["Organisation"]</label>
+                <select class="form-select" id="record-organisation" name="dimensionTypeId">
+                    <option value="">@T["Every organisation"]</option>
+                    @foreach (var choice in Model.GroupTypes)
+                    {
+                        <option value="@choice.DimensionTypeId"
+                                selected="@(choice.DimensionTypeId == Model.DimensionTypeId)">
+                            @choice.Organisation
+                        </option>
+                    }
+                </select>
+            </div>
+        }
 
         @if (Model.Structures.Count > 1)
         {
@@ -230,6 +271,7 @@ else
        something only the browser knows about. *@
     <form method="get" id="record-selection">
         <input type="hidden" name="dimensionTypeId" value="@Model.DimensionTypeId" />
+        <input type="hidden" name="group" value="@Model.Group" />
         <input type="hidden" name="structureId" value="@Model.StructureId" />
         <input type="hidden" name="asAt" value="@Model.AsAtIso" />
 
@@ -242,6 +284,10 @@ else
                     }
                     <th scope="col">@T["Code"]</th>
                     <th scope="col">@T["Name"]</th>
+                    @if (Model.ShowsOrganisation)
+                    {
+                        <th scope="col">@T["Organisation"]</th>
+                    }
                     <th scope="col">@T["Alias"]</th>
                     <th scope="col">@T["Parent"]</th>
                     <th scope="col">@T["Status"]</th>
@@ -285,7 +331,14 @@ else
                             </span>
                         </td>
                         <td>
-                            <div dir="ltr" lang="en" class="record-name d-inline">@row.NameEn</div>
+                            @* The name is the way into the value's own page (decision D23 C), which
+                               is where the Organisation menu's values land too — so a reader who
+                               came down the list and one who came down the menu arrive at the same
+                               screen rather than at two that say the same things differently. *@
+                            <a class="record-details" asp-action="Details" asp-route-id="@row.RecordId"
+                               asp-route-structureId="@Model.StructureId" asp-route-asAt="@Model.AsAtIso">
+                                <span dir="ltr" lang="en" class="record-name">@row.NameEn</span>
+                            </a>
                             @* Only when there is Arabic to show: it is optional since ADR-0003's
                                addendum, so an untranslated row would otherwise carry a blank line. *@
                             @if (!string.IsNullOrWhiteSpace(row.NameAr))
@@ -293,6 +346,10 @@ else
                                 <div dir="rtl" lang="ar" class="text-muted small">@row.NameAr</div>
                             }
                         </td>
+                        @if (Model.ShowsOrganisation)
+                        {
+                            <td class="record-organisation text-muted">@row.Organisation</td>
+                        }
                         <td class="record-alias text-muted">@row.Alias</td>
                         <td class="record-parent">
                             @foreach (var placement in row.Placements)
@@ -421,6 +478,7 @@ else
         <a class="btn btn-outline-secondary" id="record-next-page"
            asp-action="Index"
            asp-route-dimensionTypeId="@Model.DimensionTypeId"
+           asp-route-group="@Model.Group"
            asp-route-search="@Model.Search"
            asp-route-structureId="@Model.StructureId"
            asp-route-within="@Model.Within"

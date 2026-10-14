@@ -1935,3 +1935,100 @@ msgstr "حذف وحدة قيد الاستخدام غير متاح بعد. هذه
 #: Views/DimensionRecordsAdmin/Index.cshtml
 msgid "Delete"
 msgstr "حذف"
+
+#. ---- FRS v2.5 slice F2: one menu entry per dimension (ADR-0024) --------------------------
+
+#. The Organisation menu's own sub-group, holding the configuration screens. Decision D3's shape:
+#. the dimensions you look at first, the things you set up last.
+#: Navigation/AdminMenu.cs
+msgid "Settings"
+msgstr "الإعدادات"
+
+#. The dimension type editor's menu block. The plural is AUTHORED here, in both languages: a
+#. per-dimension menu shipped once with the plural derived by appending an "s" and was withdrawn
+#. because it read "Branchs" in English and repeated the singular in Arabic.
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "In the Organisation menu"
+msgstr "في قائمة الهيكل التنظيمي"
+
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Give this dimension its own menu item"
+msgstr "امنح هذا البُعد عنصر قائمة خاصاً به"
+
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Turn it off for a dimension this tenant does not use. Its values stay reachable from this list's \"View units\" link."
+msgstr "أوقفه للبُعد الذي لا يستخدمه هذا المستأجر. تظل قيمه متاحة عبر رابط \"عرض الوحدات\" في هذه القائمة."
+
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Plural, as the menu shows it"
+msgstr "صيغة الجمع كما تظهر في القائمة"
+
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Optional. Left empty, the menu reads the singular above — which is never wrong, only short."
+msgstr "اختياري. إن تُرك فارغاً تعرض القائمة المفرد أعلاه — وهو ليس خطأ أبداً، بل مختصر فقط."
+
+#. A number a customer sets, never an alphabetical sort: sorting by caption gives an Arabic reader
+#. a different order from an English one, which is the defect this replaced. Named "Menu order"
+#. rather than "Position in the menu" because decision D20 reserves "Position" for the post an
+#. employee holds.
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Menu order"
+msgstr "ترتيب القائمة"
+
+#: Views/DimensionTypesAdmin/Edit.cshtml
+msgid "Lower first. The same order in every language."
+msgstr "الأصغر أولاً. الترتيب نفسه في كل لغة."
+
+#. ---- FRS v2.5 slice F2, decision D23: the menu expands to a dimension's own values -------
+
+#. The Organisation menu's first child under each dimension: the list screen for every value of
+#. that dimension's name. {0} is the authored plural, which is the customer's own word.
+#: Navigation/AdminMenu.cs
+msgid "All {0}"
+msgstr "كل {0}"
+
+#. Last under a dimension, when it has more values than the menu lists. {0} is the whole count.
+#: Navigation/AdminMenu.cs
+msgid "Show all ({0})"
+msgstr "عرض الكل ({0})"
+
+#. The list screen's Organisation column and filter, shown only when a tenant has more than one
+#. dimension type of the same name — typically one per demo company.
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Organisation"
+msgstr "المنظمة"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Every organisation"
+msgstr "كل المنظمات"
+
+#. ---- One dimension value's own page (decision D23 C) -------------------------------------
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Back to the list"
+msgstr "العودة إلى القائمة"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Dimension"
+msgstr "البُعد"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Head"
+msgstr "رئيس الوحدة"
+
+#. "Vacant" rather than a blank line: nobody leading a unit today is an answer, and an empty line
+#. is not. The designer card makes the same point.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Vacant"
+msgstr "شاغر"
+
+#. A head is an appointment on one chart (ADR-0012) and a headcount counts employees placed on
+#. one, so neither can be answered until a chart is chosen.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Choose a structure to see the head and the headcount."
+msgstr "اختر هيكلاً لعرض رئيس الوحدة وعدد الموظفين."
+
+#. {0} is how many employees sit at this value on the chosen chart.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} here"
+msgstr "{0} هنا"

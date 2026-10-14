@@ -1,0 +1,235 @@
+@model DimensionRecordDetailsViewModel
+@*
+    One dimension value's own page — decision D23 C. Where the Organisation menu's expanded values
+    land, and where the list screen's names link to, so both routes arrive at the same screen.
+
+    Read-only. Every button leads to the screen that already owns the rule: Edit is this
+    controller's editor, Move and Retire are the designer's dated screens with their dry runs. There
+    is no second write path here, which is the promise the list screen makes too.
+*@
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+    <div>
+        <h1 id="value-name" class="mb-1">@Model.Name</h1>
+        <p class="text-muted mb-0" id="value-type">
+            @Model.TypeName
+            @if (!string.IsNullOrWhiteSpace(Model.Organisation))
+            {
+                @* The same bracket the menu puts after a value when a tenant has more than one
+                   dimension type of this name — one per company. Without it, two pages headed
+                   "Credit · Department" would be indistinguishable. *@
+                <span id="value-organisation">(@Model.Organisation)</span>
+            }
+        </p>
+    </div>
+
+    <div class="d-flex align-items-center gap-2" id="value-actions">
+        @if (Model.CanEdit)
+        {
+            <a class="btn btn-sm btn-primary" id="value-edit"
+               asp-action="Edit" asp-route-id="@Model.RecordId"
+               asp-route-structureId="@Model.StructureId">@T["Edit"]</a>
+        }
+
+        @if (!string.IsNullOrEmpty(Model.StructureId))
+        {
+            @if (Model.CanMove)
+            {
+                <a class="btn btn-sm btn-outline-secondary" id="value-move"
+                   asp-controller="OrganisationDesignerAdmin" asp-action="Move"
+                   asp-route-structureId="@Model.StructureId"
+                   asp-route-recordId="@Model.RecordId"
+                   asp-route-asAt="@Model.AsAtIso">@T["Move"]</a>
+            }
+
+            @if (Model.CanEdit)
+            {
+                <a class="btn btn-sm btn-outline-danger" id="value-retire"
+                   asp-controller="OrganisationDesignerAdmin" asp-action="Retire"
+                   asp-route-structureId="@Model.StructureId"
+                   asp-route-recordId="@Model.RecordId"
+                   asp-route-asAt="@Model.AsAtIso">@T["Retire"]</a>
+            }
+        }
+
+        <a class="btn btn-sm btn-outline-secondary" id="value-back"
+           asp-action="Index"
+           asp-route-dimensionTypeId="@Model.DimensionTypeId"
+           asp-route-group="@Model.Group"
+           asp-route-structureId="@Model.StructureId"
+           asp-route-asAt="@Model.AsAtIso">@T["Back to the list"]</a>
+    </div>
+</div>
+
+<dl class="row" id="value-facts">
+    <dt class="col-sm-3">@T["Code"]</dt>
+    <dd class="col-sm-9"><code id="value-code">@Model.Code</code></dd>
+
+    <dt class="col-sm-3">@T["Name"]</dt>
+    <dd class="col-sm-9">
+        <div dir="ltr" lang="en" id="value-name-en">@Model.NameEn</div>
+        @* Arabic is optional since ADR-0003's addendum, so an untranslated value would otherwise
+           carry a blank line where a name should be. *@
+        @if (!string.IsNullOrWhiteSpace(Model.NameAr))
+        {
+            <div dir="rtl" lang="ar" id="value-name-ar">@Model.NameAr</div>
+        }
+    </dd>
+
+    @if (!string.IsNullOrWhiteSpace(Model.Alias))
+    {
+        <dt class="col-sm-3">@T["Alias"]</dt>
+        <dd class="col-sm-9" id="value-alias">@Model.Alias</dd>
+    }
+
+    <dt class="col-sm-3">@T["Dimension"]</dt>
+    <dd class="col-sm-9" id="value-dimension">@Model.TypeName</dd>
+
+    <dt class="col-sm-3">@T["Parent"]</dt>
+    <dd class="col-sm-9" id="value-parent">
+        @* A type that is a level of no chart has no placement to report, which is a real state —
+           a dimension type created before anybody added it to a structure. *@
+        @if (Model.Placements.Count == 0)
+        {
+            <span class="text-warning">@T["Not placed"]</span>
+        }
+
+        @foreach (var placement in Model.Placements)
+        {
+            <div class="value-placement" data-structure-id="@placement.StructureId">
+                @if (Model.Placements.Count > 1)
+                {
+                    <span class="text-muted small">@placement.StructureName:</span>
+                }
+                @if (placement.State == DimensionRecordPlacementState.Placed)
+                {
+                    <span>@placement.Path</span>
+                }
+                else if (placement.State == DimensionRecordPlacementState.TopLevel)
+                {
+                    <span class="text-muted">@T["Top level"]</span>
+                }
+                else
+                {
+                    @* Not the same as having no parent. A unit nothing has placed is invisible
+                       to every roll-up, which is what the designer's unplaced panel reveals. *@
+                    <span class="text-warning">@T["Not placed"]</span>
+                }
+            </div>
+        }
+    </dd>
+
+    <dt class="col-sm-3">@T["Status"]</dt>
+    <dd class="col-sm-9" id="value-status">
+        @if (Model.IsEffective)
+        {
+            <span class="badge text-bg-success">@T["Active"]</span>
+        }
+        else
+        {
+            <span class="badge text-bg-secondary">@T["Inactive"]</span>
+        }
+        <div class="text-muted small">
+            @if (Model.To is null)
+            {
+                @T["from {0}", BilingualDisplay.Date(Model.From)]
+            }
+            else
+            {
+                @T["{0} to {1}", BilingualDisplay.Date(Model.From), BilingualDisplay.Date(Model.To)]
+            }
+        </div>
+        @if (!Model.IsActive)
+        {
+            @* A different fact from existing on a date, and both are shown: a unit can be flagged
+               "do not use for new transactions" without being closed. *@
+            <div class="text-muted small">@T["Not offered in pickers"]</div>
+        }
+    </dd>
+
+    <dt class="col-sm-3">@T["Head"]</dt>
+    <dd class="col-sm-9" id="value-head">
+        @if (string.IsNullOrEmpty(Model.StructureId))
+        {
+            @* A head is an appointment on one chart (ADR-0012), so on a type that is a level of
+               several the question has more than one answer. Choosing one would be a guess. *@
+            <span class="text-muted">@T["Choose a structure to see the head and the headcount."]</span>
+        }
+        else if (Model.HasHead)
+        {
+            <span id="value-head-name">@Model.HeadName</span>
+            <div class="text-muted small">
+                @if (Model.HeadTo is null)
+                {
+                    @T["from {0}", BilingualDisplay.Date(Model.HeadFrom!.Value)]
+                }
+                else
+                {
+                    @T["{0} to {1}", BilingualDisplay.Date(Model.HeadFrom!.Value), BilingualDisplay.Date(Model.HeadTo.Value)]
+                }
+            </div>
+        }
+        else
+        {
+            @* Said rather than left blank: "nobody leads this unit today" is an answer, and an
+               empty line is not. The designer card makes the same point. *@
+            <span class="text-muted">@T["Vacant"]</span>
+        }
+    </dd>
+
+    <dt class="col-sm-3">@T["Employees"]</dt>
+    <dd class="col-sm-9" id="value-employees">
+        @if (Model.EmployeeCount is null)
+        {
+            <span class="text-muted">@T["Choose a structure to see the head and the headcount."]</span>
+        }
+        else if (Model.EmployeeCount.Value > 0 && Model.CanViewEmployees)
+        {
+            <a id="value-employee-list"
+               asp-area="WorkMate.Records" asp-controller="EmployeesAdmin" asp-action="Index"
+               asp-route-structureId="@Model.StructureId"
+               asp-route-recordId="@Model.RecordId"
+               asp-route-asAt="@Model.AsAtIso">@T["{0} here", Model.EmployeeCount.Value]</a>
+        }
+        else
+        {
+            @* The count without a link: either nobody is here, or this reader may not open the
+               employee list. A link that leads to a refusal is worse than no link. *@
+            @T["{0} here", Model.EmployeeCount.Value]
+        }
+    </dd>
+
+    @* Named "field" rather than "attribute": `@attribute` is a Razor directive, so a loop variable
+       of that name is a parse error rather than a property access. *@
+    @foreach (var field in Model.Attributes)
+    {
+        <dt class="col-sm-3">@field.Label</dt>
+        <dd class="col-sm-9 value-attribute">@field.Value</dd>
+    }
+</dl>
+
+@if (Model.Structures.Count > 1)
+{
+    @* The same refusal to guess the list screen makes, with the same way out of it. A GET form, so
+       the chosen chart is in the URL and the page is one somebody can send to a colleague. *@
+    <form method="get" class="row g-2 align-items-end" id="value-structure-form">
+        <input type="hidden" name="id" value="@Model.RecordId" />
+        <input type="hidden" name="asAt" value="@Model.AsAtIso" />
+
+        <div class="col-sm-4">
+            <label class="form-label" for="value-structure">@T["Structure"]</label>
+            <select class="form-select" id="value-structure" name="structureId">
+                <option value="">@T["Every structure"]</option>
+                @foreach (var structure in Model.Structures)
+                {
+                    <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                        @structure.Name (@structure.Code)
+                    </option>
+                }
+            </select>
+        </div>
+
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-secondary" id="value-structure-apply">@T["Apply"]</button>
+        </div>
+    </form>
+}

@@ -49,46 +49,67 @@ namespace WorkMate.Browser.Tests;
 internal static class AdminMenu
 {
     /// <summary>
-    /// Loads the admin and clicks <paramref name="entry"/> under <paramref name="group"/>,
-    /// expanding the group first if it is closed.
+    /// Loads the admin and clicks <paramref name="entry"/>, expanding each group on the way to it.
     /// </summary>
-    public static async Task ClickAsync(IPage page, string group, string entry)
+    /// <param name="groups">
+    /// The groups to open, outermost first. The Organisation menu nests one level since ADR-0024 —
+    /// <c>ClickAsync(page, entry: "Dimension types", "Organisation", "Settings")</c> — and the
+    /// per-dimension entries sit directly under the group, so most callers pass one.
+    /// </param>
+    public static async Task ClickAsync(IPage page, string entry, params string[] groups)
     {
         ArgumentNullException.ThrowIfNull(page);
 
         await page.GotoAsync("/Admin");
 
-        await OpenGroupAsync(page, group, entry);
+        await OpenGroupAsync(page, entry, groups);
 
         await Link(page, entry).ClickAsync();
     }
 
     /// <summary>
-    /// Expands <paramref name="group"/> if it is closed, on a page that is already loaded, and
-    /// leaves <paramref name="entry"/> visible.
+    /// Expands each of <paramref name="groups"/> that is closed, on a page that is already loaded,
+    /// and leaves <paramref name="entry"/> visible.
     /// </summary>
     /// <remarks>
-    /// Separate from <see cref="ClickAsync"/> for the one caller that loads the page itself —
-    /// <c>OrganisationMenuBrowserTests</c> sets a culture cookie and reloads before it looks at the
-    /// menu, and the whole point of that test is what the menu reads in each language.
+    /// Separate from <see cref="ClickAsync"/> for the caller that loads the page itself — a test
+    /// that sets a culture cookie and reloads before it looks at the menu.
+    ///
+    /// <b>Each group is opened in turn, and the entry is only checked at the end.</b> A nested
+    /// entry is not visible until every group above it is open, so asking "is the entry visible
+    /// yet?" between the two would answer no for a reason that has nothing to do with the group
+    /// being checked.
     /// </remarks>
-    public static async Task OpenGroupAsync(IPage page, string group, string entry)
+    public static async Task OpenGroupAsync(IPage page, string entry, params string[] groups)
     {
         ArgumentNullException.ThrowIfNull(page);
+        ArgumentNullException.ThrowIfNull(groups);
 
         var link = Link(page, entry);
-        var button = page.GetByRole(AriaRole.Button, new() { NameString = group }).First;
 
-        // The wait that was missing. Either state is a legitimate answer; neither being true yet is
-        // not an answer at all, and acting on it is the race this helper exists to close.
-        await Assertions.Expect(link.Or(button).First).ToBeVisibleAsync();
-
-        if (!await link.IsVisibleAsync())
+        foreach (var group in groups)
         {
-            await button.ClickAsync();
+            var button = page.GetByRole(AriaRole.Button, new() { NameString = group }).First;
+
+            // The wait that was missing. Either state is a legitimate answer; neither being true
+            // yet is not an answer at all, and acting on it is the race this helper exists to
+            // close.
+            await Assertions.Expect(link.Or(button).First).ToBeVisibleAsync();
+
+            // Already open — the entry is reachable, so there is nothing to expand.
+            if (await link.IsVisibleAsync())
+            {
+                break;
+            }
+
+            if (await button.IsVisibleAsync())
+            {
+                await button.ClickAsync();
+            }
         }
 
-        // Asserted, not assumed. A group that did not open fails here, naming itself.
+        // Asserted, not assumed. A group that did not open fails here, naming the entry it was
+        // opened for.
         await Assertions.Expect(link).ToBeVisibleAsync();
     }
 

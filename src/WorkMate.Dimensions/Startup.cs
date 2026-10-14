@@ -70,6 +70,13 @@ public sealed class Startup : StartupBase
         services.AddScoped<IStructureLookup, CachedStructureLookup>();
         services.AddScoped<IDimensionRecordLookup, DimensionRecordLookup>();
 
+        // The Organisation menu (ADR-0024), cached per tenant per day behind the same decorator
+        // pattern as the two lookups above. It is the one dated read in this module that is cached,
+        // because it is asked on every admin request and only ever about today; the decorator's
+        // remarks give the argument in full.
+        services.AddScoped<DimensionMenuService>();
+        services.AddScoped<IDimensionMenuService, CachedDimensionMenuService>();
+
         services.AddScoped<IDimensionTypeService, DimensionTypeService>();
         services.AddScoped<IStructureService, StructureService>();
 

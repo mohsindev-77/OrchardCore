@@ -106,8 +106,17 @@ internal sealed class StructureService : IStructureService
     /// written from: an immediate signal on its own lands before the session commits, which is the
     /// one moment at which a read in another scope can poison the cache permanently.
     /// </remarks>
-    private Task InvalidateCacheAsync() =>
-        _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.StructuresSignal(_shellSettings.Name));
+    /// <remarks>
+    /// <b>The menu goes too.</b> Which charts a type is a level of decides whether the Organisation
+    /// menu suffixes its values with an organisation name — <em>Civil (Zenith)</em> — so adding a
+    /// level to a structure changes the menu even though no type and no value was touched.
+    /// ADR-0024, decision D23 D.
+    /// </remarks>
+    private async Task InvalidateCacheAsync()
+    {
+        await _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.StructuresSignal(_shellSettings.Name));
+        await _signal.SignalNowAndAfterCommitAsync(DimensionCacheKeys.MenuSignal(_shellSettings.Name));
+    }
 
     /// <inheritdoc />
     public async Task<DimensionResult<StructureDocument>> CreateAsync(

@@ -271,7 +271,7 @@ public sealed class LookupListClickBrowserTests
     /// has the full account.
     /// </remarks>
     private static Task OpenPeopleGroupAsync(IPage page) =>
-        AdminMenu.OpenGroupAsync(page, "People", "Forms");
+        AdminMenu.OpenGroupAsync(page, "Forms", "People");
 
     /// <summary>
     /// Opens the admin in one culture, with the People group expanded.

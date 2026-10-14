@@ -12,6 +12,7 @@
     "The shape this exists to demonstrate: depth is not uniform. Head Office > Credit Risk is two levels deep; Branch Network > Punjab Region > Lahore Main Branch > Credit is four. The same Department type is reachable at both, which a chain of level ordinals cannot express at all.",
     "Two branches have no departments under them. A leaf at depth three beside a sibling that goes one deeper is the ordinary case for a branch network, not an edge case.",
     "Department codes carry the branch they belong to — crescent-dept-lhr-credit, crescent-dept-khi-credit — because a code is unique across the whole tenant, not within a parent. Two branches each having a 'Credit' department is exactly where that bites.",
+    "The dimension TYPE codes stay prefixed crescent-. Sharing them with organisation-designer-zenith was tried and reverted while building slice F2 — see that recipe's notes for the reason: a shared type is a level of both structures, so every record of it sits on both axes and each company's chart grew the other's divisions. What stops the menu reading Departments twice is decision D23: types sharing an English singular name are one menu entry, and its values name their own chart — Credit (Crescent Microfinance). So the plurals here are plain, and identical to Zenith's, on purpose.",
     "Branch carries a real attribute schema — location, cost centre, branch code — and every branch carries values for it. Both halves travel through export and import since ADR-0011."
   ],
 
@@ -19,13 +20,16 @@
     {
       "name": "dimension-types",
       "types": [
-        { "code": "crescent-division", "nameEn": "Division", "nameAr": "قطاع", "allowsSelfNesting": false },
-        { "code": "crescent-department", "nameEn": "Department", "nameAr": "إدارة", "allowsSelfNesting": false },
-        { "code": "crescent-region", "nameEn": "Region", "nameAr": "منطقة", "allowsSelfNesting": false },
+        { "code": "crescent-division", "nameEn": "Division", "nameAr": "قطاع", "pluralEn": "Divisions", "pluralAr": "القطاعات", "menuOrder": 60, "allowsSelfNesting": false },
+        { "code": "crescent-department", "nameEn": "Department", "nameAr": "إدارة", "pluralEn": "Departments", "pluralAr": "الإدارات", "menuOrder": 70, "allowsSelfNesting": false },
+        { "code": "crescent-region", "nameEn": "Region", "nameAr": "منطقة", "pluralEn": "Regions", "pluralAr": "المناطق", "menuOrder": 75, "allowsSelfNesting": false },
         {
           "code": "crescent-branch",
           "nameEn": "Branch",
           "nameAr": "فرع",
+          "pluralEn": "Branches",
+          "pluralAr": "الفروع",
+          "menuOrder": 80,
           "allowsSelfNesting": false,
           "attributes": [
             { "name": "Location", "labelEn": "Location", "labelAr": "الموقع", "kind": "Text", "isRequired": true },

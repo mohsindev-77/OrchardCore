@@ -32,6 +32,33 @@ internal static class DimensionCacheKeys
     /// <summary>The change-token signal every cached structure read is tagged with.</summary>
     public static string StructuresSignal(string tenant) => $"{Prefix}:{tenant}:Structures";
 
+    /// <summary>
+    /// The change-token signal the cached Organisation menu is tagged with. ADR-0024, decision D23.
+    /// </summary>
+    /// <remarks>
+    /// <b>Its own signal rather than the two it depends on</b>, because it depends on three things —
+    /// types, structures and <em>values</em> — and values have no signal of their own: nothing else
+    /// in this module caches a record. Reusing <see cref="TypesSignal"/> would mean a department
+    /// renamed in the designer left the menu reading the old name until a dimension type happened to
+    /// be edited.
+    ///
+    /// Cancelled by <c>DimensionTypeService</c>, <c>StructureService</c> and <c>DimensionService</c>,
+    /// always through <c>CacheSignals.SignalNowAndAfterCommitAsync</c> (ADR-0019).
+    /// </remarks>
+    public static string MenuSignal(string tenant) => $"{Prefix}:{tenant}:Menu";
+
+    /// <summary>
+    /// The cached Organisation menu for one tenant on one date.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="isoDate"/> is today in the tenant's time zone. It is in the key because the
+    /// menu lists the values effective now: a menu built yesterday is a correct answer about
+    /// yesterday, and the cheapest way to stop serving it today is to ask a different question.
+    /// Yesterday's entry is left to the signal and to memory pressure rather than tracked, which is
+    /// the same bargain every other key here makes.
+    /// </remarks>
+    public static string Menu(string tenant, string isoDate) => $"{Prefix}:{tenant}:Menu:{isoDate}";
+
     public static string TypeById(string tenant, string dimensionTypeId) =>
         $"{Prefix}:{tenant}:DimensionType:Id:{dimensionTypeId}";
 

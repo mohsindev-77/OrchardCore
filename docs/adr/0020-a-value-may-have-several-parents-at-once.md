@@ -1,11 +1,51 @@
 # ADR-0020: A value may have several parents at once — an axis is a directed acyclic graph
 
-**Status:** accepted, **pending second review**
-**Date:** 2026-10-12
+**Status: WITHDRAWN — superseded by decision D19 (13 October 2026).**
+Accepted 2026-10-12, withdrawn 2026-10-13 before any of it was built.
 **Deciders:** Project lead, on the product owner's confirmation of conflict C1 in
-`docs/design/frs-v2.5-dimension-mapping-design.md`
+`docs/design/frs-v2.5-dimension-mapping-design.md`; withdrawn on the product owner's own decision.
 
-## Context
+---
+
+## Withdrawal note
+
+**A dimension value has exactly one parent.** The product owner has overruled the FRS text this
+decision was written to honour — §3's *"mapped to one parent dimension, or to more than one"* and
+Rule 3's *"one value from each mapped parent"* — and
+`docs/requirements/frs-v2.5-decisions.md` **D19** records that, with the FRS passages it overrides.
+
+**Nothing here was built.** The withdrawal is a decision reversed before implementation, not a
+feature removed: no `MappingKey` on `ParentLink`, no `UpdateFromNAsync` for
+`DimensionLinkIndex.ParentDimensionTypeId`, no change to `ComputeAncestorsAsync`. Slice F4, which
+was this ADR's whole content, is deleted from the plan.
+
+**What stands instead.** ADR-0005's one-parent-per-axis model is unchanged and was never actually
+departed from. Conflict **C1** is withdrawn rather than reconciled: there is no conflict between the
+FRS and a recorded decision once the FRS text in question is not being built.
+
+**ADR-0021 survives, amended.** Mapping remains containment plus a cardinality; the cardinality is
+now Required / Optional over **one** parent dimension type rather than a per-parent rule over
+several. See its own amendment note.
+
+**Why the text below is kept rather than deleted.** Three reasons, and the first is the one that
+matters. The analysis is correct: if multi-parent is ever asked for again, the finding that
+ADR-0005's storage already generalises — `DimensionClosureDocument.Ancestors` is a list whose own
+comment permits one ancestor at several depths — is the expensive part of the work and it is done.
+Second, the 12 October design document describes the organisation axis as a DAG in several places,
+and a reader who follows the reference needs to find out what happened rather than find nothing.
+Third, the cost side is recorded here and nowhere else: storage growing with the number of
+root-to-node paths, `GetDepthAsync` becoming ambiguous, and a value drawn twice making every count
+beneath it double. Those are the reasons the single-parent model is the better trade, written down
+while they were being weighed.
+
+**One thing from it is kept and built.** The `DISTINCT EmployeeId` guarantee on
+"employees under a node" was introduced here for the DAG, and it earns its place without one: an
+employee may hold several positions — a split allocation, the Zenith matrix — which is a different
+source of double counting that one parent per value does not remove. D19 says so explicitly.
+
+---
+
+## Context *(as accepted on 12 October 2026; retained for the record)*
 
 FRS v2.5 §3 and Rule 3 require that a Branch belongs to one Division **and** one Department at the
 same time:
@@ -170,3 +210,11 @@ decision and not only in the design document.
 
 **Pending second review**, per the definition of done's rule for a change that carries a migration
 and reverses a recorded decision.
+
+---
+
+*End of the text as accepted on 12 October 2026. **Withdrawn 13 October 2026 — see the withdrawal
+note at the top, and D19.*** The paragraph immediately above is the one part of this that survives
+its own withdrawal: the distinction between Rule 3 governing the **Add form** and a row's existence
+in the database is unchanged by there being one parent rather than several, and ADR-0021 carries it
+forward.
