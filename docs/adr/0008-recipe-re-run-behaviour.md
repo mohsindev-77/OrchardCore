@@ -332,3 +332,165 @@ is the one place that implements it.
 `LookupListsRecipeStepTenantTests` covers all five outcomes, including the two that matter most: a
 tenant that already holds an extra entry of its own has nothing added and nothing fail, and a
 tenant whose entry genuinely differs still fails with nothing written.
+
+---
+
+## Addendum — a menu order of zero, and a strictly additive axis (2026-10-14)
+
+**Status: accepted, pending second review.** Two more gaps a recipe may fill, found the same way the
+last one was: by a recipe that could not be re-applied to the tenant that most needed it.
+
+### What went wrong
+
+Manual testing on a tenant built from an earlier version of the Zenith demo:
+
+```
+Configuration → Recipes → "WorkMate demo: Zenith Engineering & Construction"
+  fails at 'dimension-types':
+    zenith-division:   menuOrder 0 in tenant vs 10 in recipe
+    zenith-department: allowsSelfNesting True vs False; menuOrder 0 vs 20
+    zenith-project:    menuOrder 0 vs 40
+    zenith-team:       allowsSelfNesting True vs False; menuOrder 0 vs 50
+```
+
+Slice F5+F7 had put the new positions and grades into that same file, so the tenants that already
+had the organisation to hang them on were **exactly the tenants that could never receive them**.
+This ADR's own sentence — *existing tenants are unaffected unless the recipe is re-applied* —
+turned out to describe the case that fails rather than the case that is safe.
+
+### Decision 1 — a stored `menuOrder` of zero is a gap, not a difference
+
+`DimensionTypeDocument.MenuOrder` arrived with slice F2. **No tenant created before it could have
+authored a value**, and zero is what every type born before it deserialises to. So a row stating an
+order against a tenant holding zero is filling a gap, and the step fills it through
+`IDimensionTypeService.UpdateAsync` — validated and audited exactly as an edit on the Dimension
+types screen would be, changing that one field and reading everything else back from the type.
+
+This is the same argument `Migrations.UpdateFrom11Async` makes for an unauthored plural and the
+11 October addendum makes for an empty employee-attachment set.
+
+**The risk, stated rather than hidden.** Zero is *also* a legitimate order somebody could type to
+put a dimension first, and nothing can tell the two apart. It is accepted because the cost of being
+wrong is a menu position a customer changes in one field, and the cost of refusing is a recipe
+nobody can re-apply. A tenant that has deliberately ordered its menu has almost certainly given its
+other entries non-zero orders, which are still compared and still refused.
+
+**Only the order.** A plural, a `showInMenu` or a role that differs is still a difference, because
+for each of those the tenant's value is one somebody could have meant.
+
+### Decision 2 — a structure row may say what to **add**, in a form of its own
+
+`StructuresRecipeStep` compared levels, root types and containment by equality, so a row stating one
+more level than the tenant held was "the levels differ" and the recipe was refused. That made *"add
+a dimension to an existing organisation"* — which is what a recipe extending a demo does —
+inexpressible as a recipe at all.
+
+A `structures` row may now state `addLevelTypeCodes` and `addContainment` **instead of** describing
+the structure. Such a row carries nothing but the code and those two keys: it names levels to append
+and pairings to permit, and says nothing whatever about the levels, pairings, names, roots,
+strictness, employee attachment or short name already there. Missing levels and pairings are added;
+everything else is read back from the structure as it stands.
+
+**This replaces an inferred rule that was wrong, and the way it was wrong is the argument for the
+explicit form.** The first attempt inferred "additive" from a full restatement that happened to be a
+superset — tenant's levels a prefix of the row's, every root still a root, every pairing still
+permitted. It was refused by the very tenant it was written for. That tenant's map carries
+`department → department` and `team → team`, self-pairs
+`StructureContainmentDerivation.FromChain` derived from the old `allowsSelfNesting` flags and
+`Migrations.UpdateFrom4Async` wrote. No current row restates them, so the tenant was not a subset of
+anything and the whole recipe was refused. **Inferring an instruction from a description was the
+mistake.** A description can only ever be compared against what is there, and a tenant is entitled
+to hold things no description mentions. An instruction does not have that problem, so the recipe
+says it outright.
+
+**Mixing the two forms is refused.** A row that both instructed and described — "add Position" and
+"the levels are exactly these" — would have two answers to the same question, and merging them would
+mean the recipe said something nobody wrote. Same refusal, for the same reason, as stating both
+`allowSkipLevel` and an explicit `containment`.
+
+**What an additive row refuses, each naming the thing at fault:** a structure that does not exist,
+because such a row extends an axis another recipe created and never invents one; a type code that
+names no type; and a pairing whose parent or child is neither already a level nor one being added,
+because an inert rule on a containment grid is a rule somebody will later read as permission. That
+last is the "genuine contradiction" case — a pairing the tenant's own shape could never honour is
+named rather than written and ignored.
+
+**Widening is neither free nor silent.** The change goes through `IStructureService.UpdateAsync`,
+which runs `PlanLevelChangeAsync` first and refuses the whole change — naming the record at fault —
+if a live placement would be invalidated, and audits it as `StructureChanged` with the map before
+and after: validated and audited exactly as an administrator's own edit on the structures screen.
+What a recipe still cannot do is take something away.
+
+**Idempotent by construction.** A level or pairing already present is not added twice, and a row
+that computes the set the tenant already holds returns before writing — so a re-run is a no-op in
+the audit trail as well as in the data.
+
+### Decision 3 — `allowsSelfNesting` is still refused, and no migration aligns it
+
+Deliberately, for three reasons, and the first settles it.
+
+**Nothing can establish what set it.** No shipped version of the Zenith recipe ever wrote `true` —
+checked back to the commit that added the file. No migration writes the flag. The only other writer
+was a self-nesting checkbox on the Dimension types screen that ADR-0010's addendum removed. So on
+that tenant the value is as likely to be somebody's deliberate tick as a stale default, and a
+migration that flipped it would be the product overwriting a customer's configuration to make a
+demo file re-appliable.
+
+**Nothing reads it.** Since that addendum the structure's containment map is the only authority on
+self-nesting; the one remaining reader is a chain-shaped `structures` row, which Zenith's is not.
+The divergence is inert — it changes nothing a reader sees or a rule enforces.
+
+**Nothing needs it.** The positions-and-grades recipe does not restate those types, so it applies
+regardless, which is the outcome that was actually wanted.
+
+A migration would also have had to hard-code demo-recipe type codes into the product's schema
+history, where ADR-0009 makes them permanent.
+
+### Consequences
+
+`dimension-types` joins `structures` and `lookup-lists` as a step that can write to a row it did not
+create. Its contract is now **create, fill a gap, skip, or fail**.
+
+`structures` gains a fifth: **add to**. It is worth keeping the two apart in the reader's mind — a
+describing row is checked against the tenant and a gap in it may be filled; an additive row is
+carried out. Every other step in the product describes, and should stay that way; this one has an
+instruction because extending somebody else's axis is not a thing a description can express.
+
+**One related defect was fixed at the same time**, because the split recipe could not work without
+it: `dimension-records` resolved a placement's parent only among records named in the *same file*,
+so its message *"parents must be listed before their children"* was enforcing the much stronger
+*"parents must be listed"*. A parent already in the tenant is now resolved from it, which is what
+lets one recipe hang something off a tree another built. The file still wins where both define a
+code.
+
+**If a reviewer disagrees that a stored zero is an absence**, this addendum is the thing to
+overturn, and `DimensionTypesRecipeStep.FillsTheMenuOrderGap` is the one place that implements it.
+For the additive row it is `StructuresRecipeStep.AddToAsync`, reached only from
+`StructureStepEntry.IsAdditive`.
+
+`ZenithPositionsRecipeTenantTests` covers it end to end on a tenant built from the pre-F1 recipe
+taken out of git — self-nesting on Department and Team, menu orders of zero, and the two derived
+self-pairs the real tenant carries. The new recipe applies and brings grades, positions and the
+reporting chart; positions sit under the departments that were already there; the tenant's own
+self-pairs and absent short name survive untouched; a re-run changes nothing; a tenant left
+half-done by an earlier failed attempt, with the two dimension types already created, is picked up
+where it left off; an additive row naming a structure that is not there is refused by name; the main
+recipe now gets past menu order and still refuses on `allowsSelfNesting` and **only** that; and a
+menu order somebody really did choose is still refused.
+
+### Postscript — a demo-data change that this ADR deliberately refuses (2026-10-15)
+
+Manual testing pointed out that Zenith's **Site Supervisor** carried MGR-1 and MGR-2 — the
+technology manager's grades. Sharing a ladder says two posts are the same level, which is the one
+thing a grade exists to say, so the recipe now ships SS-1 and SS-2 and points Site Supervisor at
+them.
+
+**On a tenant that already applied the earlier version, the `dimension-references` step refuses that
+one row, and should.** `{MGR-1, MGR-2}` is an answer somebody could have meant — it is exactly what
+a customer who had adjusted the demo would hold — so it is a *difference*, not a gap, and nothing in
+this ADR lets a recipe overwrite a decision. The message names both sets. The repair is two clicks
+on the Site Supervisor page: Edit, tick SS-1 and SS-2, untick the MGR grades.
+
+Recorded because the temptation is to widen the gap rule until the demo re-applies cleanly, and
+that would trade a two-click repair on one demo row for a recipe that can silently rewrite a
+customer's grade ladder. The whole of this ADR is the argument against that trade.

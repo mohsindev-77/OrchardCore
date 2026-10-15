@@ -166,6 +166,57 @@ public interface IDimensionValidator
         EffectiveRange range,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Rules for a record's references of one kind — today, a Position's allowed grades (D26 C).
+    /// </summary>
+    /// <remarks>
+    /// <b>Here rather than on the screen</b>, so the Add/Edit form, the <c>dimension-records</c>
+    /// recipe step and slice F6's employee form are all refused in the same words from the same
+    /// code. Specification rule 5 and the lesson ADR-0010 was written for.
+    ///
+    /// Three rules, and each exists because a reference is not a parent and so gets none of the
+    /// containment map's protection for free:
+    ///
+    /// <list type="bullet">
+    /// <item><description>the referring record's type must be one this kind belongs to — only a
+    /// Position has allowed grades;</description></item>
+    /// <item><description>every target must exist;</description></item>
+    /// <item><description>every target's type must be one this kind points at — an allowed grade
+    /// must be a <see cref="DimensionTypeRole.Grade"/>, which is why that role is declared on the
+    /// type rather than guessed from its code or its name.</description></item>
+    /// </list>
+    ///
+    /// <b>A retired target is not refused.</b> Stating the set a position already holds, on a
+    /// screen that is about something else, must not fail because one of its grades was retired
+    /// last year — the reference is undated and the read filters by date, which is the division
+    /// <c>DimensionReferenceKinds</c> sets out.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionError>> ValidateReferencesAsync(
+        string recordId,
+        string referenceKind,
+        IReadOnlyList<string> targetRecordIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="gradeRecordId"/> is one of the grades
+    /// <paramref name="positionRecordId"/> allows, as at a date. Decision D26 G.
+    /// </summary>
+    /// <remarks>
+    /// <b>Built here in slice F5+F7 and called by the employee form in F6.</b> The rule is the
+    /// product's, not a screen's: an employee's grade must be one of their position's levels, and a
+    /// grade control that is merely <em>populated</em> from the position's set is a control, not a
+    /// rule — nothing stops a recipe, an import or a replayed form post from naming another.
+    ///
+    /// An empty <paramref name="gradeRecordId"/> is refused when the position allows any grades and
+    /// accepted when it allows none, because a position with no grades has no level to choose and
+    /// demanding one would make it unusable.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionError>> ValidateEmployeeGradeAsync(
+        string positionRecordId,
+        string? gradeRecordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Rules for folding one record into another.</summary>
     Task<IReadOnlyList<DimensionError>> ValidateMergeAsync(
         string structureId,

@@ -39,6 +39,26 @@ figures — the figures are screenshots and were extracted and read, not inferre
 
 ---
 
+> # ⚠ Amended again 14 October 2026 — D26 and D27 — read this second
+>
+> Two further product decisions, recorded as **D26** and **D27** in
+> `docs/requirements/frs-v2.5-decisions.md`. **Where this document and they disagree, they win.**
+>
+> | | Decision | What it does to this document |
+> | --- | --- | --- |
+> | **D26 C** | **There is no grade step. A Position carries a *set* of allowed grades** | **§4.1 is withdrawn** — Q-a's two-type answer goes with the second type. §4.2's range becomes a set and its step paragraphs go. §6.4's shipped set loses `grade-step`. **ADR-0026 is restated** |
+> | **D26 D** | **One Position per *job*, not per post.** Approved headcount is what carries the number of holders | §3.2 stands and matters more: a headcount of 3 on one *HR Manager* is the whole point of the column |
+> | **D26 F/G** | **Position and Grade are drop-downs on the employee**, Grade disabled until a Position is chosen | §B6 and §3.5 gain two controls. Built in **F6**; **F5+F7 builds and tests the two reads and the two pickers** |
+> | **D27** | **Slice F3 — the Mapping screen — is dropped. ADR-0021 is withdrawn** | **§2.1, §5.5 and §2.6's Rule 3 row are withdrawn.** `StructureDocument.Mappings`, `MappingCardinality` and `StructureIndex.MappingCount` are **not built**. The containment map (ADR-0010) stays the single authority, enforced by the Add form's *Place under* picker and the designer, as today |
+>
+> **Slice order is now `F1 ✓ → F2 ✓ → F5+F7 → F6 → F8 → F9`.** F3 is dropped; F5 and F7 are one
+> slice, grades first. §10.3's table is amended in place.
+>
+> **Q-k is answered** (D21 confirmed: a grade is never a level of the organisation tree). **Q-j is
+> still open** and is what the new ADR on the Position's two axes settles.
+
+---
+
 ## How to read this
 
 Sections **A** to **E** are written for a reviewer who does not read code: what the FRS asks for,
@@ -435,7 +455,18 @@ Legend: **Done** — works now, no change. **Partial** — mechanism exists, nee
 
 # 2. Data model
 
-## 2.1 Mapping, in the model
+## 2.1 Mapping, in the model — **WITHDRAWN (D27)**
+
+> **This section is withdrawn in full, before any of it was built.** Slice F3 is dropped and ADR-0021
+> is withdrawn. `StructureDocument.Mappings`, `StructureMapping`, `MappingCardinality` and
+> `StructureIndex.MappingCount` do not exist and are not going to. The **containment map (ADR-0010)
+> remains the single authority** on what may sit under what, and a parent remains optional on every
+> dimension — which is what the engine does today. FRS Rule 3's obligation is not built; Rule 4 is
+> unaffected.
+>
+> Kept rather than deleted, for the reason ADR-0021's own text is kept: the argument below for why
+> obligation cannot live on the containment grid is correct, and is what a future reader needs if
+> required parents are ever asked for again.
 
 **The FRS's "mapping" is the containment map read child-first, plus a cardinality.** ADR-0010 already
 stores, per structure, a set of permitted `(parent type → child type)` pairs. Read backwards — "which
@@ -587,7 +618,7 @@ had.*
 | No cycles, across every date | enforced; a node may never become its own ancestor on any date | **unchanged**, and unchanged in effect too. The 12 October draft noted that with several parents A→B and B→A could be reached by two different mappings and would need a test per mapping *pair*; with one parent there is one path and the existing check and its existing tests cover it |
 | Parent must be effective when the child is | advisory, not blocking | unchanged |
 | A mapping's parent must be of the mapped dimension | — | **new**: a Branch's Division slot may only hold a Division. Falls out of `ContainmentRules.Decide`, which is already the one implementation both the validator and every picker read — asked once rather than per key, so it needs one test per mapping |
-| Rule 3 — a required mapping must be satisfied | — | **new**, in `IDimensionValidator`, so the Add form, the recipe step and any future API are refused in the same words |
+| ~~Rule 3 — a required mapping must be satisfied~~ | — | **WITHDRAWN (D27).** Not built. A parent stays optional on every dimension, and an unparented value is the unplaced state the engine already models and reports |
 | Effective ranges must not overlap | per employee per structure (assignments); per record per structure (links) | **unchanged.** The draft had links becoming "per record per structure per mapping key"; there is no mapping key |
 | Code uniqueness within the tenant, including against retired records | enforced | unchanged |
 
@@ -628,10 +659,15 @@ Reporting axis (a second structure), after D19:
    containment              position → position          THE REPORTING LINE
    mapping                  position under position      Optional     (the CEO has none)
 
-References, which are NOT parents and never reach a tree (D21):
+References, which are NOT parents and never reach a tree (D21, as amended by D26 C):
 
-   position → grade         Required, OneOrMore permitted for a range G7–G8
+   position → grade         a SET of allowed grades, authored on the Position itself
 ```
+
+> **Amended by D26 C and D27.** The *mapping* rows above are not built — the containment map alone
+> says what may sit under what (D27). The **reference** row survives and is the heart of D26: a
+> Position carries a set of allowed grades, stored against the Position rather than declared once per
+> dimension type, and it never enters the closure index or any tree.
 
 **D19 forces a second axis here, and that is the right answer rather than a workaround.** FRS §4.1.4
 draws the Position tree as a reporting line — POS → EXE → CEO, COO → RDIR; MGT → BMGR → BSUP — while
@@ -769,7 +805,16 @@ works), and as leaves of the combined tree in §5.6.
 
 # 4. Grades, steps and job titles
 
-## 4.1 Q-a — the shape of the Grade Steps tree
+## 4.1 Q-a — the shape of the Grade Steps tree — **WITHDRAWN (D26 C)**
+
+> **There is no grade step.** One dimension type ships — **Grade** (*Grades* / **الدرجات**) — and
+> `grade-step` is not built. A tenant that wants a heading above SE-1..SE-3 creates an ordinary Grade
+> value and ticks the `grade → grade` diagonal on the Grade axis's containment grid; that is a group,
+> not a level, and a position may allow it or not like any other grade.
+>
+> The argument below is why that is a *value* and not a depth rule, so it is kept. What goes with the
+> second type is the whole of Option B's machinery: no `grade-step` type, no `grade → grade-step`
+> containment, no "one menu entry built from two types", and no step control anywhere.
 
 D5 says: *"'Grade Steps' is one dimension with its own tree: grades as parents, steps as children
 (G7 → G7-S1..S5)."*
@@ -797,7 +842,16 @@ plan is unaffected.
 considered and rejected: a step would then have no code, no bilingual name, no dates of its own and
 no screen, and figure 2 puts *Grade Steps* in the dimension list.
 
-## 4.2 Q-b — where the grade attaches
+## 4.2 Q-b — where the grade attaches — **AMENDED BY D26 C AND D26 G**
+
+> **What stands:** the grade belongs to the **post**, and the person's grade is a dated
+> `EmployeeAssignment` on a **Grade axis** rather than a field on the employee. Both survive D26
+> unchanged, and the second is what makes "the employee's grade is dated" (D26 G) cost no new storage.
+>
+> **What changes:** a position carries a **set of allowed grades**, not a range and not a mapping
+> cardinality (`OneOrMore` goes with ADR-0021, D27). *"Are steps optional per tenant"* has no answer
+> because there are no steps. And the employee's control is **disabled until a position is chosen**
+> and refreshed when it changes (D26 G), which the three answers below predate.
 
 Three sub-questions, each with a recommendation and none decided here.
 
@@ -1041,7 +1095,14 @@ and already covered.
 specific blockers listed so the user can act" is kept word for word; what D4 adds is *the action to
 act with*, on the same screen.
 
-## 5.5 The Mapping settings screen
+## 5.5 The Mapping settings screen — **WITHDRAWN (D27)**
+
+> **Not built.** The Structures editor stays exactly as it is, under Organisation → Settings →
+> **Structures**, with the containment grid, the root types, the employee-attachable types and the
+> "build from a simple chain" button unchanged. The word *structure* stays in the UI. The references
+> block this section proposed is not built either — a Position's **allowed grades** are authored on
+> the Position itself (D26 C), which is where somebody deciding them is already looking, rather than
+> declared once per dimension type on a settings screen.
 
 **Click path:** Organisation → Settings → **Mapping**.
 
@@ -1250,10 +1311,14 @@ Neither requires deleting anything. So:
 The set, from figure 2, reconciled against D5/D6 and **D20**:
 
 ```
-business-unit  division  department  branch  section  position  grade  grade-step
+business-unit  division  department  branch  section  position  grade
 employees-group  projects  sponsorship  territory  warehouse
 + cost-centre (already shipped)
 ```
+
+> **Amended by D26 C:** `grade-step` is **not** in the set. There is one Grade dimension and no step
+> level. ~~**Split from Grade Steps**: `grade` and `grade-step` (D7), shown under one menu entry~~ —
+> struck out; `grade` ships alone, with its own menu entry reading *Grades* / **الدرجات**.
 
 **Dropped**, with the reason recorded in the ADR:
 
@@ -1263,8 +1328,7 @@ employees-group  projects  sponsorship  territory  warehouse
 | **Position Title** | D20 — it is the Position record's own bilingual name |
 | **Job Title** | **D20** — Position, Job Title and Designation are one concept, always *Position* |
 
-**Added**, because §4.1.4 and figure 9 need it and figure 2 omits it: **Position** (D13). **Split
-from Grade Steps**: `grade` and `grade-step` (D7), shown under one menu entry.
+**Added**, because §4.1.4 and figure 9 need it and figure 2 omits it: **Position** (D13).
 
 ## 6.5 Demo recipes
 
@@ -1532,7 +1596,16 @@ asked for again, and the costs it weighed are the reasons the single-parent mode
 trade. One thing from it is kept and built: the `DISTINCT EmployeeId` guarantee, which earns its
 place without a DAG because an employee may hold two positions.
 
-**ADR-0021 — Mapping is containment plus a cardinality, and lives on the structure.**
+**~~ADR-0021 — Mapping is containment plus a cardinality, and lives on the structure.~~
+WITHDRAWN (D27), before any of it was built.** Slice F3 is dropped. `StructureDocument.Mappings`,
+`MappingCardinality`, Rule 3 in `IDimensionValidator` and `StructureIndex.MappingCount` do not exist.
+The containment map (ADR-0010) stays the single authority on what may sit under what, read forwards
+by the *Place under* picker and backwards by the validator, exactly as today. The file is kept, as
+ADR-0020's is, because the argument in it — why a required parent cannot be a second state on a
+containment cell, and why Rule 3 would govern a form rather than the existence of a row — is correct
+and is what a reader needs if required parents are ever asked for again. The paragraph below is the
+decision as it was written.
+
 The FRS's "Branch is mapped to Division and Department" is ADR-0010's containment map read
 child-first; what containment cannot say is that a Branch *must* name one of each (Rule 3).
 `StructureDocument` gains `Mappings` — `(child type, parent type, cardinality)` — kept separate from
@@ -1598,7 +1671,22 @@ three-way question about the units underneath, on every structure the record sit
 becomes the one operation in this module that destroys a record, so it gains a mandatory audit event
 with a reason and the acting user — the same standard `MoveCancelled` already holds.
 
-**ADR-0026 — Grades and steps are dimensions; the employee's step is a dated assignment.**
+**ADR-0026 — Grades are a dimension; a Position's allowed grades are a set of references; the
+employee's grade is a dated assignment. RESTATED BY D26 C.**
+
+> **As it is now to be written.** One dimension type, `grade`, shipped in `base.recipe.json` with its
+> own axis. **No `grade-step` type and no step anywhere.** A Position carries a **set** of allowed
+> grades, authored on the Position, never a parent and never on a tree — D21 confirmed, with the
+> range replaced by a set. The employee's grade is an `EmployeeAssignment` on the Grade axis, dated,
+> chosen only from the position's allowed grades, and the control is disabled until a position is
+> chosen (D26 G). Unbinding `grade` from `JobDetails.GradeCode` and retiring that field from the
+> editor are unchanged and still land in **F6/F7** per D22's rule: nothing is migrated, nothing is
+> deleted, the stored values stay readable. **Q-a and Q-b are no longer open** — D26 C answers both
+> by removing the second level.
+
+The paragraph below is the version written against D5 and D7, kept because the grade-move reasoning
+in it is unchanged:
+
 **No job titles (D20).** D5 makes Grade Steps a dimension, which supersedes slice B2's binding of
 `JobDetails.GradeCode` to the `grade` lookup list. Nothing is migrated and nothing is deleted: ADR-0016
 made binding an editor setting over a plain `TextField`, so unbinding is two settings and every stored
@@ -1716,12 +1804,16 @@ independently shippable.
 | --- | --- | --- | --- |
 | **F1** ✓ | **Alias, Status, and the dimension screen's two views** | `AliasEn`/`AliasAr` on the part and the index (`UpdateFrom9Async` + upgrade test); validator; recipe step and export fields; the Tree/List toggle; the Alias column; the five toolbar buttons. Plus the browser-helper fix (§8.2) | Organisation → Dimension types → *Department* → **View units** → a tree of departments with Code, Name, Alias, Status, and a toggle to a flat list. No model change beyond one column |
 | **F2** ✓ | **The menu (D3, **D23**, ADR-0024)** | Authored bilingual plural, `ShowInMenu` and `MenuOrder` on the dimension type editor (`UpdateFrom10Async` un-guesses session D's plurals); `IDimensionMenuService` + `DimensionMenuComposition`, cached per tenant per day and invalidated by `MenuSignal` (ADR-0019); the menu provider — **designer first**, one **grouped** entry per dimension name, each expanding to *All &lt;plural&gt;*, its values and *Show all (N)*, then *Settings*; the list screen's group scope with its Organisation column and filter; `DimensionRecordsAdminController.Details`, one value's own page | Organisation → *Departments* → *Civil (Zenith …)* opens Civil's own page: code, names, alias, parent, status, head, headcount, with Edit / Move / Retire. *All Departments* lists both companies' departments with an Organisation column. The same order in Arabic, and the designer still first |
-| **F3** | **Mapping, with one parent (ADR-0021)** | `StructureDocument.Mappings` (**one entry per child type**, enforced in `IStructureService`); `MappingCardinality` (**Required / Optional**); Rule 3 and Rule 4 in `IDimensionValidator`; the Mapping screen with its parent-per-dimension block, its Required/Optional column and its impact preview; **one** parent group on the Add form; `UpdateFrom11Async`; recipe `mappings` block | Settings → **Mapping** → set Departments parent to Division and mark it Required → Organisation → *Department* → **Add** → the form shows one Division group, a radio set, and refuses Save until one is chosen |
-| **F5** | **The shipped dimensions and Position (ADR-0022, ADR-0023)** | The `dimension-types` step in `base.recipe.json`; the Position type with `approvedHeadcount`; the **Reporting structure** carrying the position reporting line (§3.1, Q-j); vacancies, batched; the Position list's three columns | A **new** tenant's Organisation menu already lists Business Unit, Division, Department and Position; Organisation → *Position* → a reporting tree CEO → COO → Regional Director, with Approved / Filled / Vacant columns |
+| ~~**F3**~~ | ~~**Mapping, with one parent (ADR-0021)**~~ | **DROPPED (D27).** None of it is built; ADR-0021 is withdrawn. The containment map stays the single authority and the *Place under* picker keeps enforcing it | — |
+| **F5+F7** ✓ | **Positions and Grades, as one slice (ADR-0022, ADR-0023, ADR-0026, ADR-0028)** — *grades first* | **Grades:** the `grade` type and its axis in `base.recipe.json`, one menu entry, flat with optional grouping, the value page's *Used by positions*. **Positions:** the `position` type, `approvedHeadcount`, a **Reporting line** structure carrying the reporting tree (§3.1, Q-j — settled by the new ADR), the **allowed grades** set, Approved/Filled/Vacant batched, the position value page's reporting chart, and the two pickers and two reads F6's employee form needs | Organisation → *Grades* → SE-1..SE-3. Organisation → *Positions* → *HR Manager* with Approved 3 / Filled 0 / Vacant 3 and grades HRM-1..HRM-3; its page draws the reporting chart below it in Hierarchy, Tree and List |
 | **F6** | **Employees join through a position** | `EmployeeAttachableDimensionTypeIds = [position]`; `GetOrgPlacementsAsync`; the employee record's derived block; the list's position column; the placement screens' vocabulary. **Plus the `EmployeeSummary` split (§8.1), the employee leaves on F8s tree, and D22 — Job title becomes Position, the `job-title` list retired, the labels renamed in EN and AR** | People → Employees → a person → their position, and under it the division, department and cost centre, none of them typed; changing the position changes all of them; last year's record still shows last year's. Organisation → Organisation tree now reaches Ahmed Salman and Fatima Noor under Retail Supervisor |
-| **F7** | **Grades and steps (ADR-0026)** — **no job title** (D20) | The Grade axis; the `position → grade` **reference** with its optional range (D21); the employees dated step; unbinding `grade`; retiring `GradeCode` from the editor; the operator import tool with its dry run | Organisation → *Grade Steps* → G7 with five steps; a position graded G7; an employee on G7-S3 from January, with G7-S2 still showing for last year |
-| **F8** | **The Organisation tree enquiry report (FRS §5)** — *runs after F3* | The new read-only controller and views; re-root with breadcrumb and Clear selection; the View-by panel and its batched counts; the `…-frs-demo` recipe. **Employee leaves are F6** | Organisation → **Organisation tree** → figure 9's unit levels on screen, with the FRS demo recipe applied; click MENA Region and the chart narrows; Clear selection restores it; the panel's counts match the FRS's |
+| ~~**F7**~~ | ~~**Grades and steps (ADR-0026)**~~ | **MERGED INTO F5 (D27).** What is left of it after D26 C — the Grade axis and the position's allowed grades — cannot be built apart from positions. Unbinding `grade` and retiring `GradeCode` from the editor move to **F6**, beside D22's job-title move, because they are the same employee screen | — |
+| **F8** | **The Organisation tree enquiry report (FRS §5)** — *runs after F6* | The new read-only controller and views; re-root with breadcrumb and Clear selection; the View-by panel and its batched counts; the `…-frs-demo` recipe | Organisation → **Organisation tree** → figure 9's unit levels on screen, with the FRS demo recipe applied; click MENA Region and the chart narrows; Clear selection restores it; the panel's counts match the FRS's |
 | **F9** | **Demo recipes, export and D4** | Zenith and Crescent extended with positions and grades — **no doubly-parented branch** (D19); `DimensionExportRoundTripTenantTests` extended; the Delete screen's three outcomes (ADR-0025) and the new audit event | Apply the Zenith recipe to a fresh tenant and the whole model is there; export it, import it into a second tenant, and every historical date agrees; press Delete on a used value and get a sentence and a date box |
+
+**Order, as set by D27 on 14 October 2026: `F1 ✓ → F2 ✓ → F5+F7 → F6 → F8 → F9`.**
+The line below is the order as D18 revised it on 13 October, before F3 was dropped and F5 and F7
+were merged.
 
 **Order, as revised by D18 after D19: `F1 ✓ → F2 → F3 → F8 → F5 → F6 → F7 → F9`.**
 
@@ -1783,3 +1875,29 @@ structure ship in the base recipe?) and **Q-k** (D21's confirmation).
 
 **Build order from here: `F1 ✓ → F2 → F3 → F8 → F5 → F6 → F7 → F9`.**
 Next is **F2** — the menu, ADR-0024 — and F2 only.
+
+---
+
+## Review outcome — 14 October 2026, and what slice F5+F7 shipped
+
+**F2 and its polish are built.** The menu, the value pages and D25's three views.
+
+**Two more product decisions landed**, recorded as **D26** and **D27**, and the banner near the top
+of this document lists everything they change. **F3 is dropped** and **ADR-0021 is withdrawn**; **F5
+and F7 are one slice** and were built together, grades first.
+
+| | Built in F5+F7 | Where |
+| --- | --- | --- |
+| **Grades** | the `grade` dimension and the `grades` axis in `base.recipe.json`; its own menu entry; flat with the diagonal ticked so grouping is *permitted* and not imposed; *Used by positions* on a grade's page | `recipes/base.recipe.json`, `DimensionRecordsAdminController.Details` |
+| **References** | `DimensionReferenceDocument` / `DimensionReferenceIndex` and `UpdateFrom12Async` — the one new table, and the one thing the graph genuinely cannot carry, because *"which positions allow SE-1"* is many-to-many | `Internal/References`, `Migrations.cs` |
+| **The declared role** | `DimensionTypeRole` on the dimension type, so the product can find its Position and Grade dimensions without guessing from a code (the demos are prefixed) or a name (FRS Rule 6 lets a customer rename one) | `Models/DimensionTypeRole.cs` |
+| **Positions** | the `position` type with `approvedHeadcount`, the **`reporting-line`** axis (**ADR-0028**), `IPositionService`, the Add form's *Reports to* and *Allowed grades*, the list's Approved/Filled/Vacant/Allowed grades, and a position page that opens on its reporting line with a filled/approved badge | `Services/IPositionService.cs`, `Controllers`, `Views` |
+| **F6's two reads, early** | *positions selectable as at a date* and *the grades this position allows*, with the two pickers drawn on them and the grade rule in `IDimensionValidator` | `IPositionService`, `Components`, `DimensionValidator` |
+
+**What this slice deliberately did not do.** `EmployeeAttachableDimensionTypeIds` is unchanged, so
+employees still attach where they did and every position's **Filled** count is 0 — repointing them
+is **F6**, and doing it here would have moved every demo employee's placement as a side effect of
+adding positions. `JobDetails.GradeCode` and the `grade` lookup list are untouched, per **D22**.
+
+**Build order from here: `F6 → F8 → F9`.** Next is **F6** — employees join through a position, the
+two drop-downs, D22's job-title move — and F6 only.

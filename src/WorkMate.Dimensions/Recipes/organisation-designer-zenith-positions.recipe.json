@@ -1,0 +1,210 @@
+{
+  "name": "WorkMate.Demo.Zenith.Positions",
+  "displayName": "WorkMate demo: Zenith — positions and grades",
+  "description": "TEST DATA — STEP 2 OF 2. Adds positions and grades to the Zenith organisation. Run 'WorkMate demo: Zenith Engineering & Construction' FIRST: the positions are placed under Zenith's departments and this fails naming the department if they are not there. It ONLY ADDS: a Position and a Grade dimension, a reporting-line axis and a grade ladder of Zenith's own, nineteen grades, eight positions (CEO, Director Technology, Manager Technology, Principal Software Engineer, Software Engineer, HR Manager, Site Supervisor, Labourer) and the grades each allows. The one thing it changes is the Zenith chart, which gains Position as a level — nothing is removed and nothing already on the tenant is overwritten. Safe to run on a tenant built from an earlier version of step 1.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate", "demo"],
+  "tags": ["workmate", "demo", "test-data", "positions"],
+
+  "$notes": [
+    "WHY THIS IS A SEPARATE FILE. Slice F5+F7 first added all of this to the main Zenith recipe, and that made the main recipe unapplicable to any tenant built from an earlier version of it: ADR-0008 refuses a re-run whose dimension-types rows differ from the tenant's, and the F2 slice had since given every type a menuOrder the tenant does not have. So the positions and grades never arrived on exactly the tenants that already had the organisation to hang them on. Splitting them out means the part that ADDS is a file that states only new things, and the part that would collide is never restated.",
+    "ORDER MATTERS. The main Zenith recipe first, this one second. The positions here are placed under zenith-dept-civil, zenith-dept-electrical and zenith-dept-hr, and the dimension-records step resolves a parent by code at import — so without the organisation this fails naming the department it could not find, which is the right failure.",
+    "THE ONE THING IT TOUCHES rather than creates is the zenith-org structure, which gains zenith-position as a level and zenith-department > zenith-position as a containment pairing. It says that in the ADDITIVE form — addLevelTypeCodes and addContainment — which states only what to add. ADR-0008's 14 October addendum. It goes through IStructureService.UpdateAsync, so the level change is previewed and refused if a live placement would be invalidated, and it is audited like an administrator's own edit.",
+    "IT DELIBERATELY RESTATES NOTHING ELSE: not the four organisation dimension types, not zenith-org's levels, roots, map, names, short name, strictness or employee-attachable types. Every one of those is a field an older tenant legitimately holds differently — a short name it predates, self-pairs derived from an old allowsSelfNesting flag, a menu order the field did not exist for. Restating any of them is what made the first two attempts at this fail.",
+    "NOBODY HOLDS ANY OF THESE POSITIONS YET. employeeAttachableTypeCodes on zenith-org is untouched, so employees still attach at departments and teams and every position reads Filled 0. Repointing them is slice F6."
+  ],
+
+  "steps": [
+    {
+      "$comment": [
+        "Step 1 of 4. Zenith's own Position and Grade dimensions, prefixed like every other type in this demo. A dimension type is a level of every structure that declares it, so sharing one across the demo companies would put each company's values on the others' charts — the defect decision D17 proposed and that was tried and reverted. The menu still reads one Positions entry and one Grades entry, because D23 B groups by English singular name.",
+        "role is what makes these the product's Position and Grade dimensions on this tenant — never the code and never the name (DimensionTypeRole). Without it the employee form's drop-downs would find base's `position` and `grade` and offer nothing of Zenith's."
+      ],
+      "name": "dimension-types",
+      "types": [
+        {
+          "code": "zenith-position",
+          "nameEn": "Position",
+          "nameAr": "منصب",
+          "pluralEn": "Positions",
+          "pluralAr": "المناصب",
+          "menuOrder": 60,
+          "role": "Position",
+          "allowsSelfNesting": false,
+          "attributes": [
+            { "name": "ApprovedHeadcount", "labelEn": "Approved headcount", "labelAr": "العدد المعتمد", "kind": "Number", "isRequired": false }
+          ]
+        },
+        { "code": "zenith-grade", "nameEn": "Grade", "nameAr": "درجة", "pluralEn": "Grades", "pluralAr": "الدرجات", "menuOrder": 70, "role": "Grade", "allowsSelfNesting": true }
+      ]
+    },
+
+    {
+      "$comment": [
+        "Step 2 of 4. One structure ADDED TO, and two created.",
+        "zenith-org uses the ADDITIVE form — addLevelTypeCodes and addContainment — which states only what to add and nothing about what is already there. It does not name the levels the tenant has, its roots, its map, its names, its short name, its strictness or its employee-attachable types, so a tenant whose structure has drifted in any of those ways is still one this row applies to. ADR-0008's 14 October addendum.",
+        "That matters because a real tenant built from the pre-F1 recipe carries department > department and team > team in its map — self-pairs derived from the old allowsSelfNesting flags — which no current row restates. The first attempt at this recipe restated the whole structure and inferred 'additive' from the result being a superset, and it was refused on exactly those pairs. Inferring an instruction from a description was the mistake.",
+        "zenith-reporting is new. ADR-0028: a position has two parents at once — the unit it sits in, on zenith-org, and the position it reports to, here — and D19 gives a value exactly one parent PER AXIS. Its own axis rather than base's reporting-line, for the reason the types are prefixed.",
+        "zenith-grades is new. Flat, with the diagonal ticked so a tenant MAY group its grades (D26 C). The shipped data is flat; the diagonal is the licence, not the grouping."
+      ],
+      "name": "structures",
+      "structures": [
+        {
+          "code": "zenith-org",
+          "addLevelTypeCodes": ["zenith-position"],
+          "addContainment": {
+            "zenith-department": ["zenith-position"]
+          }
+        },
+        {
+          "code": "zenith-reporting",
+          "nameEn": "Zenith reporting line",
+          "nameAr": "خط التبعية في زينيث",
+          "shortNameEn": "Zenith reporting",
+          "shortNameAr": "تبعية زينيث",
+          "levelTypeCodes": ["zenith-position"],
+          "rootTypeCodes": ["zenith-position"],
+          "containment": { "zenith-position": ["zenith-position"] },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        },
+        {
+          "code": "zenith-grades",
+          "nameEn": "Zenith grades",
+          "nameAr": "درجات زينيث",
+          "shortNameEn": "Zenith grades",
+          "shortNameAr": "درجات زينيث",
+          "levelTypeCodes": ["zenith-grade"],
+          "rootTypeCodes": ["zenith-grade"],
+          "containment": { "zenith-grade": ["zenith-grade"] },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        }
+      ]
+    },
+
+    {
+      "$comment": [
+        "Step 3 of 4. Nineteen grades and eight positions.",
+        "GRADES are flat, one per level, with no grouping. Each ladder belongs to one job: SE-1..SE-3 to Software Engineer, PSE-1..PSE-3 to Principal Software Engineer. That is why HR Manager's three holders are one Position with three grades rather than three Positions (D26 D).",
+        "POSITIONS are JOBS, not posts: HR Manager is ONE position with an approved headcount of 3, not three positions, and Labourer is one with 44. A position per person makes every headcount 1 and every vacancy 0 or 1 — a column that can only repeat what the row already says.",
+        "TWO PLACEMENTS EACH, on two axes (ADR-0028). zenith-org says where the post sits in the business; zenith-reporting says who it answers to. The CEO has no parent on the reporting line and sits in the HR department.",
+        "Parents before children, which the dimension-records step requires within a step: CEO before Director, Director before Manager and HR Manager, Manager before the two engineers and the Site Supervisor, Site Supervisor before Labourer.",
+        "The allowed grades are NOT here. A reference is not a placement, so it has no parentCode to carry; step 4 states them once every position and grade exists."
+      ],
+      "name": "dimension-records",
+      "records": [
+        { "code": "zenith-grade-ceo-1", "typeCode": "zenith-grade", "nameEn": "CEO-1", "nameAr": "تنفيذي-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-dir-1", "typeCode": "zenith-grade", "nameEn": "DIR-1", "nameAr": "مدير-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-dir-2", "typeCode": "zenith-grade", "nameEn": "DIR-2", "nameAr": "مدير-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-mgr-1", "typeCode": "zenith-grade", "nameEn": "MGR-1", "nameAr": "مشرف-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-mgr-2", "typeCode": "zenith-grade", "nameEn": "MGR-2", "nameAr": "مشرف-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-mgr-3", "typeCode": "zenith-grade", "nameEn": "MGR-3", "nameAr": "مشرف-٣", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-pse-1", "typeCode": "zenith-grade", "nameEn": "PSE-1", "nameAr": "مهندس رئيسي-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-pse-2", "typeCode": "zenith-grade", "nameEn": "PSE-2", "nameAr": "مهندس رئيسي-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-pse-3", "typeCode": "zenith-grade", "nameEn": "PSE-3", "nameAr": "مهندس رئيسي-٣", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-se-1", "typeCode": "zenith-grade", "nameEn": "SE-1", "nameAr": "مهندس-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-se-2", "typeCode": "zenith-grade", "nameEn": "SE-2", "nameAr": "مهندس-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-se-3", "typeCode": "zenith-grade", "nameEn": "SE-3", "nameAr": "مهندس-٣", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-hrm-1", "typeCode": "zenith-grade", "nameEn": "HRM-1", "nameAr": "موارد بشرية-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-hrm-2", "typeCode": "zenith-grade", "nameEn": "HRM-2", "nameAr": "موارد بشرية-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-hrm-3", "typeCode": "zenith-grade", "nameEn": "HRM-3", "nameAr": "موارد بشرية-٣", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-ss-1", "typeCode": "zenith-grade", "nameEn": "SS-1", "nameAr": "مشرف موقع-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-ss-2", "typeCode": "zenith-grade", "nameEn": "SS-2", "nameAr": "مشرف موقع-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-lab-1", "typeCode": "zenith-grade", "nameEn": "LAB-1", "nameAr": "عامل-١", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+        { "code": "zenith-grade-lab-2", "typeCode": "zenith-grade", "nameEn": "LAB-2", "nameAr": "عامل-٢", "effectiveFrom": "2024-01-01", "placements": [{ "structureCode": "zenith-grades", "parentCode": null, "effectiveFrom": "2024-01-01" }] },
+
+        {
+          "code": "zenith-pos-ceo", "typeCode": "zenith-position", "nameEn": "CEO", "nameAr": "الرئيس التنفيذي", "aliasEn": "Chief Executive", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "1" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-hr", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": null, "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "zenith-pos-dir-tech", "typeCode": "zenith-position", "nameEn": "Director Technology", "nameAr": "مدير التقنية", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "1" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-electrical", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-ceo", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "zenith-pos-mgr-tech", "typeCode": "zenith-position", "nameEn": "Manager Technology", "nameAr": "مدير وحدة التقنية", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "1" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-electrical", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-dir-tech", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "zenith-pos-pse", "typeCode": "zenith-position", "nameEn": "Principal Software Engineer", "nameAr": "مهندس برمجيات رئيسي", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "2" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-electrical", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-mgr-tech", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "code": "zenith-pos-se", "typeCode": "zenith-position", "nameEn": "Software Engineer", "nameAr": "مهندس برمجيات", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "3" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-electrical", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-mgr-tech", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "$comment": "D26 D's worked example: ONE HR Manager position, approved headcount 3, three grades. Three people doing the same job share one post and are told apart by their grade.",
+          "code": "zenith-pos-hr-manager", "typeCode": "zenith-position", "nameEn": "HR Manager", "nameAr": "مدير الموارد البشرية", "effectiveFrom": "2024-01-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "3" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-hr", "effectiveFrom": "2024-01-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-dir-tech", "effectiveFrom": "2024-01-01" }
+          ]
+        },
+        {
+          "$comment": "Under the CIVIL DEPARTMENT, not a site team. Every position sits under a department, which is what D14 records for Zenith. A team is where an employee is DEPLOYED — the Zenith matrix — and that is a property of the person, not of the post.",
+          "code": "zenith-pos-site-supervisor", "typeCode": "zenith-position", "nameEn": "Site Supervisor", "nameAr": "مشرف الموقع", "effectiveFrom": "2024-03-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "2" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-civil", "effectiveFrom": "2024-03-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-mgr-tech", "effectiveFrom": "2024-03-01" }
+          ]
+        },
+        {
+          "$comment": "The other half of D26 D: forty-four people doing one job share one Position. A position per person would be forty-four records, forty-four headcounts of 1, and a Vacant column that could only ever say 0 or 1.",
+          "code": "zenith-pos-labourer", "typeCode": "zenith-position", "nameEn": "Labourer", "nameAr": "عامل", "effectiveFrom": "2024-03-01",
+          "attributes": [{ "name": "ApprovedHeadcount", "value": "44" }],
+          "placements": [
+            { "structureCode": "zenith-org", "parentCode": "zenith-dept-civil", "effectiveFrom": "2024-03-01" },
+            { "structureCode": "zenith-reporting", "parentCode": "zenith-pos-site-supervisor", "effectiveFrom": "2024-03-01" }
+          ]
+        }
+      ]
+    },
+
+    {
+      "$comment": [
+        "Step 4 of 4. Which grades each position allows — D26 C. A SET of grades, not a range: a set says which grades, needs no order among them, and expresses the non-contiguous case a range cannot.",
+        "A SEPARATE STEP, after dimension-records, because a reference needs both ends to exist and the records step creates them in one pass. It is also not a placement: these never enter the closure index and appear on no tree, which is the whole of D21.",
+        "Re-running is safe per ADR-0008: a position whose stored set already matches is skipped, and one that differs fails naming the difference rather than overwriting what a customer has changed.",
+        "EVERY POSITION'S GRADES ARE ITS OWN. Site Supervisor carried MGR-1 and MGR-2 until manual testing pointed out that a site supervisor is not a technology manager — sharing a ladder said the two posts are the same level, which is the one thing a grade is for saying. It now has SS-1 and SS-2.",
+        "A TENANT THAT ALREADY APPLIED THE EARLIER VERSION IS REFUSED ON THAT ONE ROW, and deliberately. {MGR-1, MGR-2} is an answer somebody could have meant — it is what a customer who had adjusted the demo would hold — so it is a difference rather than a gap, and ADR-0008 does not let a recipe overwrite a decision. The message names both sets. The fix is two clicks: open Site Supervisor, Edit, tick SS-1 and SS-2, untick the MGR grades. Everything else in the file re-runs clean."
+      ],
+      "name": "dimension-references",
+      "references": [
+        { "recordCode": "zenith-pos-ceo", "kind": "allowed-grade", "targetCodes": ["zenith-grade-ceo-1"] },
+        { "recordCode": "zenith-pos-dir-tech", "kind": "allowed-grade", "targetCodes": ["zenith-grade-dir-1", "zenith-grade-dir-2"] },
+        { "recordCode": "zenith-pos-mgr-tech", "kind": "allowed-grade", "targetCodes": ["zenith-grade-mgr-1", "zenith-grade-mgr-2", "zenith-grade-mgr-3"] },
+        { "recordCode": "zenith-pos-pse", "kind": "allowed-grade", "targetCodes": ["zenith-grade-pse-1", "zenith-grade-pse-2", "zenith-grade-pse-3"] },
+        { "recordCode": "zenith-pos-se", "kind": "allowed-grade", "targetCodes": ["zenith-grade-se-1", "zenith-grade-se-2", "zenith-grade-se-3"] },
+        { "recordCode": "zenith-pos-hr-manager", "kind": "allowed-grade", "targetCodes": ["zenith-grade-hrm-1", "zenith-grade-hrm-2", "zenith-grade-hrm-3"] },
+        { "recordCode": "zenith-pos-site-supervisor", "kind": "allowed-grade", "targetCodes": ["zenith-grade-ss-1", "zenith-grade-ss-2"] },
+        { "recordCode": "zenith-pos-labourer", "kind": "allowed-grade", "targetCodes": ["zenith-grade-lab-1", "zenith-grade-lab-2"] }
+      ]
+    }
+  ]
+}

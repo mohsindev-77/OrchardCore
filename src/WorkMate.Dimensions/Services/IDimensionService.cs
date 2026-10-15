@@ -281,6 +281,23 @@ public interface IDimensionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The same, for several records at once, keyed by record id.
+    /// </summary>
+    /// <remarks>
+    /// <b>One content-item read for the whole set</b>, through the pinned version's
+    /// <c>IContentManager.GetAsync(IEnumerable&lt;string&gt;, VersionOptions)</c> — verified against
+    /// Orchard Core 3.0.1 with <c>tools/api-probe</c>. Its caller is the Positions list asking every
+    /// row's approved headcount, and a call per row is a content item loaded per row to draw one
+    /// column.
+    ///
+    /// A record with no values of its own is absent rather than present with an empty list, the
+    /// same contract <see cref="GetReferenceSetsAsync"/> states.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionAttributeValue>>> GetAttributeValueSetsAsync(
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes custom attribute values onto an existing record, validated against its type's schema.
     /// </summary>
     /// <remarks>
@@ -293,6 +310,109 @@ public interface IDimensionService
     Task<DimensionResult<DimensionNodeRef>> SetAttributeValuesAsync(
         string recordId,
         IReadOnlyList<DimensionAttributeValue> attributes,
+        CancellationToken cancellationToken = default);
+
+    // ---- references (D21, D26 C) --------------------------------------------------------
+    //
+    // A reference is not a parent. It never enters the closure index, nothing rolls up through it,
+    // no tree draws it, and a record may hold as many as it likes — which is the one shape a link
+    // cannot carry, because a link gives a record one parent per axis in either direction.
+    // DimensionReferenceKinds sets out the argument in full; ADR-0028 records it as the reason the
+    // reference table exists.
+    //
+    // On this interface rather than on one of its own because a record's references are a fact
+    // about the record, and this is the record aggregate's root (specification rule 9). The
+    // position-shaped reads built on top of them live on IPositionService.
+
+    /// <summary>
+    /// What <paramref name="recordId"/> points at, of one kind, in the order somebody chose.
+    /// </summary>
+    /// <param name="asAt">
+    /// The date the <em>targets</em> are judged on, defaulting to today. The reference itself is
+    /// undated; a target that is not effective then is left out, which is what makes "the grades
+    /// this position allows today" exclude one retired last year without the reference having to
+    /// have been removed.
+    /// </param>
+    Task<IReadOnlyList<DimensionNodeRef>> GetReferencesAsync(
+        string recordId,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same, for several records at once, keyed by record id.
+    /// </summary>
+    /// <remarks>
+    /// Batched for the reason every read of its shape in this module is: the caller is a page of
+    /// positions drawing the allowed grades on each row, and a call per row would be fifty queries
+    /// to fill one column. A record with no references of this kind is absent from the result
+    /// rather than present with an empty list.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetReferenceSetsAsync(
+        IReadOnlyList<string> recordIds,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The raw stored target ids, in order, undated. What a record <em>holds</em> rather than what
+    /// resolves today.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one undated reference read, and it exists for the comparison a re-run makes.</b>
+    /// <see cref="GetReferencesAsync"/> filters out a target that is not effective on the date,
+    /// which is right for every screen and wrong for ADR-0008: a recipe row stating three grades,
+    /// one of them retired last year, would read the tenant's set as two and report a difference
+    /// nobody made. An export needs the same answer for the same reason.
+    ///
+    /// Not for a screen. A screen asking "what grades does this position offer" must have the dated
+    /// read, or it will offer a grade that has closed.
+    /// </remarks>
+    Task<IReadOnlyList<string>> GetReferenceTargetIdsAsync(
+        string recordId,
+        string referenceKind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The records that point at <paramref name="targetRecordId"/>, of one kind — the other end of
+    /// the same rows.
+    /// </summary>
+    /// <remarks>
+    /// This is decision D26 C's <em>"Used by positions: …"</em> on a grade's value page, and it is
+    /// the reason references are a table rather than a list on the referring record's own document.
+    /// </remarks>
+    Task<IReadOnlyList<DimensionNodeRef>> GetReferrersAsync(
+        string targetRecordId,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// States the whole set of references of one kind for a record: what is not named is removed.
+    /// </summary>
+    /// <remarks>
+    /// <b>States rather than adds</b>, for the reason <c>ReallocateAsync</c> states a whole
+    /// placement picture: a multi-select posts the set it ended up with, and an interface that took
+    /// an add and a remove would make the screen work out the difference and be the only thing that
+    /// knew whether it had got it right.
+    ///
+    /// <b>No effective date</b>, because a reference has none — see
+    /// <c>DimensionReferenceKinds</c> and <see cref="SetAliasAsync"/>, which refuses a date for the
+    /// same reason. Taking one would ask a caller for an answer nothing will ever read.
+    ///
+    /// <b>It never reaches an employee's record.</b> Removing a grade a position's holder is on is
+    /// permitted and leaves that employee's own dated grade exactly as it is (D26 G); the screen
+    /// warns, and this does not refuse.
+    ///
+    /// Validated: every target must exist and be of a type this kind permits. Gated by
+    /// <see cref="Permissions.ManageDimensionRecords"/> — configuring a post is ordinary record
+    /// upkeep, not a reorganisation, and it changes nothing any historical report resolves.
+    /// </remarks>
+    /// <returns>How many references the record now holds.</returns>
+    Task<DimensionResult<int>> SetReferencesAsync(
+        string recordId,
+        string referenceKind,
+        IReadOnlyList<string> targetRecordIds,
         CancellationToken cancellationToken = default);
 
     /// <summary>

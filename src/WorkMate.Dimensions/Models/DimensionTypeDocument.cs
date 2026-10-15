@@ -63,6 +63,19 @@ public sealed class DimensionTypeDocument
     public IReadOnlyList<DimensionAttributeDefinition> AttributeSchema { get; set; } = [];
 
     /// <summary>
+    /// The part this dimension type plays in the product, where the product has behaviour that
+    /// belongs to one kind of dimension and not to the others. <see cref="DimensionTypeRole.None"/>
+    /// for almost every type.
+    /// </summary>
+    /// <remarks>
+    /// Declared rather than derived, and <see cref="DimensionTypeRole"/> sets out at length why
+    /// every available derivation — by code, by name, by menu group — is wrong. A document property
+    /// with a zero default, so every type in every existing tenant deserialises to
+    /// <see cref="DimensionTypeRole.None"/> and nothing changes; no migration and no column.
+    /// </remarks>
+    public DimensionTypeRole StandardRole { get; set; } = DimensionTypeRole.None;
+
+    /// <summary>
     /// The content type created for this dimension type. Stored rather than derived on every read,
     /// so that changing how a name is derived from a code cannot strand an existing tenant's
     /// records behind a content type nothing looks for any more.

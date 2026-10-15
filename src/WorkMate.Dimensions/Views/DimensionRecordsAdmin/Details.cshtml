@@ -36,8 +36,32 @@
                    "Credit · Department" would be indistinguishable. *@
                 <span id="value-organisation">(@Model.Organisation)</span>
             }
+
+            @* On a position the subtitle carries the Arabic name too, and the status badge moves up
+               beside it. A post's page is dense — two parents, an establishment, a grade ladder, a
+               holder list and a chart — so the three facts that identify it belong on one line
+               above all of that rather than three rows into a definition list. *@
+            @if (Model.IsPosition && !string.IsNullOrWhiteSpace(Model.NameAr))
+            {
+                <span class="mx-1" aria-hidden="true">·</span>
+                <span dir="rtl" lang="ar" id="value-subtitle-ar">@Model.NameAr</span>
+            }
         </p>
     </div>
+
+    @if (Model.IsPosition)
+    {
+        <div id="value-status-top">
+            @if (Model.IsEffective)
+            {
+                <span class="badge text-bg-success">@T["Active"]</span>
+            }
+            else
+            {
+                <span class="badge text-bg-secondary">@T["Inactive"]</span>
+            }
+        </div>
+    }
 
     <div class="d-flex align-items-center gap-2" id="value-actions">
         @if (Model.CanEdit)
@@ -103,9 +127,82 @@
         <dd class="col-sm-9" id="value-alias">@Model.Alias</dd>
     }
 
+    @* "Dimension: Position" is the subtitle again, three rows down. Dropped on a position, where
+       the page has more to say and every row has to earn its place; kept everywhere else, where
+       the subtitle is the only other place it appears. *@
+    @if (!Model.IsPosition)
+    {
     <dt class="col-sm-3">@T["Dimension"]</dt>
     <dd class="col-sm-9" id="value-dimension">@Model.TypeName</dd>
+    }
 
+    @* A position's TWO parents, as two rows with their own names (ADR-0028). The generic Parent row
+       below prints one line per axis — "Zenith reporting line: CEO › Director Technology" beside
+       "Zenith Engineering: Corporate › HR" — which is accurate and unreadable, because the reader
+       has to work out which line answers which question. These are different questions and they get
+       different rows. *@
+    @if (Model.IsPosition)
+    {
+        <dt class="col-sm-3">@Model.OrganisationLabel</dt>
+        <dd class="col-sm-9" id="value-organisation-path">
+            @if (Model.OrganisationPath.Count == 0)
+            {
+                @* Real, and shown. A position the customer has not placed in the business yet is
+                   exactly what the Add form's "Positions can't be placed yet" warning leaves
+                   behind. *@
+                <span class="text-warning" id="value-organisation-path-none">@T["Not placed in the organisation"]</span>
+            }
+            else
+            {
+                <ol class="breadcrumb mb-0">
+                    @foreach (var unit in Model.OrganisationPath)
+                    {
+                        <li class="breadcrumb-item">
+                            <a class="value-organisation-step" data-record-id="@unit.RecordId"
+                               asp-action="Details" asp-route-id="@unit.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@unit.Name</a>
+                        </li>
+                    }
+                </ol>
+            }
+        </dd>
+
+        <dt class="col-sm-3">@T["Reports to"]</dt>
+        <dd class="col-sm-9" id="value-reports-to">
+            @if (!Model.IsReportingAxis)
+            {
+                <span class="text-warning" id="value-reports-to-no-axis">
+                    @T["This tenant has no reporting line axis. The base recipe ships a structure called “Reporting line”."]
+                </span>
+            }
+            else if (Model.ReportsTo.Count == 0)
+            {
+                @* Said rather than left out. "Nobody" is the top of the line and a fact about the
+                   post, where an absent row would read as a page that had not finished loading. *@
+                <span class="text-muted" id="value-reports-to-nobody">@T["nobody — this is the top of the reporting line"]</span>
+            }
+            else
+            {
+                @* An ordered list with Bootstrap's breadcrumb, not links with a separator between
+                   them. The divider comes from the stylesheet, so there is no "is this the first
+                   one" branch in the loop and no literal chevron in the markup — and it mirrors
+                   itself in Arabic, because the rule is written in logical properties there exactly
+                   as the designer's connectors are. *@
+                <ol class="breadcrumb mb-0">
+                    @foreach (var above in Model.ReportsTo)
+                    {
+                        <li class="breadcrumb-item">
+                            <a class="value-reports-to-step" data-record-id="@above.RecordId"
+                               asp-action="Details" asp-route-id="@above.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@above.Name</a>
+                        </li>
+                    }
+                </ol>
+            }
+        </dd>
+    }
+    else
+    {
     <dt class="col-sm-3">@T["Parent"]</dt>
     <dd class="col-sm-9" id="value-parent">
         @* A type that is a level of no chart has no placement to report, which is a real state —
@@ -139,10 +236,18 @@
             </div>
         }
     </dd>
+    }
 
+    @* On a position the badge is up beside the subtitle, where the three identifying facts sit
+       together. The dates stay here, because "from 1 March 2024" is detail rather than identity. *@
     <dt class="col-sm-3">@T["Status"]</dt>
     <dd class="col-sm-9" id="value-status">
-        @if (Model.IsEffective)
+        @if (Model.IsPosition)
+        {
+            @* The badge is already up beside the subtitle. Repeating it here would be the same
+               fact twice on one screen, and a reader would look for the difference. *@
+        }
+        else if (Model.IsEffective)
         {
             <span class="badge text-bg-success">@T["Active"]</span>
         }
@@ -168,6 +273,11 @@
         }
     </dd>
 
+    @* A head is a unit's, never a post's (ADR-0012). Somebody heads Finance; nobody "heads" the HR
+       Manager position, so the row is absent on a position rather than printing "Vacant" at a
+       reader about a question that does not apply to what they are looking at. *@
+    @if (!Model.IsPosition)
+    {
     <dt class="col-sm-3">@T["Head"]</dt>
     <dd class="col-sm-9" id="value-head">
         @if (string.IsNullOrEmpty(Model.StructureId))
@@ -197,7 +307,59 @@
             <span class="text-muted">@T["Vacant"]</span>
         }
     </dd>
+    }
 
+    @* On a position the headcount question is a different one, and it has one source: the
+       establishment. "Employees: 0 directly · 0 including units below" counted assignments on the
+       organisation axis, which on a post is a number nobody asked for and which read as zero
+       whatever the post's state. Holders is filled over approved, from the same read that draws
+       the Approved / Filled / Vacant row and the badges on the chart. *@
+    @* ONE row where there were three. A post used to carry "Employees: 0 directly · 0 including
+       units below" (a count of assignments on the organisation axis, which is always zero on a
+       post and answers nothing anybody asked), an "Approved headcount" attribute row printed by the
+       generic attribute loop, and an "Establishment" row with the same approved figure in it. Three
+       rows, two of them saying the same number and one of them meaningless.
+
+       Now: approved, filled and vacant from the single establishment read, with the badge beside
+       them. Green when the post is full and amber when it is not — that way round deliberately,
+       because a reader scanning for something to act on is looking for the gaps. D26 E. *@
+    @if (Model.IsPosition)
+    {
+        <dt class="col-sm-3">@T["Headcount"]</dt>
+        <dd class="col-sm-9" id="value-headcount">
+            @if (Model.Establishment is { } posts)
+            {
+                <span class="value-approved">@T["{0} approved", posts.Approved]</span>
+                <span class="text-muted mx-1" aria-hidden="true">·</span>
+                <span class="value-filled">@T["{0} filled", posts.Filled]</span>
+                <span class="text-muted mx-1" aria-hidden="true">·</span>
+                @* Negative is shown rather than clamped: an over-established post is the one
+                   condition this number exists to surface. D26 E. *@
+                <span class="value-vacant @(posts.Vacant < 0 ? "text-danger" : null)">
+                    @T["{0} vacant", posts.Vacant]
+                </span>
+
+                @if (posts.IsFull)
+                {
+                    <span class="badge text-bg-success ms-2" id="value-headcount-badge">
+                        @T["{0} of {1}", posts.Filled, posts.Approved]
+                    </span>
+                }
+                else
+                {
+                    <span class="badge text-bg-warning ms-2" id="value-headcount-badge">
+                        @T["{0} of {1}", posts.Filled, posts.Approved]
+                    </span>
+                }
+            }
+            else
+            {
+                <span class="text-muted">@T["No establishment is recorded for this post."]</span>
+            }
+        </dd>
+    }
+    else
+    {
     <dt class="col-sm-3">@T["Employees"]</dt>
     <dd class="col-sm-9" id="value-employees">
         @* Two numbers, because either alone misleads. A division whose people all sit in its
@@ -253,15 +415,126 @@
             }
         }
     </dd>
+    }
 
     @* Named "field" rather than "attribute": `@attribute` is a Razor directive, so a loop variable
-       of that name is a parse error rather than a property access. *@
+       of that name is a parse error rather than a property access.
+
+       Approved headcount is filtered out on a position: it is the first number of the Headcount row
+       above, and printing it again under its raw attribute label would be the same figure twice
+       under two names. It is still an ordinary attribute everywhere else, including on the editor
+       that sets it. *@
     @foreach (var field in Model.Attributes)
     {
         <dt class="col-sm-3">@field.Label</dt>
         <dd class="col-sm-9 value-attribute">@field.Value</dd>
     }
+
+    @if (Model.IsPosition)
+    {
+        <dt class="col-sm-3">@T["Allowed grades"]</dt>
+        <dd class="col-sm-9" id="value-allowed-grades">
+            @if (Model.AllowedGrades.Count == 0)
+            {
+                <span class="text-warning" id="value-allowed-grades-none">
+                    @T["This position allows no grades, so nobody holding it can be given a level."]
+                </span>
+            }
+            else
+            {
+                @* Chips on one line, not a stacked list. A position's grades are a SET (D26 C) —
+                   unordered, read together, usually two or three — and a vertical list of bullets
+                   spent a line of the page on each one and read as a hierarchy it is not. The code
+                   is the hover title rather than a bracket after every name, because it is what
+                   somebody occasionally checks rather than what they read. *@
+                <ul class="list-inline mb-0 d-flex flex-wrap gap-2" id="value-allowed-grade-chips">
+                    @foreach (var grade in Model.AllowedGrades)
+                    {
+                        <li class="list-inline-item m-0">
+                            <a class="badge text-bg-light text-decoration-none value-allowed-grade"
+                               data-code="@grade.Code" title="@grade.Code"
+                               asp-action="Details" asp-route-id="@grade.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@grade.Name</a>
+                        </li>
+                    }
+                </ul>
+            }
+        </dd>
+    }
+
+    @* Decision D26 C. On a grade only, and shown even when it is empty — unlike the units section
+       below, which a leaf hides entirely. A unit with nothing under it is ordinary; a grade no
+       position allows is a grade nobody can be given, which is the one thing somebody opening a
+       grade's page most needs to be told. *@
+    @if (Model.IsGrade)
+    {
+        <dt class="col-sm-3">@T["Used by positions"]</dt>
+        <dd class="col-sm-9" id="value-used-by-positions">
+            @if (Model.UsedByPositions.Count == 0)
+            {
+                <span class="text-muted" id="value-used-by-positions-none">
+                    @T["No position allows this grade yet, so nobody can be given it."]
+                </span>
+            }
+            else
+            {
+                <ul class="list-unstyled mb-0">
+                    @foreach (var position in Model.UsedByPositions)
+                    {
+                        <li class="value-used-by-position" data-code="@position.Code">
+                            <a asp-action="Details" asp-route-id="@position.RecordId"
+                               asp-route-asAt="@Model.AsAtIso">@position.Name</a>
+                            <span class="text-muted small">(@position.Code)</span>
+                            @if (!string.IsNullOrEmpty(position.UnitName))
+                            {
+                                <span class="text-muted small">— @position.UnitName</span>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </dd>
+    }
 </dl>
+
+@* Who holds the post. Decision D26 D.
+
+   <b>The empty state ships now, with the section around it.</b> A reader who has just been told
+   "3 approved · 0 filled" immediately wants the other half, and a page with no such section leaves
+   them unsure whether it is missing or whether nobody holds the post. This says which. Nothing
+   assigns an employee to a position before slice F6, so the list cannot be anything but empty
+   today — which is asserted rather than assumed. *@
+@if (Model.IsPosition)
+{
+    <h2 class="fs-5 mt-4 mb-2" id="value-holders-heading">@T["Holders"]</h2>
+
+    @if (Model.Holders.Count == 0)
+    {
+        <p class="text-muted" id="value-holders-none">@T["No one holds this position yet."]</p>
+    }
+    else
+    {
+        <table class="table table-sm align-middle" id="value-holders">
+            <thead>
+                <tr>
+                    <th scope="col">@T["Employee"]</th>
+                    <th scope="col">@T["Grade"]</th>
+                    <th scope="col">@T["Since"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var holder in Model.Holders)
+                {
+                    <tr class="value-holder" data-employee-id="@holder.EmployeeId">
+                        <td>@holder.Name</td>
+                        <td>@holder.GradeName</td>
+                        <td>@BilingualDisplay.Date(holder.Since)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
 
 @* Decision D24. A leaf shows nothing at all here — not an empty table and not a "no units" line,
    because "this unit contains nothing" is already said by the absence of the section, and a reader
@@ -269,7 +542,14 @@
 @if (Model.HasUnitsBelow)
 {
     <div class="d-flex justify-content-between align-items-center mt-4 mb-2 flex-wrap gap-2">
-        <h2 class="fs-5 mb-0" id="value-tree-heading">@T["Units under {0}", Model.Name]</h2>
+        @* "Units under" is wrong on a reporting line twice over: what is below a post is other
+           posts rather than units, and what joins them is answering to it rather than sitting in
+           it. *@
+        <h2 class="fs-5 mb-0" id="value-tree-heading">
+            @(Model.IsReportingAxis
+                ? T["Positions reporting to {0}", Model.Name]
+                : T["Units under {0}", Model.Name])
+        </h2>
 
         <div class="d-flex align-items-center gap-2">
             @* The three views (decision D25), in the order the brief names them. Ordinary links
@@ -380,7 +660,14 @@
                     <th scope="col">@SortHeading(Url, Model, "dimension", T["Dimension"])</th>
                     <th scope="col">@SortHeading(Url, Model, "parent", T["Parent"])</th>
                     <th scope="col">@SortHeading(Url, Model, "status", T["Status"])</th>
-                    <th scope="col" class="text-end">@SortHeading(Url, Model, "employees", T["Employees"])</th>
+                    @* Holders on a reporting line, for the reason the chart's badge is not an
+                       employee count: an assignment names the organisation axis, so every employee
+                       figure on this chart is zero and a column of zeroes is worse than no column.
+                       D26 E. *@
+                    <th scope="col" class="text-end">
+                        @SortHeading(Url, Model, "employees",
+                            Model.IsReportingAxis ? T["Holders"] : T["Employees"])
+                    </th>
                 </tr>
             </thead>
             <tbody>
@@ -409,10 +696,24 @@
                                 <span class="badge text-bg-secondary">@T["Inactive"]</span>
                             }
                         </td>
-                        <td class="text-end value-tree-employees"
-                            title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
-                            @row.EmployeeCountIncludingSubUnits
-                        </td>
+                        @if (Model.IsReportingAxis)
+                        {
+                            @* Empty when there is no figure, rather than a dash to localise: an
+                               empty cell already reads as "nothing known here". *@
+                            <td class="text-end value-tree-holders">
+                                @if (row.Establishment is { } held)
+                                {
+                                    @T["{0} of {1}", held.Filled, held.Approved]
+                                }
+                            </td>
+                        }
+                        else
+                        {
+                            <td class="text-end value-tree-employees"
+                                title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
+                                @row.EmployeeCountIncludingSubUnits
+                            </td>
+                        }
                     </tr>
                 }
             </tbody>
@@ -426,7 +727,7 @@
             <tr>
                 <th scope="col">@T["Name"]</th>
                 <th scope="col">@T["Dimension"]</th>
-                <th scope="col" class="text-end">@T["Employees"]</th>
+                <th scope="col" class="text-end">@(Model.IsReportingAxis ? T["Holders"] : T["Employees"])</th>
             </tr>
         </thead>
         <tbody>
@@ -461,13 +762,27 @@
                         </span>
                     </td>
                     <td class="text-muted">@row.TypeName</td>
-                    @* The headcount including everything below, with the direct count on hover —
-                       the number a reader scanning a chart wants is the roll-up, and the one they
-                       occasionally need is how many of those are at this unit itself. *@
-                    <td class="text-end value-tree-employees"
-                        title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
-                        @row.EmployeeCountIncludingSubUnits
-                    </td>
+                    @if (Model.IsReportingAxis)
+                    {
+                        @* Filled over approved, the chart's badge in a column. Empty where there is
+                           no figure, rather than a dash to localise. *@
+                        <td class="text-end value-tree-holders">
+                            @if (row.Establishment is { } held)
+                            {
+                                @T["{0} of {1}", held.Filled, held.Approved]
+                            }
+                        </td>
+                    }
+                    else
+                    {
+                        @* The headcount including everything below, with the direct count on hover —
+                           the number a reader scanning a chart wants is the roll-up, and the one they
+                           occasionally need is how many of those are at this unit itself. *@
+                        <td class="text-end value-tree-employees"
+                            title="@AsText(T.Plural(row.EmployeeCount, "{0} directly", "{0} directly", row.EmployeeCount))">
+                            @row.EmployeeCountIncludingSubUnits
+                        </td>
+                    }
                 </tr>
             }
         </tbody>
@@ -475,10 +790,15 @@
     }
 }
 
-@if (Model.Structures.Count > 1)
+@* The same refusal to guess the list screen makes, with the same way out of it. A GET form, so
+   the chosen chart is in the URL and the page is one somebody can send to a colleague.
+
+   Never on a position. It is always on two charts and there is nothing to ask: this page is about
+   the reporting line, and where the post sits in the business is the Parent row above. A chooser
+   whose other setting is the organisation chart — where a position is a leaf and the section
+   vanishes — is a control for making the page wrong. See ShowsStructureChooser. *@
+@if (Model.ShowsStructureChooser)
 {
-    @* The same refusal to guess the list screen makes, with the same way out of it. A GET form, so
-       the chosen chart is in the URL and the page is one somebody can send to a colleague. *@
     <form method="get" class="row g-2 align-items-end" id="value-structure-form">
         <input type="hidden" name="id" value="@Model.RecordId" />
         <input type="hidden" name="asAt" value="@Model.AsAtIso" />

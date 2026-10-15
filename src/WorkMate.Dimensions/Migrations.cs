@@ -6,6 +6,7 @@ using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Internal.Graph;
+using WorkMate.Dimensions.Internal.References;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using YesSql;
@@ -780,6 +781,57 @@ public sealed class Migrations : DataMigration
         }
 
         return 12;
+    }
+
+    /// <summary>
+    /// The reference table: one record pointing at another, of a named kind. Decision D26 C — a
+    /// Position's allowed grades.
+    /// </summary>
+    /// <remarks>
+    /// <b>A new table, so this step creates it and <see cref="CreateAsync"/> does not</b> — the same
+    /// shape as <see cref="UpdateFrom5Async"/>, which created the unit-head table and was never
+    /// folded back. A brand-new tenant runs <see cref="CreateAsync"/> and then every
+    /// <c>UpdateFromNAsync</c> in order, so it arrives here with no table exactly as a tenant
+    /// upgrading from version 12 does, and the step needs none of the <see cref="ColumnExistsAsync"/>
+    /// guarding that adding a <em>column</em> to a table <see cref="CreateAsync"/> also builds
+    /// requires.
+    ///
+    /// <b>Nothing is migrated into it and nothing can be.</b> There is no earlier place a position's
+    /// grades were stored — positions do not exist before this slice — so this is an empty table on
+    /// every tenant that runs it, and every tenant on today's model behaves identically afterwards.
+    /// That is the property <c>DimensionsMigrationUpgradeTenantTests</c> asserts.
+    ///
+    /// <b>Two indexes, because the table is read from both ends.</b> A Position's page asks what it
+    /// points at; a Grade's page asks which positions point at it (D26 C's *Used by positions*), and
+    /// without the second index that is a scan of every reference in the tenant.
+    /// </remarks>
+    public async Task<int> UpdateFrom12Async()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<DimensionReferenceIndex>(table => table
+            .Column<string>(nameof(DimensionReferenceIndex.RecordId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(DimensionReferenceIndex.Kind), column => column.WithLength(CodeLength))
+            .Column<string>(nameof(DimensionReferenceIndex.TargetRecordId), column => column.WithLength(IdentifierLength))
+            .Column<int>(nameof(DimensionReferenceIndex.SortOrder)));
+
+        await SchemaBuilder.AlterIndexTableAsync<DimensionReferenceIndex>(table =>
+        {
+            // "What does this position allow" — the Position page, the Add/Edit form and the
+            // batched read behind the Positions list. The column order is the order they filter in.
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionReferenceIndex)}_Source",
+                nameof(DimensionReferenceIndex.RecordId),
+                nameof(DimensionReferenceIndex.Kind),
+                nameof(DimensionReferenceIndex.SortOrder));
+
+            // "Which positions use this grade" — the Grade value page. The other end of the same
+            // rows, and the reason this is a table rather than a list on the position's document.
+            table.CreateIndex(
+                $"IDX_{nameof(DimensionReferenceIndex)}_Target",
+                nameof(DimensionReferenceIndex.TargetRecordId),
+                nameof(DimensionReferenceIndex.Kind));
+        });
+
+        return 13;
     }
 
     /// <summary>

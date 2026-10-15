@@ -224,11 +224,30 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                     {
                         if (!recordIdByCode.TryGetValue(placement.ParentCode, out parentId))
                         {
-                            RecipeStepFailures.Throw(context, [
-                                S["Record '{0}' could not be placed: its parent '{1}' was not found. Parents must be listed before their children.", record.Code, placement.ParentCode].Value,
-                            ]);
+                            // Not in this file — so ask the tenant. A parent that is already here
+                            // is a perfectly good parent, and this is what lets one recipe hang
+                            // something off a tree another one built: the positions demo places
+                            // its posts under the departments the organisation recipe created.
+                            // Without it, "parents must be listed before their children" was being
+                            // enforced as "parents must be listed", which is a different and much
+                            // stronger rule than the one the message describes.
+                            //
+                            // The file wins where both have the code, because a row in this run is
+                            // the statement being applied; the tenant is only consulted for a code
+                            // the file does not define.
+                            var inTheTenant = await _dimensionService.GetByCodeAsync(placement.ParentCode);
 
-                            return;
+                            if (inTheTenant is null)
+                            {
+                                RecipeStepFailures.Throw(context, [
+                                    S["Record '{0}' could not be placed: its parent '{1}' is neither in this recipe nor already in the tenant. A parent listed in this file must come before its children; one that is not in this file must already exist.", record.Code, placement.ParentCode].Value,
+                                ]);
+
+                                return;
+                            }
+
+                            parentId = inTheTenant.RecordId;
+                            recordIdByCode[placement.ParentCode] = parentId;
                         }
                     }
 

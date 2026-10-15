@@ -139,7 +139,7 @@ public sealed class EmployeeScreensBrowserTests
         // Back on the designer, with the name on the card it was appointed from.
         await Assertions.Expect(page.Locator("#designer-tree")).ToBeVisibleAsync();
 
-        var head = DesignerTree.Node(page, "Sales").Locator(".designer-card-head").First;
+        var head = DesignerTree.Card(page, "Sales").Locator(".designer-card-head").First;
 
         await Assertions.Expect(head).ToContainTextAsync("Mariam Shah");
     }

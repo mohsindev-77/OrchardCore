@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Localization;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
+using WorkMate.Dimensions.Internal.References;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
@@ -943,6 +944,169 @@ internal sealed class DimensionValidator : IDimensionValidator
                     EffectiveDates.FromColumn(clash.EffectiveFrom)]),
         ];
     }
+
+    // ---- references (D26 C) -------------------------------------------------------------
+
+    public async Task<IReadOnlyList<DimensionError>> ValidateReferencesAsync(
+        string recordId,
+        string referenceKind,
+        IReadOnlyList<string> targetRecordIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(targetRecordIds);
+
+        var errors = new List<DimensionError>();
+
+        if (!string.Equals(referenceKind, DimensionReferenceKinds.AllowedGrade, StringComparison.Ordinal))
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.UnknownReference,
+                referenceKind,
+                S["'{0}' is not a kind of reference this product knows about.", referenceKind]));
+
+            return errors;
+        }
+
+        var source = await _recordLookup.GetAsync(recordId, cancellationToken);
+
+        if (source is null)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.UnknownReference,
+                recordId,
+                S["There is no dimension record with the id '{0}' in this tenant.", recordId]));
+
+            return errors;
+        }
+
+        // The referring record has to be a Position. Read off the declared role, never off the
+        // code or the name — DimensionTypeRole sets out why both of those break, one on the demo
+        // recipes and one on FRS Rule 6's rename.
+        if (await RoleOfAsync(source.DimensionTypeId, cancellationToken) != DimensionTypeRole.Position)
+        {
+            errors.Add(new DimensionError(
+                DimensionRule.ReferenceNotPermitted,
+                source.Code,
+                S["Only a position has allowed grades. '{0}' is not one.", source.Code]));
+
+            return errors;
+        }
+
+        var targets = await _recordLookup.ListByIdsAsync(
+            [.. targetRecordIds.Distinct(StringComparer.Ordinal)], cancellationToken);
+
+        foreach (var targetId in targetRecordIds.Distinct(StringComparer.Ordinal))
+        {
+            if (!targets.TryGetValue(targetId, out var target))
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.UnknownReference,
+                    targetId,
+                    S["There is no dimension record with the id '{0}' in this tenant.", targetId],
+                    Field: "AllowedGradeRecordIds"));
+
+                continue;
+            }
+
+            // Retired is deliberately not checked. A reference is undated and the read filters by
+            // date, so a form that posts back the set a position already holds must not fail
+            // because one of its grades was retired last year.
+            if (await RoleOfAsync(target.DimensionTypeId, cancellationToken) != DimensionTypeRole.Grade)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.ReferenceNotPermitted,
+                    target.Code,
+                    S["'{0}' is not a grade, so it cannot be one of a position's allowed grades.", target.Code],
+                    Field: "AllowedGradeRecordIds"));
+            }
+        }
+
+        return errors;
+    }
+
+    public async Task<IReadOnlyList<DimensionError>> ValidateEmployeeGradeAsync(
+        string positionRecordId,
+        string? gradeRecordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default)
+    {
+        var allowed = await AllowedGradeIdsAsync(positionRecordId, asAt, cancellationToken);
+        var position = await _recordLookup.GetAsync(positionRecordId, cancellationToken);
+        var positionCode = position?.Code ?? positionRecordId;
+
+        if (string.IsNullOrEmpty(gradeRecordId))
+        {
+            // A position with no grades has no level to choose, so demanding one would make it
+            // unusable. One that has them requires one, which is D26 G's "changing the Position
+            // requires choosing a grade of the new Position" read at the moment of the write.
+            return allowed.Count == 0
+                ? []
+                :
+                [
+                    new DimensionError(
+                        DimensionRule.ReferenceNotPermitted,
+                        positionCode,
+                        S["Choose a grade. '{0}' has {1} to choose from.", positionCode, allowed.Count],
+                        Field: "GradeRecordId"),
+                ];
+        }
+
+        if (allowed.Contains(gradeRecordId))
+        {
+            return [];
+        }
+
+        var grade = await _recordLookup.GetAsync(gradeRecordId, cancellationToken);
+
+        return
+        [
+            new DimensionError(
+                DimensionRule.ReferenceNotPermitted,
+                grade?.Code ?? gradeRecordId,
+                S["'{0}' is not one of the grades '{1}' allows.", grade?.Code ?? gradeRecordId, positionCode],
+                Field: "GradeRecordId"),
+        ];
+    }
+
+    /// <summary>
+    /// The ids of the grades a position allows, effective on the date.
+    /// </summary>
+    /// <remarks>
+    /// Read from the index here rather than through <c>IDimensionService.GetReferencesAsync</c>,
+    /// for the reason stated on this class: the write services depend on this validator, so
+    /// depending back on one of them would be the cycle the module's lookup pattern exists to rule
+    /// out. The dating rule is the same one that read applies — the reference is undated and the
+    /// target is not.
+    /// </remarks>
+    private async Task<HashSet<string>> AllowedGradeIdsAsync(
+        string positionRecordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _session
+            .QueryIndex<DimensionReferenceIndex>(index =>
+                index.RecordId == positionRecordId &&
+                index.Kind == DimensionReferenceKinds.AllowedGrade)
+            .ListAsync(cancellationToken);
+
+        var targets = await _recordLookup.ListByIdsAsync(
+            [.. rows.Select(row => row.TargetRecordId)], cancellationToken);
+
+        return
+        [
+            .. targets
+                .Where(pair => pair.Value.EffectiveRange.Contains(asAt))
+                .Select(pair => pair.Key),
+        ];
+    }
+
+    /// <summary>The part a dimension type plays in the product, or None if the type has gone.</summary>
+    private async Task<DimensionTypeRole> RoleOfAsync(
+        string dimensionTypeId,
+        CancellationToken cancellationToken) =>
+        await _typeLookup.GetAsync(dimensionTypeId, cancellationToken) is { } type
+            ? type.StandardRole
+            : DimensionTypeRole.None;
 
     // ---- merge ------------------------------------------------------------------------
 

@@ -71,6 +71,20 @@ public sealed class UnitPickerAdminController : Controller
     /// people" to "which units may contain one of these", and with it the permission: the first is
     /// a placement decision, the second is a record-management one.
     /// </param>
+    /// <param name="check">
+    /// A unit already chosen on the form, to be told whether it is still inside
+    /// <paramref name="within"/>. The answer comes back as <c>checkInScope</c>.
+    /// </param>
+    /// <remarks>
+    /// <b>Why <paramref name="check"/> is a parameter here and not an endpoint of its own.</b>
+    /// Narrowing the scope can contradict a choice already made — somebody picks <em>Civil</em>,
+    /// then narrows <em>Within</em> to <em>Corporate</em>, and the form now holds a unit the filter
+    /// beside it says is out of bounds. The control has to resolve that rather than leave it
+    /// standing, and it cannot answer the question itself: the chosen unit may be nowhere near the
+    /// page of twenty it was handed. One permission check, one date, one structure — the same three
+    /// this action already has — so it is a parameter rather than a second action that would have
+    /// to repeat all of them.
+    /// </remarks>
     [HttpGet]
     public async Task<IActionResult> Search(
         string structureId,
@@ -78,6 +92,7 @@ public sealed class UnitPickerAdminController : Controller
         string? within,
         string? asAt,
         string? childType,
+        string? check,
         int take = PageSize,
         CancellationToken cancellationToken = default)
     {
@@ -123,6 +138,46 @@ public sealed class UnitPickerAdminController : Controller
                 path = BilingualDisplay.Path(paths.GetValueOrDefault(unit.RecordId), unit),
             }),
             total = found.Total,
+            checkInScope = await InScopeAsync(structureId, check, within, date, cancellationToken),
         });
+    }
+
+    /// <summary>
+    /// Whether <paramref name="check"/> is at or below <paramref name="within"/> on this structure.
+    /// </summary>
+    /// <remarks>
+    /// <b>True when there is nothing to contradict.</b> No unit chosen and no scope set are both
+    /// "the form is not in a contradictory state", and answering false for either would have the
+    /// control clear a choice nobody had narrowed away from.
+    ///
+    /// <b>At or below, not below.</b> Narrowing <em>Within</em> to the very unit that is chosen is
+    /// the ordinary way somebody confirms a choice, and treating it as out of scope would clear the
+    /// thing they had just agreed with.
+    ///
+    /// Resolved through the closure index on the page's own date, so "within Retail Banking" means
+    /// what it meant then — the same rule the search above resolves the scope under, because a
+    /// different one would let the list and this answer disagree.
+    /// </remarks>
+    private async Task<bool> InScopeAsync(
+        string structureId,
+        string? check,
+        string? within,
+        DateOnly? date,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(check) || string.IsNullOrEmpty(within))
+        {
+            return true;
+        }
+
+        if (string.Equals(check, within, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var ancestors = (await _graph.GetAncestorPathsAsync(
+            structureId, [check], date, cancellationToken)).GetValueOrDefault(check) ?? [];
+
+        return ancestors.Any(ancestor => string.Equals(ancestor.RecordId, within, StringComparison.Ordinal));
     }
 }

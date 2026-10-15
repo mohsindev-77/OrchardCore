@@ -28,6 +28,12 @@ public sealed class DemoCompanyTenantFixture : BrowserTenantFixture
         // Without the ampersand: the name is HTML-encoded on the page and this is a raw string
         // search over the markup.
         ("organisation-designer-zenith.recipe.json", "Zenith Engineering"),
+
+        // The positions and grades, which are a second file for the reason its own notes give: the
+        // part that ADDS has to be applicable to a tenant built from an earlier version of the
+        // first. Order matters — this one places its positions under Zenith's departments.
+        ("organisation-designer-zenith-positions.recipe.json", "Software Engineer"),
+
         ("organisation-designer-crescent.recipe.json", "Crescent Microfinance"),
     ];
 }

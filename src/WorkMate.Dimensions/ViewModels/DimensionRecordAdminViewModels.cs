@@ -56,6 +56,22 @@ public sealed class DimensionRecordListViewModel
     public bool ShowsOrganisation => GroupTypes.Count > 1;
 
     /// <summary>
+    /// Whether to show the Approved / Filled / Vacant and Allowed grades columns: only on a
+    /// dimension whose types are Positions. Decisions D26 E and D26 C.
+    /// </summary>
+    /// <remarks>
+    /// <b>Off the declared role, and off for every other dimension</b> — which is the point, and is
+    /// guarded by <c>UnchangedScreensTenantTests</c>. Decision D25 says the "All <em>plural</em>"
+    /// screens do not change, and four new columns on every list would be exactly the change it
+    /// rules out; four columns on the one dimension they describe is the dimension having something
+    /// more to say about itself, the same way a type's attribute columns already work.
+    ///
+    /// Approved headcount alone would arrive free, as an attribute column. Filled, Vacant and the
+    /// grades are computed, so the screen has to be told to ask for them.
+    /// </remarks>
+    public bool ShowsEstablishment { get; set; }
+
+    /// <summary>
     /// Tree or list. FRS v2.5 §4.1: the same values, the same columns, two layouts, and a toggle in
     /// the top-right corner that changes nothing but the arrangement.
     /// </summary>
@@ -216,6 +232,24 @@ public sealed class DimensionRecordRowViewModel
     /// <summary>How many values of this dimension sit directly under this one. Tree view only.</summary>
     public int ChildCount { get; set; }
 
+    /// <summary>
+    /// How many of this post are approved, filled and vacant. Null on every dimension but Position.
+    /// Decision D26 E.
+    /// </summary>
+    public PositionEstablishment? Establishment { get; set; }
+
+    /// <summary>
+    /// The grades this position allows, in order. Empty on every other dimension, and on a position
+    /// nobody has graded. Decision D26 C.
+    /// </summary>
+    /// <remarks>
+    /// The grade.s own name — SE-1, HRM-2 — rather than its code, because a grade.s name IS its
+    /// label to anybody reading this column, while its code carries whatever prefix the recipe that
+    /// created it uses. The demo.s grades are coded zenith-grade-se-1 and named SE-1, and a column
+    /// of the former would be three times as wide and tell a reader less.
+    /// </remarks>
+    public IReadOnlyList<string> AllowedGradeNames { get; set; } = [];
+
     /// <summary>Whether the record's own effective range covers the date the screen is about.</summary>
     public bool IsEffective { get; set; }
 
@@ -333,6 +367,53 @@ public sealed class DimensionRecordCreateViewModel
     [BindNever]
     public bool HasAnywhereToGo { get; set; }
 
+    /// <summary>
+    /// Whether this is a Position, which is what puts the reporting line and the allowed grades on
+    /// the form. Decisions D26 C and ADR-0028.
+    /// </summary>
+    /// <remarks>
+    /// Off the dimension type's declared <c>StandardRole</c>, never off its code or its name — see
+    /// <c>DimensionTypeRole</c>.
+    /// </remarks>
+    [BindNever]
+    public bool IsPosition { get; set; }
+
+    /// <summary>
+    /// The position this one reports to, or empty for one that reports to nobody. ADR-0028.
+    /// </summary>
+    /// <remarks>
+    /// <b>A second placement, on a second axis</b> — not a second parent on the organisation chart,
+    /// which D19 forbids. <see cref="ParentRecordId"/> is where the post sits in the business and
+    /// this is who it answers to, and the two are independent trees.
+    /// </remarks>
+    public string? ReportsToRecordId { get; set; }
+
+    /// <summary>The grades this position allows: its levels. Decision D26 C.</summary>
+    /// <remarks>
+    /// References, never parents: they enter no closure index and appear on no tree. A set rather
+    /// than a range, which is what lets a position allow SE-1 and SE-3 and not SE-2.
+    /// </remarks>
+    public List<string> AllowedGradeRecordIds { get; set; } = [];
+
+    /// <summary>
+    /// The reporting-line axis, or null when the tenant has none. ADR-0028 ships one; a tenant that
+    /// has removed it gets no <em>Reports to</em> control and a line saying why.
+    /// </summary>
+    [BindNever]
+    public string? ReportingStructureId { get; set; }
+
+    /// <summary>
+    /// Whether any organisation chart in this tenant will take a position yet.
+    /// </summary>
+    /// <remarks>
+    /// <b>False on every brand-new tenant</b>, and that is by design: <c>base.recipe.json</c> ships
+    /// the Position dimension and no organisation chart (ADR-0028). The form says so and links to
+    /// the Structures editor, because an empty <em>Place under</em> picker reads as a broken screen
+    /// rather than as a step nobody has taken yet.
+    /// </remarks>
+    [BindNever]
+    public bool PositionsCanBePlaced { get; set; }
+
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
     public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);
@@ -418,9 +499,43 @@ public sealed class DimensionRecordEditViewModel
     [BindNever]
     public string? StructureId { get; set; }
 
+    /// <summary>Whether this is a Position, which is what puts its allowed grades on the form.</summary>
+    /// <inheritdoc cref="DimensionRecordCreateViewModel.IsPosition" path="/remarks"/>
+    [BindNever]
+    public bool IsPosition { get; set; }
+
+    /// <summary>The grades this position allows: its levels. Decision D26 C.</summary>
+    /// <remarks>
+    /// <b>On the Edit form where the parent is not</b>, and the difference is what each one does to
+    /// history. Changing a parent rewrites what every historical report under the unit resolves to,
+    /// which is why it is a dated move with its own permission and its own dry run; changing which
+    /// grades a post offers is ordinary record upkeep that no past report resolves through. The same
+    /// line the alias is on.
+    ///
+    /// Removing a grade an employee currently holds is permitted and warned about (D26 G): their
+    /// own dated grade is untouched, and what changes is what is offered next time.
+    /// </remarks>
+    public List<string> AllowedGradeRecordIds { get; set; } = [];
+
+    /// <summary>What the record's allowed grades were when the form was drawn.</summary>
+    /// <inheritdoc cref="AliasChanged" path="/remarks"/>
+    [BindNever]
+    public IReadOnlyList<string> CurrentAllowedGradeRecordIds { get; set; } = [];
+
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
     public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);
+
+    /// <summary>Whether the posted set of allowed grades differs from what is stored.</summary>
+    /// <inheritdoc cref="AliasChanged" path="/remarks"/>
+    public bool AllowedGradesChanged =>
+        !AllowedGradeRecordIds
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .SequenceEqual(
+                CurrentAllowedGradeRecordIds.OrderBy(id => id, StringComparer.Ordinal),
+                StringComparer.Ordinal);
 
     /// <summary>Whether either half of the name differs from what is stored.</summary>
     public bool NameChanged =>

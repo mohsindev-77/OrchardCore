@@ -77,6 +77,19 @@ public sealed class WorkMateDimensionsResourceManifest : IConfigureOptions<Resou
             .SetDependencies("workmate-picker")
             .SetVersion("1.0.0");
 
+        // The position picker's search, on the same combobox for the same reasons (D26 F).
+        manifest.DefineScript("workmate-position-picker")
+            .SetUrl("~/WorkMate.Dimensions/js/position-picker.js")
+            .SetDependencies("workmate-picker")
+            .SetVersion("1.0.0");
+
+        // The grade picker's dependence on the position beside it (D26 G). No combobox dependency:
+        // a position's allowed grades are a short list and the control is a plain select, so what
+        // this script adds is the refresh when the position changes and nothing else.
+        manifest.DefineScript("workmate-grade-picker")
+            .SetUrl("~/WorkMate.Dimensions/js/grade-picker.js")
+            .SetVersion("1.0.0");
+
         return manifest;
     }
 }

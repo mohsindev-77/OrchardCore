@@ -8,11 +8,13 @@ using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal;
 using WorkMate.Dimensions.Internal.Lookups;
+using WorkMate.Dimensions.Internal.References;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Fields;
 using WorkMate.Platform.Services;
 using YesSql;
+using YesSql.Services;
 
 namespace WorkMate.Dimensions.Internal.Graph;
 
@@ -1279,6 +1281,70 @@ internal sealed class DimensionService : IDimensionService
         return values;
     }
 
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionAttributeValue>>> GetAttributeValueSetsAsync(
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var sets = new Dictionary<string, IReadOnlyList<DimensionAttributeValue>>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return sets;
+        }
+
+        var items = await _contentManager.GetAsync(recordIds.Distinct(StringComparer.Ordinal));
+
+        // The schemas, one read per distinct type rather than one per record: a page of positions is
+        // fifty records of one type.
+        var types = new Dictionary<string, DimensionTypeDocument?>(StringComparer.Ordinal);
+
+        foreach (var item in items)
+        {
+            var part = item.Get<DimensionRecordPart>(nameof(DimensionRecordPart));
+
+            if (part is null)
+            {
+                continue;
+            }
+
+            if (!types.TryGetValue(part.DimensionTypeId, out var type))
+            {
+                types[part.DimensionTypeId] = type =
+                    await _dimensionTypeService.GetAsync(part.DimensionTypeId, asAt: null, cancellationToken);
+            }
+
+            var own = type is null ? null : item.Get<ContentPart>(type.ContentTypeName);
+
+            if (type is null || own is null)
+            {
+                continue;
+            }
+
+            // Driven by the schema rather than by what is on the item, for the reason the one-record
+            // read gives: a field left over from an attribute the type no longer declares is not
+            // part of the record's value any more.
+            var values = new List<DimensionAttributeValue>();
+
+            foreach (var definition in type.AttributeSchema)
+            {
+                if (Read(own, definition) is { } value && !value.IsEmpty)
+                {
+                    values.Add(value);
+                }
+            }
+
+            if (values.Count > 0)
+            {
+                sets[item.ContentItemId] = values;
+            }
+        }
+
+        return sets;
+    }
+
     public async Task<DimensionResult<DimensionNodeRef>> SetAttributeValuesAsync(
         string recordId,
         IReadOnlyList<DimensionAttributeValue> attributes,
@@ -1565,6 +1631,218 @@ internal sealed class DimensionService : IDimensionService
 
         return documents.FirstOrDefault(document =>
             string.Equals(document.RecordId, recordId, StringComparison.Ordinal));
+    }
+
+    // ---- references (D21, D26 C) --------------------------------------------------------
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetReferencesAsync(
+        string recordId,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var sets = await GetReferenceSetsAsync([recordId], referenceKind, asAt, cancellationToken);
+
+        return sets.GetValueOrDefault(recordId) ?? [];
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<DimensionNodeRef>>> GetReferenceSetsAsync(
+        IReadOnlyList<string> recordIds,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var sets = new Dictionary<string, IReadOnlyList<DimensionNodeRef>>(StringComparer.Ordinal);
+
+        if (recordIds.Count == 0)
+        {
+            return sets;
+        }
+
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        var rows = await _session
+            .QueryIndex<DimensionReferenceIndex>(index =>
+                index.RecordId.IsIn(ids) && index.Kind == referenceKind)
+            .ListAsync(cancellationToken);
+
+        // One hydration for every target across every source, rather than one per source: the
+        // caller is a page of positions and several of them allow the same grade.
+        var targets = await HydrateAsync(
+            rows.Select(row => row.TargetRecordId), asAt, cancellationToken);
+
+        foreach (var group in rows.GroupBy(row => row.RecordId, StringComparer.Ordinal))
+        {
+            var resolved = group
+                .OrderBy(row => row.SortOrder)
+                .Select(row => targets.GetValueOrDefault(row.TargetRecordId))
+                .OfType<DimensionNodeRef>()
+                .ToList();
+
+            // A source whose every target has been retired is absent rather than present with an
+            // empty list, which is the same contract CountChildrenAsync states for a node with no
+            // children: the caller asked who is there, and nobody is.
+            if (resolved.Count > 0)
+            {
+                sets[group.Key] = resolved;
+            }
+        }
+
+        return sets;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetReferenceTargetIdsAsync(
+        string recordId,
+        string referenceKind,
+        CancellationToken cancellationToken = default)
+    {
+        var document = await LoadReferencesAsync(recordId, referenceKind, cancellationToken);
+
+        return document?.TargetRecordIds ?? [];
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DimensionNodeRef>> GetReferrersAsync(
+        string targetRecordId,
+        string referenceKind,
+        DateOnly? asAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _session
+            .QueryIndex<DimensionReferenceIndex>(index =>
+                index.TargetRecordId == targetRecordId && index.Kind == referenceKind)
+            .ListAsync(cancellationToken);
+
+        var referrers = await HydrateAsync(
+            rows.Select(row => row.RecordId), asAt, cancellationToken);
+
+        // By the referring record's own sort order then its English name — ordinal and
+        // language-neutral, for the reason every list in this module is: two readers must agree on
+        // the order, and a culture-aware sort gives them different ones.
+        return
+        [
+            .. referrers.Values
+                .OrderBy(referrer => referrer.SortOrder)
+                .ThenBy(referrer => referrer.NameEn, StringComparer.Ordinal),
+        ];
+    }
+
+    /// <inheritdoc />
+    public async Task<DimensionResult<int>> SetReferencesAsync(
+        string recordId,
+        string referenceKind,
+        IReadOnlyList<string> targetRecordIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(targetRecordIds);
+        ArgumentException.ThrowIfNullOrWhiteSpace(referenceKind);
+
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageDimensionRecords))
+        {
+            return DimensionResult.NotAuthorised<int>();
+        }
+
+        var errors = await _validator.ValidateReferencesAsync(
+            recordId, referenceKind, targetRecordIds, cancellationToken);
+
+        if (errors.Count > 0)
+        {
+            return DimensionResult.Failed<int>(errors);
+        }
+
+        // Deduplicated, order preserved. A multi-select can post the same option twice when a
+        // reader has used both the list and the search box, and two rows for one grade would draw
+        // it twice on the position's page.
+        var targets = targetRecordIds.Distinct(StringComparer.Ordinal).ToList();
+
+        // Loaded through the plain session, never through a cached lookup: YesSql's identity map
+        // throws if a write hands it a different instance with the same id. The write-path rule in
+        // ADR-0019's §7.2.
+        var document = await LoadReferencesAsync(recordId, referenceKind, cancellationToken)
+            ?? new DimensionReferenceDocument { RecordId = recordId, Kind = referenceKind };
+
+        var before = document.TargetRecordIds;
+
+        document.TargetRecordIds = targets;
+
+        await _session.SaveCheckedAsync(document, cancellationToken);
+
+        if (await _recordLookup.GetAsync(recordId, cancellationToken) is { } record)
+        {
+            // Undated, so every code resolves whether or not the grade is effective today — an
+            // auditor reading "SE-2 was removed" needs the code even for a grade that has since
+            // been retired. Both sides in one read.
+            var codes = await _recordLookup.ListByIdsAsync(
+                [.. before.Concat(targets).Distinct(StringComparer.Ordinal)], cancellationToken);
+
+            await RecordRecordChangeAsync(new DimensionRecordAuditEvent
+            {
+                RecordId = recordId,
+                Code = record.Code,
+                Operation = DimensionRecordOperation.ReferencesChanged,
+
+                // A reference is undated, so this is the day the change was made rather than a
+                // date somebody chose. The enum member says so.
+                EffectiveFrom = await _authorisation.TodayAsync(),
+                ReferenceKind = referenceKind,
+                ReferencesBefore = [.. before.Select(id => Code(codes, id))],
+                ReferencesAfter = [.. targets.Select(id => Code(codes, id))],
+            });
+        }
+
+        return DimensionResult.Success(targets.Count);
+    }
+
+    /// <summary>The record's code for an audit entry, falling back to the id if it has gone.</summary>
+    private static string Code(IReadOnlyDictionary<string, DimensionNodeRef> records, string recordId) =>
+        records.TryGetValue(recordId, out var record) ? record.Code : recordId;
+
+    private async Task<DimensionReferenceDocument?> LoadReferencesAsync(
+        string recordId,
+        string referenceKind,
+        CancellationToken cancellationToken)
+    {
+        var documents = await _session
+            .Query<DimensionReferenceDocument, DimensionReferenceIndex>(index =>
+                index.RecordId == recordId && index.Kind == referenceKind)
+            .ListAsync(cancellationToken);
+
+        // The index carries one row per target, so one document comes back once per reference it
+        // holds; and a document whose targets have all been removed has no rows at all and comes
+        // back not at all, which is why a caller falls back to a new one rather than treating the
+        // absence as "this record has never had references".
+        return documents.FirstOrDefault(document =>
+            string.Equals(document.RecordId, recordId, StringComparison.Ordinal) &&
+            string.Equals(document.Kind, referenceKind, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Resolves a set of record ids to records, keeping only those effective on the date.
+    /// </summary>
+    /// <remarks>
+    /// The dating is in the <em>target</em>, never in the reference — a reference has no effective
+    /// range of its own. So "the grades this position allows today" leaves out one retired last
+    /// year without anybody having had to remove the reference, and a reader asking as at last year
+    /// gets it back.
+    /// </remarks>
+    private async Task<Dictionary<string, DimensionNodeRef>> HydrateAsync(
+        IEnumerable<string> recordIds,
+        DateOnly? asAt,
+        CancellationToken cancellationToken)
+    {
+        var date = asAt ?? await _authorisation.TodayAsync();
+
+        var records = await _recordLookup.ListByIdsAsync(
+            [.. recordIds.Distinct(StringComparer.Ordinal)], cancellationToken);
+
+        return records
+            .Where(pair => pair.Value.EffectiveRange.Contains(date))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 
     // ---- helpers ----------------------------------------------------------------------

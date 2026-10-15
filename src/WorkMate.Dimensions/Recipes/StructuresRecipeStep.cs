@@ -69,6 +69,29 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
 
             foreach (var structure in model.Structures)
             {
+                // An ADDITIVE row is a different kind of statement and takes a path of its own: it
+                // says what to add and nothing about what is already there, so none of the
+                // comparison below applies to it. ADR-0008's 14 October addendum.
+                if (structure.IsAdditive)
+                {
+                    // A row that both instructs and describes would have two answers to the same
+                    // question — "add Position" and "the levels are exactly these" — and merging
+                    // them would mean the recipe said something nobody wrote. The same refusal, for
+                    // the same reason, as stating both allowSkipLevel and an explicit containment.
+                    if (structure.LevelTypeCodes.Count > 0 || structure.StatesContainment ||
+                        structure.EmployeeAttachableTypeCodes is not null ||
+                        structure.AllowSkipLevel is not null)
+                    {
+                        errors.Add(S["Structure '{0}' states both what to add and what the structure is. An additive row says only what to add; use one form or the other.", structure.Code].Value);
+
+                        continue;
+                    }
+
+                    await AddToAsync(context, structure, errors);
+
+                    continue;
+                }
+
                 var levelIds = new List<string>();
                 var unresolved = false;
 
@@ -122,10 +145,15 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     }
                     else if (FillsTheEmployeeAttachmentGap(existing, shape))
                     {
-                        // The one case where a row changes a structure it did not create. See
-                        // ADR-0008's 11 October addendum: for this field alone, empty in the tenant
-                        // is the absence of an answer rather than a different one, so a row that
-                        // states a set is filling a gap rather than overwriting a decision.
+                        // The one case where a DESCRIBING row changes a structure it did not
+                        // create. See ADR-0008's 11 October addendum: for this field alone, empty
+                        // in the tenant is the absence of an answer rather than a different one, so
+                        // a row that states a set is filling a gap rather than overwriting a
+                        // decision.
+                        //
+                        // Adding a level or a pairing is NOT done here. It is an instruction rather
+                        // than a description, and it has its own row shape — see AddToAsync and the
+                        // 14 October addendum.
                         toFill.Add(structure);
                     }
 
@@ -165,17 +193,23 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     continue;
                 }
 
+                // The row's levels and map, which the comparison that got us here has already found
+                // equal to what is stored — a describing row only reaches this loop when the one
+                // field it is filling is the only thing that differs. Everything else is read back
+                // from the structure as it stands, so a gap fill changes nothing it was not about.
+                var wanted = shapesByStructure[structure];
+
                 var filled = await _structureService.UpdateAsync(
                     existing.StructureId,
                     existing.Name,
-                    existing.DimensionTypeIds,
+                    levelIdsByStructure[structure],
                     existing.AllowSkipLevel,
                     existing.IsStrict,
                     existing.IsPrimaryOrganisation,
                     new StructureShape(
-                        existing.RootDimensionTypeIds,
-                        existing.Containment,
-                        shapesByStructure[structure].EmployeeAttachableDimensionTypeIds),
+                        wanted.RootDimensionTypeIds,
+                        wanted.Containment,
+                        wanted.EmployeeAttachableDimensionTypeIds),
                     structure.ToShortName());
 
                 if (!filled.Succeeded)
@@ -388,15 +422,15 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
 
         var existingLevelIds = existing.Levels.OrderBy(level => level.Ordinal).Select(level => level.DimensionTypeId).ToList();
 
-        if (!existingLevelIds.SequenceEqual(levelIds, StringComparer.Ordinal))
-        {
-            differences.Add("the levels, or their order, differ from the tenant's existing structure");
-        }
-
         // Both sides are deduplicated and ordered by the derivation before they are compared, so
         // two spellings of one map compare equal and only a genuine difference is reported.
         var wanted = Internal.StructureContainmentDerivation.Deduplicate(shape.Containment);
         var wantedRoots = Internal.StructureContainmentDerivation.DeduplicateRoots(shape.RootDimensionTypeIds);
+
+        if (!existingLevelIds.SequenceEqual(levelIds, StringComparer.Ordinal))
+        {
+            differences.Add("the levels, or their order, differ from the tenant's existing structure");
+        }
 
         if (!existing.Containment.SequenceEqual(wanted))
         {
@@ -425,6 +459,164 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
         }
 
         return differences;
+    }
+
+    /// <summary>
+    /// Applies an additive row: add these levels and these pairings to a structure that already
+    /// exists, and leave everything else exactly as the tenant has it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A different kind of statement from the rest of this step, which is why it has its own
+    /// path.</b> Every other row <em>describes</em> a structure, and the step's job is to decide
+    /// whether the tenant's matches that description. An additive row <em>instructs</em>: add
+    /// Position as a level, permit a Position under a Department. It says nothing about the levels
+    /// already there, the containment already there, the names, the strictness or the short name —
+    /// so there is nothing for the comparison to disagree about, and a tenant whose structure has
+    /// drifted in any of those ways is still a tenant this row can be applied to.
+    ///
+    /// <b>This exists because the comparing form could not do it.</b> A recipe that adds a
+    /// dimension to an organisation had to restate the whole structure to say so, which meant
+    /// restating a shape the tenant might legitimately not have — and a tenant built from an
+    /// earlier version of the same demo has exactly that. The first attempt inferred "additive"
+    /// from a full restatement that happened to be a superset, and that broke on the real tenant it
+    /// was written for: its map carried the <c>department → department</c> and <c>team → team</c>
+    /// self-pairs derived from the old <c>allowsSelfNesting</c> flags, which the row did not
+    /// restate, so the tenant was not a subset and the whole thing was refused. Inferring an
+    /// instruction from a description was the mistake; this says it outright.
+    ///
+    /// <b>What it refuses, each naming the thing at fault:</b> a structure that does not exist,
+    /// because an additive row may extend an axis and never invent one; a type that does not exist;
+    /// a pairing whose parent is neither already a level nor one of the levels being added, because
+    /// that pairing could never be honoured; and whatever
+    /// <c>IStructureService.UpdateAsync</c> itself refuses, which runs <c>PlanLevelChangeAsync</c>
+    /// and will not commit a change that invalidates a live placement.
+    ///
+    /// <b>Idempotent by construction.</b> A level or a pairing already present is not added twice,
+    /// so a second run computes the set the tenant already holds and writes nothing.
+    /// </remarks>
+    private async Task AddToAsync(
+        RecipeExecutionContext context,
+        StructureStepEntry structure,
+        List<string> errors)
+    {
+        var existing = await _structureService.GetByCodeAsync(structure.Code);
+
+        if (existing is null)
+        {
+            errors.Add(S["Structure '{0}' cannot be added to because it does not exist. An additive row extends a structure another recipe created; it never creates one.", structure.Code].Value);
+
+            return;
+        }
+
+        var levels = existing.DimensionTypeIds.ToList();
+
+        foreach (var typeCode in structure.AddLevelTypeCodes)
+        {
+            var type = await _dimensionTypeService.GetByCodeAsync(typeCode);
+
+            if (type is null)
+            {
+                errors.Add(S["Structure '{0}' adds level type '{1}', which does not exist. Levels must be listed after the types that back them.", structure.Code, typeCode].Value);
+
+                continue;
+            }
+
+            // Appended, and only when it is not already there — which is what makes a second run
+            // write nothing.
+            if (!levels.Contains(type.DimensionTypeId, StringComparer.Ordinal))
+            {
+                levels.Add(type.DimensionTypeId);
+            }
+        }
+
+        var containment = existing.Containment.ToList();
+
+        foreach (var (parentCode, childCodes) in structure.AddContainment)
+        {
+            var parent = await _dimensionTypeService.GetByCodeAsync(parentCode);
+
+            if (parent is null)
+            {
+                errors.Add(S["Structure '{0}' adds a rule under '{1}', which does not exist.", structure.Code, parentCode].Value);
+
+                continue;
+            }
+
+            if (!levels.Contains(parent.DimensionTypeId, StringComparer.Ordinal))
+            {
+                // A pairing nothing could ever honour. Refused naming it rather than written and
+                // left inert, because an inert rule on a containment grid is a rule somebody will
+                // later read as permission.
+                errors.Add(S["Structure '{0}' adds a rule under '{1}', which is not one of its levels and is not being added as one.", structure.Code, parentCode].Value);
+
+                continue;
+            }
+
+            foreach (var childCode in childCodes)
+            {
+                var child = await _dimensionTypeService.GetByCodeAsync(childCode);
+
+                if (child is null)
+                {
+                    errors.Add(S["Structure '{0}' adds a rule permitting '{1}', which does not exist.", structure.Code, childCode].Value);
+
+                    continue;
+                }
+
+                if (!levels.Contains(child.DimensionTypeId, StringComparer.Ordinal))
+                {
+                    errors.Add(S["Structure '{0}' adds a rule permitting '{1}', which is not one of its levels and is not being added as one.", structure.Code, childCode].Value);
+
+                    continue;
+                }
+
+                var pair = new StructureContainment(parent.DimensionTypeId, child.DimensionTypeId);
+
+                if (!containment.Contains(pair))
+                {
+                    containment.Add(pair);
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return;
+        }
+
+        // Nothing to do. Asked before the write rather than left to the service, so a re-run is a
+        // no-op in the audit trail as well as in the data.
+        if (levels.Count == existing.DimensionTypeIds.Count &&
+            containment.Count == existing.Containment.Count)
+        {
+            return;
+        }
+
+        // Through UpdateAsync, so the level change is previewed by PlanLevelChangeAsync and the
+        // whole change refused — naming the record at fault — if a live placement would be
+        // invalidated. Every argument but the two being added is read back from the structure as it
+        // stands, which is the whole promise of an additive row.
+        var added = await _structureService.UpdateAsync(
+            existing.StructureId,
+            existing.Name,
+            levels,
+            existing.AllowSkipLevel,
+            existing.IsStrict,
+            existing.IsPrimaryOrganisation,
+            new StructureShape(
+                existing.RootDimensionTypeIds,
+                containment,
+                existing.EmployeeAttachableDimensionTypeIds),
+            existing.ShortName);
+
+        if (!added.Succeeded)
+        {
+            RecipeStepFailures.Throw(
+                context,
+                added.Errors.Count > 0
+                    ? added.Errors.Select(error => error.Message.Value)
+                    : [S["'{0}' could not be extended.", structure.Code].Value]);
+        }
     }
 
     /// <summary>
@@ -529,4 +721,30 @@ internal sealed class StructureStepEntry
 
     /// <summary>Whether this row describes its rules explicitly rather than as a chain.</summary>
     public bool StatesContainment => Containment.Count > 0 || RootTypeCodes.Count > 0;
+
+    /// <summary>
+    /// Levels to ADD to a structure that already exists, leaving its own alone. ADR-0008's
+    /// 14 October addendum.
+    /// </summary>
+    /// <remarks>
+    /// <b>An instruction, where every other key on this row is a description.</b> The rest of the
+    /// row says what a structure <em>is</em> and the step decides whether the tenant's matches;
+    /// this says what to <em>add</em> and says nothing about the rest. That is what lets a recipe
+    /// extend an organisation it did not build — and extend one that has drifted, which a tenant
+    /// built from an earlier version of the same demo always has.
+    ///
+    /// A row using this states nothing else about the structure but its code. Mixing the two forms
+    /// is refused, because a row that both described and instructed would have two answers to the
+    /// same question.
+    /// </remarks>
+    public List<string> AddLevelTypeCodes { get; set; } = [];
+
+    /// <summary>
+    /// Containment pairings to ADD, by code: parent type to the child types it may contain.
+    /// </summary>
+    /// <inheritdoc cref="AddLevelTypeCodes" path="/remarks"/>
+    public Dictionary<string, List<string>> AddContainment { get; set; } = [];
+
+    /// <summary>Whether this row is the additive form rather than the describing one.</summary>
+    public bool IsAdditive => AddLevelTypeCodes.Count > 0 || AddContainment.Count > 0;
 }

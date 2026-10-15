@@ -38,11 +38,30 @@
     </form>
 }
 
+@* ADR-0028. base.recipe.json ships the Position dimension and NO organisation chart, so on a brand
+   new tenant a position can report to another position and has nowhere in the business to sit until
+   somebody adds Position to their structure's levels. An empty "Place under" picker reads as a
+   broken screen; this says what has not been done and links to where to do it. *@
+@if (Model.IsPosition && (Model.Structures.Count == 0 || !Model.PositionsCanBePlaced))
+{
+    <div class="alert alert-warning" id="record-create-position-unplaceable">
+        @T["Positions can't be placed yet — allow Position in your organisation structure (Settings → Structures)."]
+        <div class="mt-2">
+            <a class="btn btn-sm btn-secondary" id="record-create-position-structures"
+               asp-controller="StructuresAdmin" asp-action="Index">@T["Go to Structures"]</a>
+        </div>
+    </div>
+}
+
 @if (Model.Structures.Count == 0)
 {
-    <div class="alert alert-warning" id="record-create-no-structure">
-        @T["No structure uses this kind of unit yet. Add it as a level on a structure first, and then records of it will have somewhere to go."]
-    </div>
+    @if (!Model.IsPosition)
+    {
+        <div class="alert alert-warning" id="record-create-no-structure">
+            @T["No structure uses this kind of unit yet. Add it as a level on a structure first, and then records of it will have somewhere to go."]
+        </div>
+    }
+
     <a class="btn btn-secondary" asp-action="Index" asp-route-dimensionTypeId="@Model.DimensionTypeId">@T["Back to the list"]</a>
     return;
 }
@@ -120,6 +139,46 @@
         }
     </div>
 
+    @* A position's two extra facts. Neither is a parent on the chart above: "Reports to" is its
+       parent on the reporting-line axis (ADR-0028), and the grades are references that reach no
+       tree at all (D21 as amended by D26 C). *@
+    @if (Model.IsPosition)
+    {
+        <h2 class="fs-5 mt-4">@T["Reporting line"]</h2>
+
+        @if (string.IsNullOrEmpty(Model.ReportingStructureId))
+        {
+            <div class="alert alert-warning" id="record-create-no-reporting-line">
+                @T["This tenant has no reporting line axis, so a position cannot be given one. The base recipe ships a structure called “Reporting line”."]
+            </div>
+        }
+        else
+        {
+            var reportsToNobody = T["— reports to nobody —"];
+
+            <workmate-position-picker for="ReportsToRecordId" label="@T["Reports to"]"
+                                      structure-id="@Model.ReportingStructureId"
+                                      as-at="@Model.EffectiveFrom"
+                                      date-field="record-create-effective-from"
+                                      allow-none="true"
+                                      none-label="@reportsToNobody" />
+
+            <div class="form-text mb-3">
+                @T["Who this post answers to. A separate tree from the one above: the CEO reports to nobody and still sits in a unit."]
+            </div>
+        }
+
+        <h2 class="fs-5 mt-4">@T["Grades"]</h2>
+
+        var gradesHint = T["The levels of this post. Somebody holding it takes one of these as their grade."].Value;
+
+        <workmate-grade-picker for="AllowedGradeRecordIds" label="@T["Allowed grades"]"
+                               multiple="true"
+                               as-at="@Model.EffectiveFrom"
+                               date-field="record-create-effective-from"
+                               hint="@gradesHint" />
+    }
+
     @if (Model.Attributes.Count > 0)
     {
         <h2 class="fs-5 mt-4">@T["Details"]</h2>
@@ -142,3 +201,12 @@
 </form>
 
 <script asp-name="workmate-unit-picker" at="Foot"></script>
+
+@if (Model.IsPosition)
+{
+    <script asp-name="workmate-position-picker" at="Foot"></script>
+
+    @* The allowed-grades checklist's search box and live count. The checkboxes themselves work
+       without it — see GradePickerTagHelper. *@
+    <script asp-name="workmate-grade-picker" at="Foot"></script>
+}

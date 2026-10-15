@@ -96,9 +96,71 @@
         // Narrowing the scope re-runs the search rather than filtering what is on screen: the
         // results are a page of the whole structure, so a client-side filter could only ever narrow
         // the twenty that happened to arrive.
-        if (within && control) {
-            within.addEventListener("change", function () { control.refresh(); });
+        //
+        // It also has to resolve the contradiction it can create. Somebody picks Civil, then
+        // narrows Within to Corporate: the form now holds a unit the filter beside it says is out
+        // of bounds, and leaving both standing means saving a choice the screen has disowned. The
+        // choice is dropped and the drop is SAID — a control that silently emptied itself would
+        // send the reader to Save believing a unit was still named.
+        //
+        // The server answers whether the choice is in scope, because this cannot: the chosen unit
+        // may be nowhere near the page of twenty that arrived.
+        var cleared = wrapper.querySelector("[data-unit-picker-cleared]");
+
+        function sayCleared(message) {
+            if (cleared) {
+                cleared.hidden = !message;
+                cleared.textContent = message || "";
+            }
         }
+
+        if (within && control) {
+            within.addEventListener("change", function () {
+                sayCleared("");
+
+                var chosen = select.value;
+
+                if (!chosen || !within.value) {
+                    control.refresh();
+
+                    return;
+                }
+
+                var parameters = new URLSearchParams();
+
+                parameters.set("structureId", structureId);
+                parameters.set("q", "");
+                parameters.set("take", "1");
+                parameters.set("within", within.value);
+                parameters.set("check", chosen);
+
+                if (asAt) {
+                    parameters.set("asAt", asAt);
+                }
+
+                if (childType) {
+                    parameters.set("childType", childType);
+                }
+
+                picker.fetchJson(
+                    url + "?" + parameters.toString(),
+                    function (answer) {
+                        if (answer && answer.checkInScope === false) {
+                            control.clear();
+                            sayCleared(strings.cleared || "");
+                        }
+
+                        control.refresh();
+                    },
+                    // The server could not be asked. The choice is left exactly as it was rather
+                    // than cleared on a guess: dropping a unit because a request failed would be
+                    // the control losing somebody's work over a dropped packet.
+                    function () { control.refresh(); });
+            });
+        }
+
+        // Typing a new unit after the scope cleared one means the note has stopped being true.
+        select.addEventListener("change", function () { sayCleared(""); });
 
         // The effective date decides which units are active, so a form that changes it changes what
         // may be chosen. Re-asked rather than left stale, because a unit that closed before the new

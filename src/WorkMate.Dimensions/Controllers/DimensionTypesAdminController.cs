@@ -177,6 +177,11 @@ public sealed class DimensionTypesAdminController : Controller
             model.ToAttributeSchema(),
             model.AllowsSelfNesting,
             model.ToMenu(),
+
+            // Null, which leaves the stored role alone. The screen shows the role read-only and
+            // does not post it: it is set by the recipe that ships the dimension, and a save from
+            // a form that never offered it must not demote a tenant's Position dimension.
+            standardRole: null,
             cancellationToken);
 
         if (!result.IsAuthorised)

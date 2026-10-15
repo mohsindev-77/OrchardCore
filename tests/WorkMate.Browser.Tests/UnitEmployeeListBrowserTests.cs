@@ -42,7 +42,9 @@ public sealed class UnitEmployeeListBrowserTests
 
         await Assertions.Expect(civil).ToBeVisibleAsync();
 
-        var count = civil.Locator(".designer-card-employees-link");
+        // The card, not the node: a node contains its children's cards too, and Civil has positions
+        // under it since slice F5+F7. See DesignerTree.Card.
+        var count = DesignerTree.Card(page, "Civil").Locator(".designer-card-employees-link");
 
         // The count says fourteen before it is pressed, which is the number the next screen has to
         // agree with.

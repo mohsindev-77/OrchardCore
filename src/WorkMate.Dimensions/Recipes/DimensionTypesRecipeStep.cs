@@ -70,6 +70,7 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
             var batch = _validator.BeginBatch();
             var errors = new List<string>();
             var toCreate = new List<DimensionTypeStepEntry>();
+            var toFill = new List<DimensionTypeStepEntry>();
 
             foreach (var type in model.Types)
             {
@@ -83,8 +84,12 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
                     {
                         errors.Add(S["Dimension type '{0}' already exists with different content: {1}.", type.Code, string.Join("; ", differences)].Value);
                     }
+                    else if (FillsTheMenuOrderGap(existing, type))
+                    {
+                        toFill.Add(type);
+                    }
 
-                    // Matches exactly: nothing to validate or create for this row.
+                    // Matches, or matches but for a gap to fill: nothing to validate or create.
                     continue;
                 }
 
@@ -102,6 +107,46 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
                 return;
             }
 
+            // The gaps first. Each goes through IDimensionTypeService.UpdateAsync rather than a
+            // direct document write, so it is validated and audited exactly as an administrator's
+            // own edit on the Dimension types screen would be — and it changes nothing except the
+            // one field, because every other argument is read back from the type as it stands.
+            // The same shape StructuresRecipeStep uses for its own gap.
+            foreach (var type in toFill)
+            {
+                var existing = await _dimensionTypeService.GetByCodeAsync(type.Code);
+
+                if (existing is null)
+                {
+                    continue;
+                }
+
+                var filled = await _dimensionTypeService.UpdateAsync(
+                    existing.DimensionTypeId,
+                    existing.Name,
+                    existing.AttributeSchema,
+                    existing.AllowsSelfNesting,
+                    new DimensionTypeMenu(
+                        existing.ShowInMenu,
+                        existing.PluralName,
+                        type.MenuOrder ?? existing.MenuOrder),
+
+                    // Null, so a row that says nothing about the role leaves it alone. Filling one
+                    // gap must not be a way of quietly restating everything else.
+                    standardRole: null);
+
+                if (!filled.Succeeded)
+                {
+                    RecipeStepFailures.Throw(
+                        context,
+                        filled.Errors.Count > 0
+                            ? filled.Errors.Select(error => error.Message.Value)
+                            : [S["'{0}' could not be updated.", type.Code].Value]);
+
+                    return;
+                }
+            }
+
             foreach (var type in toCreate)
             {
                 var result = await _dimensionTypeService.CreateAsync(
@@ -109,7 +154,8 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
                     new BilingualText(type.NameEn, type.NameAr),
                     type.ToAttributeSchema(),
                     type.AllowsSelfNesting,
-                    menu: type.ToMenu());
+                    menu: type.ToMenu(),
+                    standardRole: type.Role);
 
                 if (!result.Succeeded)
                 {
@@ -178,13 +224,68 @@ internal sealed class DimensionTypesRecipeStep : IRecipeStepHandler
             differences.Add($"showInMenu is {existing.ShowInMenu} in the tenant but {showInMenu} in the recipe");
         }
 
-        if (type.MenuOrder is { } menuOrder && existing.MenuOrder != menuOrder)
+        // Menu order, and the one place this step departs from "different means fail".
+        //
+        // ADR-0008's 14 October addendum: a stored zero is the absence of an answer rather than a
+        // different one. The field arrived with slice F2, so no tenant created before it could have
+        // authored a value, and zero is what every type born before it deserialises to. A row that
+        // states an order against a tenant holding zero is therefore filling a gap, not overwriting
+        // a decision — see FillsTheMenuOrderGap, which carries the argument and its one risk.
+        if (type.MenuOrder is { } menuOrder &&
+            existing.MenuOrder != menuOrder &&
+            existing.MenuOrder != UnorderedMenuPosition)
         {
             differences.Add($"menuOrder is {existing.MenuOrder} in the tenant but {menuOrder} in the recipe");
         }
 
+        // The role, under the same rule again: a recipe written before roles existed states none
+        // and must not refuse a re-run against a tenant whose Position dimension has since been
+        // given one.
+        if (type.Role is { } role && existing.StandardRole != role)
+        {
+            differences.Add($"role is {existing.StandardRole} in the tenant but {role} in the recipe");
+        }
+
         return differences;
     }
+
+    /// <summary>
+    /// The menu order a type has when nobody has given it one. <c>DimensionTypeMenu.Default</c>'s.
+    /// </summary>
+    private const int UnorderedMenuPosition = 0;
+
+    /// <summary>
+    /// Whether this row is filling in a menu order the tenant has never had, rather than changing
+    /// one it holds. ADR-0008's 14 October addendum.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this exists for.</b> <c>MenuOrder</c> arrived with slice F2. Every dimension
+    /// type created before it deserialises to zero, and the demo recipes were then given orders —
+    /// so re-applying one of them to a tenant built from its earlier version failed on every row at
+    /// once: <em>menuOrder is 0 in the tenant but 10 in the recipe</em>. The recipes that most need
+    /// re-applying, because they are how a tenant gets new demo content, are exactly the ones this
+    /// refused.
+    ///
+    /// <b>Why zero is read as "nobody said".</b> It is the value the field was born with, and the
+    /// field did not exist when those types were created, so no customer can have chosen it there.
+    /// That is the same argument <c>Migrations.UpdateFrom11Async</c> makes for back-filling an
+    /// unauthored plural, and the same one ADR-0008's 11 October addendum makes for an empty
+    /// employee-attachment set.
+    ///
+    /// <b>The risk, stated rather than hidden.</b> Zero is also a legitimate order somebody could
+    /// type on the Dimension types screen to put a dimension first, and this cannot tell the two
+    /// apart. It is accepted because the cost of being wrong is a menu position a customer can
+    /// change in one field, while the cost of refusing is a recipe nobody can re-apply — and
+    /// because a tenant that has deliberately ordered its menu has almost certainly given the other
+    /// entries non-zero orders, which are compared and still refused.
+    ///
+    /// <b>Only the order.</b> A plural, a <c>showInMenu</c> or a role that differs is still a
+    /// difference, because for each of those the tenant's value is one somebody could have meant.
+    /// </remarks>
+    private static bool FillsTheMenuOrderGap(DimensionTypeDocument existing, DimensionTypeStepEntry type) =>
+        type.MenuOrder is { } menuOrder &&
+        menuOrder != UnorderedMenuPosition &&
+        existing.MenuOrder == UnorderedMenuPosition;
 
     private static bool SameAttribute(DimensionAttributeDefinition held, DimensionAttributeDefinition wanted) =>
         string.Equals(held.Name, wanted.Name, StringComparison.Ordinal) &&
@@ -246,6 +347,21 @@ internal sealed class DimensionTypeStepEntry
     /// <summary>Where it sits among the others. Lower first.</summary>
     /// <inheritdoc cref="PluralEn" path="/remarks"/>
     public int? MenuOrder { get; set; }
+
+    /// <summary>
+    /// The part this dimension plays in the product: <c>Position</c>, <c>Grade</c> or absent.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is how the product finds its Position and Grade dimensions</b> — declared by the
+    /// recipe that ships them, never guessed from a code or a name. <see cref="DimensionTypeRole"/>
+    /// sets out why each available guess is wrong, and a customer building their own grade
+    /// dimension states it here or on the Dimension types screen.
+    ///
+    /// Nullable under the same rule as <see cref="PluralEn"/>: absent says nothing, so a recipe
+    /// written before roles existed re-runs cleanly against a tenant whose Position dimension has
+    /// since been given one.
+    /// </remarks>
+    public DimensionTypeRole? Role { get; set; }
 
     /// <summary>
     /// The menu settings as the service's value, or null when the row states none of them.

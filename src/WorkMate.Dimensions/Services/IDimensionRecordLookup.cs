@@ -24,6 +24,19 @@ internal interface IDimensionRecordLookup
     Task<DimensionNodeRef?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The records with these ids, keyed by id. Undated. Ids with no record are absent.
+    /// </summary>
+    /// <remarks>
+    /// Batched <see cref="GetAsync"/>, added for the reference reads (D26 C): resolving a page of
+    /// positions' allowed grades one at a time is a query per grade per position, which is the
+    /// shape every other read in this module is batched to avoid. One <c>IN</c> list, called with
+    /// tens of ids — the same bound <c>CountEmployeesAtAsync</c> states for its own.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, DimensionNodeRef>> ListByIdsAsync(
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Every record of one dimension type, in sort order then by English name. Undated.
     /// </summary>
     /// <remarks>

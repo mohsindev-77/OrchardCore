@@ -49,6 +49,26 @@ public enum DimensionRecordOperation
     /// other one on this enum.
     /// </remarks>
     AliasChanged,
+
+    /// <summary>
+    /// The record's references of one kind were stated — today, a Position's allowed grades
+    /// (D26 C).
+    /// </summary>
+    /// <remarks>
+    /// <b>Appended, never inserted.</b> This enum is serialised into audit entries and
+    /// <c>System.Text.Json</c> writes an enum as its number unless told otherwise, so adding a
+    /// member anywhere but the end silently changes what every entry already written means. The
+    /// same contract <c>DimensionRule</c> states on its own last member.
+    ///
+    /// <b>Undated, like <see cref="AliasChanged"/>.</b> A reference has no effective range — see
+    /// <c>DimensionReferenceKinds</c> — so <c>EffectiveFrom</c> carries the day the change was
+    /// <em>made</em> rather than a date somebody chose.
+    ///
+    /// Audited because removing a grade is a change a reader may have to account for later: the
+    /// employee who holds it keeps it (D26 G), so the only record that it stopped being offered is
+    /// this one.
+    /// </remarks>
+    ReferencesChanged,
 }
 
 /// <summary>
@@ -114,6 +134,23 @@ public sealed class DimensionRecordAuditEvent
 
     /// <inheritdoc cref="AliasEnBefore"/>
     public string? AliasArAfter { get; set; }
+
+    /// <summary>
+    /// Which kind of reference changed, and the codes on either side. Set on
+    /// <see cref="DimensionRecordOperation.ReferencesChanged"/> only.
+    /// </summary>
+    /// <remarks>
+    /// By <b>code</b> rather than by id, for the reason <c>StructureState</c> writes its containment
+    /// map by code: an audit entry is read by a person, and a generated id tells them nothing about
+    /// which grade left the list.
+    /// </remarks>
+    public string? ReferenceKind { get; set; }
+
+    /// <inheritdoc cref="ReferenceKind"/>
+    public IReadOnlyList<string>? ReferencesBefore { get; set; }
+
+    /// <inheritdoc cref="ReferenceKind"/>
+    public IReadOnlyList<string>? ReferencesAfter { get; set; }
 }
 
 /// <summary>A record's bilingual name at one point in an audit entry.</summary>
@@ -205,6 +242,16 @@ public sealed class DimensionTypeState
     /// <summary>The attribute schema as <c>Name (Kind, required)</c>, so a reader sees it at a glance.</summary>
     public IReadOnlyList<string> AttributeSchema { get; set; } = [];
 
+    /// <summary>
+    /// The part this dimension plays in the product — Position, Grade or neither.
+    /// </summary>
+    /// <remarks>
+    /// Audited because changing it changes what two screens offer: demoting the Position dimension
+    /// empties the employee form's position drop-down, and nothing else on the type says so. Carried
+    /// as its name rather than its number, because an audit entry is read by a person.
+    /// </remarks>
+    public string StandardRole { get; set; } = nameof(DimensionTypeRole.None);
+
     public static DimensionTypeState Of(DimensionTypeDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -218,6 +265,7 @@ public sealed class DimensionTypeState
             AllowsSelfNesting = document.AllowsSelfNesting,
             ContentTypeName = document.ContentTypeName,
             RetiredOn = document.RetiredOn,
+            StandardRole = document.StandardRole.ToString(),
             AttributeSchema =
             [
                 .. document.AttributeSchema.Select(attribute =>

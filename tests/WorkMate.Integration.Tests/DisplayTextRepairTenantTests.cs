@@ -165,6 +165,13 @@ public sealed class DisplayTextRepairTenantTests
             }
 
             await RollBackAsync(session, DimensionsMigration, 6);
+
+            // And the tables a tenant at version 6 does not have, because rolling the number back
+            // is only half of being that tenant: the catch-up re-runs every later step, and one that
+            // creates a table fails on one that is already there — taking every other module's
+            // migration down with it, since UpdateAllFeaturesAsync is one transaction. The map is in
+            // DimensionSchema, shared precisely because this class is not the one that owns it.
+            await DimensionSchema.DropTablesCreatedAfterAsync(services, 6);
         });
 
         await InTenantAsSystemAsync(async services =>

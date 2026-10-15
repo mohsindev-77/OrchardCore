@@ -56,7 +56,7 @@ public sealed class EmployeePickerSelectionBrowserTests
 
         await page.ClickAsync("#unit-head-set button[type='submit']");
 
-        await Assertions.Expect(DesignerTree.Node(page, "Site Team A").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Site Team A").Locator(".designer-card-head"))
             .ToContainTextAsync(NameIn(chosen));
     }
 
@@ -77,7 +77,7 @@ public sealed class EmployeePickerSelectionBrowserTests
 
         await page.ClickAsync("#unit-head-set button[type='submit']");
 
-        await Assertions.Expect(DesignerTree.Node(page, "Site Team B").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Site Team B").Locator(".designer-card-head"))
             .ToContainTextAsync(NameIn(chosen));
     }
 

@@ -1,10 +1,40 @@
 # ADR-0021: Mapping is containment plus a cardinality, and it lives on the structure
 
-**Status:** accepted, **pending second review**. **Amended 13 October 2026 for a single parent
-(D19, D20, D21)** — see the amendment at the end, which is the part that governs.
-**Date:** 2026-10-12
+**Status: WITHDRAWN — superseded by D27 (14 October 2026). None of it was built.**
+**Date:** 2026-10-12 · withdrawn 2026-10-14
 **Deciders:** Project lead, on the product owner's confirmation of the design review of
-12 October 2026 (decisions D10, D12, D14), amended on the product owner's decisions D19 and D20
+12 October 2026 (decisions D10, D12, D14), amended on the product owner's decisions D19 and D20,
+**withdrawn on the product owner's decision D27**
+
+---
+
+## Withdrawal note — 14 October 2026
+
+**Slice F3 is dropped and this decision is withdrawn.** `docs/requirements/frs-v2.5-decisions.md`
+**D27** records it. Nothing here was ever built, so nothing is undone:
+`StructureDocument.Mappings`, `StructureMapping`, `MappingCardinality`, the Rule 3 check in
+`IDimensionValidator`, the `StructureIndex.MappingCount` migration and the Mapping screen do not
+exist in the repository and are not going to.
+
+**What stands instead.** The **containment map (ADR-0010) is the single source of truth** for which
+dimension may sit under which. It is read forwards by the Add form's *Place under* picker and the
+organisation designer, and backwards by `IDimensionValidator`, through the one implementation in
+`ContainmentRules.Decide`. A parent is **optional** on every dimension; a value with none is the
+unplaced state, which the engine already models and the unplaced panel already reports with a
+reason. **FRS Rule 3's obligation is not built. Rule 4 is unaffected.**
+
+**The text below is kept, not deleted**, for the reason ADR-0020's is. Two arguments in it are
+correct whatever happens next and would otherwise have to be made again:
+
+- **why obligation cannot be a second state on a containment cell** — the self-nesting diagonal is a
+  permitted pairing and must never become a question on a form; and
+- **why Rule 3 would govern the Add form rather than the existence of a row** — an import, a retired
+  parent and a deliberate move off the tree all legitimately produce a value with no parent, and
+  refusing to *store* one would break all three.
+
+If required parents are ever asked for again, start here.
+
+---
 
 ## Context
 

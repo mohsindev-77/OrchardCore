@@ -39,8 +39,9 @@ namespace WorkMate.Integration.Tests;
 /// </list>
 ///
 /// <b>All four recipes are loaded</b> — base, Zenith, Crescent and the demo sample — which is the
-/// exact configuration that produced <em>Departments, Departments, Departments</em>. Twelve types,
-/// eight entries.
+/// exact configuration that produced <em>Departments, Departments, Departments</em>. Fourteen
+/// types, ten entries — eight, plus the Position and Grade dimensions the base recipe ships (D26).
+///
 ///
 /// <b>Both languages, here rather than only in the browser suite.</b> The order used to come from
 /// <c>LocalizedString.PrefixPosition()</c>, which sorts by the caption, so an Arabic reader got a
@@ -77,7 +78,7 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
     public Task DisposeAsync() => _tenant.DisposeAsync();
 
     /// <summary>
-    /// Twelve dimension types, eight menu entries, and <em>Departments</em> appears exactly once.
+    /// Fourteen dimension types, ten menu entries, and <em>Departments</em> appears exactly once.
     /// </summary>
     /// <remarks>
     /// <b>This is the tenant that produced the complaint, and this is the assertion that answers
@@ -93,21 +94,24 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
 
             types.Select(type => type.Code).Should().BeEquivalentTo(
                 [
-                    "cost-centre",
+                    "position", "grade", "cost-centre",
                     "zenith-division", "zenith-department", "zenith-project", "zenith-team",
                     "crescent-division", "crescent-department", "crescent-region", "crescent-branch",
                     "demo-division", "demo-department", "demo-section",
                 ],
-                "twelve types: the base recipe's one, Zenith's four, Crescent's four and the sample's three");
+                "fourteen types: the base recipe's three — Cost centre, and the Position and Grade "
+                + "dimensions slice F5+F7 ships (D26) — Zenith's four, Crescent's four and the "
+                + "sample's three. Zenith's OWN Position and Grade types are a second recipe, "
+                + "organisation-designer-zenith-positions, which this tenant does not apply");
 
             var captions = await DimensionCaptionsAsync(services);
 
             captions.Should().Equal(
                 [
                     "Divisions", "Departments", "Projects", "Teams",
-                    "Regions", "Branches", "Cost centres", "Sections",
+                    "Positions", "Grades", "Regions", "Branches", "Cost centres", "Sections",
                 ],
-                "Division min(10, 60, 110), Department min(20, 70, 120), then 40, 50, 75, 80, 90, 130");
+                "Division min(10, 60, 110), Department min(20, 70, 120), then 40, 50, 60, 70, 75, 80, 90, 130");
 
             captions.Should().OnlyHaveUniqueItems("one entry per dimension name, and one name per entry");
         });
@@ -178,7 +182,7 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
             var arabic = await DimensionOrderAsync(services, new CultureInfo("ar"));
 
             english.Should().Equal(
-                ["division", "department", "project", "team", "region", "branch", "cost centre", "section"]);
+                ["division", "department", "project", "team", "position", "grade", "region", "branch", "cost centre", "section"]);
 
             arabic.Should().Equal(english, "the order is a number, not an alphabetisation");
         });
@@ -572,7 +576,10 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
             organisation[^1].Text.Value.Should().Be("Settings");
 
             organisation[^1].Items.Select(item => item.Text.Value).Should().Equal(
-                ["Dimension types", "Structures"], "Mapping's position is reserved for slice F3");
+                ["Dimension types", "Structures"],
+                "Settings holds two entries and no third: the Mapping screen is dropped (D27) and "
+                + "ADR-0021 is withdrawn, so the containment map on the Structures editor is the "
+                + "single authority on what may sit under what");
 
             organisation.Take(organisation.Count - 1).Select(item => item.Text.Value)
                 .Should().NotContain("Settings");
@@ -617,11 +624,13 @@ public sealed class OrganisationMenuTenantTests : IAsyncLifetime, IDisposable
             .Where(href => href.Contains("/Dimensions/Records/Index", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        lists.Distinct().Should().HaveCount(8, "one list screen per dimension name");
+        lists.Distinct().Should().HaveCount(10, "one list screen per dimension name");
 
         lists.Should().HaveCount(
-            9,
-            "eight 'All …' links plus the one 'Show all' this tenant earns: seventeen Departments");
+            11,
+            "ten 'All …' links plus the one 'Show all' this tenant earns: seventeen Departments. "
+            + "Grades earns none here — the seventeen Zenith grades are a second recipe this tenant "
+            + "does not apply, so the base dimension's are the only ones and there are none");
 
         hrefs.Where(href => href.Contains("/Dimensions/Records/Details", StringComparison.OrdinalIgnoreCase))
             .Should().NotBeEmpty("a value in the menu opens its own page");

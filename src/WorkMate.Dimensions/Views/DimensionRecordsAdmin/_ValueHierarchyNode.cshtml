@@ -58,7 +58,14 @@
             </div>
 
             <div class="designer-card-meta">
-                @if (!string.IsNullOrWhiteSpace(Model.TypeName))
+                @* On a reporting chart the dimension reads "Position" on every box and says
+                   nothing; the unit is what tells two posts called Supervisor apart. So the unit
+                   replaces it where there is one. *@
+                @if (!string.IsNullOrWhiteSpace(Model.UnitName))
+                {
+                    <span class="designer-card-type value-hierarchy-unit">@Model.UnitName</span>
+                }
+                else if (!string.IsNullOrWhiteSpace(Model.TypeName))
                 {
                     <span class="designer-card-type">@Model.TypeName</span>
                 }
@@ -72,14 +79,31 @@
                 </div>
             }
 
-            @* The roll-up, with the unit's own count on hover — the number somebody scanning a
-               chart wants is everything beneath, and the one they occasionally need is how many of
-               those are here. Not a link: this chart is read-only (D25), and the value's own page
-               is one click away through the name above it. *@
-            <span class="designer-card-employees value-hierarchy-employees"
-                  title="@AsText(T.Plural(Model.EmployeeCount, "{0} directly", "{0} directly", Model.EmployeeCount))">
-                @Model.EmployeeCountIncludingSubUnits
-            </span>
+            @if (Model.Establishment is { } establishment)
+            {
+                @* A REPORTING CHART CARRIES filled/approved, NOT A HEADCOUNT (D26 E). An assignment
+                   names the organisation axis, so every employee number on this chart is zero, and a
+                   badge reading 0 on every box would be worse than none. Green when the post is
+                   full, amber when there is a vacancy — that way round, because a reader scanning a
+                   reporting chart is looking for the gaps. *@
+                <span class="designer-card-employees value-hierarchy-establishment badge @(establishment.IsFull ? "text-bg-success" : "text-bg-warning")"
+                      data-approved="@establishment.Approved"
+                      data-filled="@establishment.Filled"
+                      title="@AsText(T["{0} filled of {1} approved", establishment.Filled, establishment.Approved])">
+                    @establishment.Filled/@establishment.Approved
+                </span>
+            }
+            else
+            {
+                @* The roll-up, with the unit's own count on hover — the number somebody scanning a
+                   chart wants is everything beneath, and the one they occasionally need is how many
+                   of those are here. Not a link: this chart is read-only (D25), and the value's own
+                   page is one click away through the name above it. *@
+                <span class="designer-card-employees value-hierarchy-employees"
+                      title="@AsText(T.Plural(Model.EmployeeCount, "{0} directly", "{0} directly", Model.EmployeeCount))">
+                    @Model.EmployeeCountIncludingSubUnits
+                </span>
+            }
         </div>
     </div>
 

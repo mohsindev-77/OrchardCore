@@ -71,6 +71,11 @@ public sealed class DemoCompanyRecipesTenantTests
 
                 ("zenith-div-corporate", "zenith-dept-finance"),
                 ("zenith-div-corporate", "zenith-dept-hr"),
+
+                // No positions. They are a second recipe — organisation-designer-zenith-positions
+                // — which also extends this axis with the level they need. This file is about the
+                // organisation the main recipe builds; PositionsTenantTests applies both and
+                // asserts the chart they make together.
             ]);
 
             // The attribute values the Project schema declares, which ADR-0011's addendum made

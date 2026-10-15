@@ -1,6 +1,7 @@
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Services;
 using YesSql;
+using YesSql.Services;
 
 namespace WorkMate.Dimensions.Internal.Lookups;
 
@@ -32,6 +33,33 @@ internal sealed class DimensionRecordLookup : IDimensionRecordLookup
             .FirstOrDefaultAsync(cancellationToken);
 
         return row is null ? null : DimensionNodeRef.FromIndex(row);
+    }
+
+    public async Task<IReadOnlyDictionary<string, DimensionNodeRef>> ListByIdsAsync(
+        IReadOnlyList<string> recordIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(recordIds);
+
+        var ids = recordIds.Distinct(StringComparer.Ordinal).ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Dictionary<string, DimensionNodeRef>(StringComparer.Ordinal);
+        }
+
+        var rows = await _session
+            .QueryIndex<DimensionRecordPartIndex>(index => index.ContentItemId.IsIn(ids) && index.Latest)
+            .ListAsync(cancellationToken);
+
+        var records = new Dictionary<string, DimensionNodeRef>(StringComparer.Ordinal);
+
+        foreach (var row in rows)
+        {
+            records[row.ContentItemId] = DimensionNodeRef.FromIndex(row);
+        }
+
+        return records;
     }
 
     public async Task<IReadOnlyList<DimensionNodeRef>> ListByTypeAsync(

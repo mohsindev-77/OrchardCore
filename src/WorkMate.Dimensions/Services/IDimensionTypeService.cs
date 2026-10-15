@@ -26,6 +26,11 @@ public interface IDimensionTypeService
     /// <see cref="DimensionTypeMenu.Default"/>: shown, no authored plural, unordered — so the entry
     /// reads as the singular until somebody authors a plural.
     /// </param>
+    /// <param name="standardRole">
+    /// The part this dimension plays in the product — Position, Grade, or neither. Null means
+    /// <see cref="DimensionTypeRole.None"/>, which is what almost every type is. Declared rather
+    /// than derived; <see cref="DimensionTypeRole"/> gives the argument.
+    /// </param>
     Task<DimensionResult<DimensionTypeDocument>> CreateAsync(
         string code,
         BilingualText name,
@@ -34,6 +39,7 @@ public interface IDimensionTypeService
         bool isSystemDefined = false,
         DimensionValidationBatch? batch = null,
         DimensionTypeMenu? menu = null,
+        DimensionTypeRole? standardRole = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -47,12 +53,18 @@ public interface IDimensionTypeService
     /// same rule <c>allowsSelfNesting</c> is carried through a save under, and the same rule
     /// <c>StructureShape.EmployeeAttachableDimensionTypeIds</c> states for its own nullable.
     /// </param>
+    /// <param name="standardRole">
+    /// As on <see cref="CreateAsync"/>, with the same difference <paramref name="menu"/> has:
+    /// <b>null leaves the stored role exactly as it is</b>. A caller that is not describing the role
+    /// must not silently demote a tenant's Position dimension to an ordinary one.
+    /// </param>
     Task<DimensionResult<DimensionTypeDocument>> UpdateAsync(
         string dimensionTypeId,
         BilingualText name,
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
         DimensionTypeMenu? menu = null,
+        DimensionTypeRole? standardRole = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -286,7 +286,14 @@ public sealed class UnitPickerTagHelper : TagHelper
         markup.Append(
             CultureInfo.InvariantCulture,
             $"</select><div class=\"form-text\">"
-            + $"{Encode(S["Narrows the units offered to those at or below the one chosen."].Value)}</div></div>");
+            + $"{Encode(S["Narrows the units offered to those at or below the one chosen."].Value)}</div>");
+
+        // Where the control says it dropped a choice the new scope contradicts. Rendered empty and
+        // hidden: it only ever has something to say after somebody has changed the scope, which
+        // only happens with the script. Inside the Within row, next to the control that caused it.
+        markup.Append(
+            CultureInfo.InvariantCulture,
+            $"<div class=\"form-text text-warning\" data-unit-picker-cleared hidden></div></div>");
 
         return markup.ToString();
     }
@@ -333,6 +340,10 @@ public sealed class UnitPickerTagHelper : TagHelper
         ["all"] = S["Showing all {0}."].Value,
         ["chosen"] = S["Chosen: {0}"].Value,
         ["unresolved"] = S["Choose a unit from the list, or clear the box."].Value,
+
+        // Said out loud when narrowing the scope drops a choice. A control that silently emptied
+        // itself would leave the reader to save a form they believed still named a unit.
+        ["cleared"] = S["The unit you had chosen is not inside that scope, so it has been cleared. Choose one from the narrowed list, or set Within back to anywhere."].Value,
     });
 
     private static string Encode(string value) => WebUtility.HtmlEncode(value);

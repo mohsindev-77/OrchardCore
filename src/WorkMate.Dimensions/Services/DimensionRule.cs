@@ -177,4 +177,25 @@ public enum DimensionRule
     /// grouping comments above are for a reader; the order is a contract.
     /// </remarks>
     InvalidValue,
+
+    /// <summary>
+    /// A reference points at something this kind of reference may not point at, or is held by a
+    /// record that may not hold one. Decision D26 C — a Position's allowed grades.
+    /// </summary>
+    /// <remarks>
+    /// A reference gets none of the containment map's protection, because it is not a parent: no
+    /// structure declares it, nothing in the closure constrains it, and the pickers that offer it
+    /// are the only other thing standing between a position and a reference to a department. So the
+    /// rule is stated here and enforced in the validator, which is what makes the form, the recipe
+    /// and F6's employee screen refuse it in the same words.
+    ///
+    /// Also carries the employee rule of D26 G: a grade that is not one of the chosen position's
+    /// allowed grades. It is the same statement read from the other end — <em>this pointer is not
+    /// one this thing may hold</em> — and giving it a second member would mean two rules a caller
+    /// has to branch on to mean one thing.
+    ///
+    /// <b>Appended, never inserted</b>, for the reason <see cref="InvalidValue"/> gives: this enum
+    /// is serialised into audit entries by number.
+    /// </remarks>
+    ReferenceNotPermitted,
 }

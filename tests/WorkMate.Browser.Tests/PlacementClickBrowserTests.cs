@@ -195,7 +195,9 @@ public sealed class PlacementClickBrowserTests
         var siteA = DesignerTree.Node(page, "Site Team A");
 
         await Assertions.Expect(siteA).ToBeVisibleAsync();
-        await siteA.Locator(".designer-card-employees-link").ClickAsync();
+        // The card, not the node — see DesignerTree.Card. Site Team A is a leaf today and this was
+        // green for as long as it was; the distinction is what stops that being luck.
+        await DesignerTree.Card(page, "Site Team A").Locator(".designer-card-employees-link").ClickAsync();
 
         await Assertions.Expect(page.Locator("#employee-unit-heading"))
             .ToContainTextAsync("Employees in Site Team A");

@@ -97,6 +97,44 @@ public sealed class UnchangedScreensTenantTests
     }
 
     /// <summary>
+    /// The four Position columns appear on no other dimension's list. Decisions D25 and D26 E.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one place slice F5+F7 was allowed to add to an "All <em>plural</em>" screen, and the
+    /// bound on it.</b> A position has an approved headcount, a filled count, a vacancy and a set of
+    /// grades; a cost centre has none of those, and four empty columns on every list would be
+    /// exactly the change D25 rules out. So the columns are conditioned on the dimension's declared
+    /// role, and this asserts the condition rather than the feature — which is the half that can be
+    /// lost by somebody simplifying an <c>@if</c>.
+    ///
+    /// Asserted on <b>Cost centre</b>, which the base recipe ships on every tenant, so this runs
+    /// without needing a position to exist at all.
+    /// </remarks>
+    [Fact]
+    public async Task ThePositionColumnsAppearOnNoOtherDimensionsList()
+    {
+        var html = await BaseTenantFixture.GetPageAsync(
+            _fixture.Administrator, "/Admin/Dimensions/Records/Index?group=cost%20centre");
+
+        var document = new HtmlParser().ParseDocument(html);
+
+        document.QuerySelector("#record-list-heading").Should().NotBeNull("it is still the dimension list");
+
+        foreach (var cell in new[] { "record-approved", "record-filled", "record-vacant", "record-allowed-grades" })
+        {
+            document.QuerySelectorAll("." + cell).Should().BeEmpty(
+                "'{0}' belongs to the Positions list, and a cost centre has no establishment", cell);
+        }
+
+        var headings = document.QuerySelectorAll("#record-list thead th")
+            .Select(heading => heading.TextContent.Trim())
+            .ToList();
+
+        headings.Should().NotContain("Approved");
+        headings.Should().NotContain("Allowed grades");
+    }
+
+    /// <summary>
     /// The organisation designer still renders editable cards with their action menus.
     /// </summary>
     /// <remarks>

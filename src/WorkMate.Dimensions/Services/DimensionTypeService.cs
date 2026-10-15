@@ -143,6 +143,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         bool isSystemDefined = false,
         DimensionValidationBatch? batch = null,
         DimensionTypeMenu? menu = null,
+        DimensionTypeRole? standardRole = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -201,6 +202,11 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             ShowInMenu = entry.ShowInMenu,
             PluralName = entry.PluralName,
             MenuOrder = entry.MenuOrder,
+
+            // Null means None, which is what almost every type is. Declared rather than derived —
+            // DimensionTypeRole sets out why a code, a name and a menu group are each the wrong
+            // thing to read it off.
+            StandardRole = standardRole ?? DimensionTypeRole.None,
         };
 
         await _session.SaveCheckedAsync(document, cancellationToken);
@@ -221,6 +227,7 @@ internal sealed class DimensionTypeService : IDimensionTypeService
         IReadOnlyList<DimensionAttributeDefinition> attributeSchema,
         bool allowsSelfNesting,
         DimensionTypeMenu? menu = null,
+        DimensionTypeRole? standardRole = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -309,6 +316,14 @@ internal sealed class DimensionTypeService : IDimensionTypeService
             document.ShowInMenu = menu.ShowInMenu;
             document.PluralName = menu.PluralName;
             document.MenuOrder = menu.MenuOrder;
+        }
+
+        // The role, under the same rule and for a sharper reason: a caller that says nothing must
+        // not quietly demote a tenant's Position dimension to an ordinary one, which would empty
+        // the employee form's two drop-downs with nothing on screen to say why.
+        if (standardRole is not null)
+        {
+            document.StandardRole = standardRole.Value;
         }
 
         await _session.SaveCheckedAsync(document, cancellationToken);

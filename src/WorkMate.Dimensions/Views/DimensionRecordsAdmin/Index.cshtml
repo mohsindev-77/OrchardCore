@@ -292,6 +292,16 @@ else
                     <th scope="col">@T["Parent"]</th>
                     <th scope="col">@T["Status"]</th>
                     <th scope="col" class="text-end">@T["Employees"]</th>
+                    @* Decision D26 E, on a Positions screen only — and on no other dimension's,
+                       which is what keeps D25's "the All <plural> screens do not change" true.
+                       UnchangedScreensTenantTests asserts their absence everywhere else. *@
+                    @if (Model.ShowsEstablishment)
+                    {
+                        <th scope="col" class="text-end">@T["Approved"]</th>
+                        <th scope="col" class="text-end">@T["Filled"]</th>
+                        <th scope="col" class="text-end">@T["Vacant"]</th>
+                        <th scope="col">@T["Allowed grades"]</th>
+                    }
                     @foreach (var column in Model.ShownColumns)
                     {
                         <th scope="col">@column.Label</th>
@@ -426,6 +436,32 @@ else
                                 <span class="text-muted"></span>
                             }
                         </td>
+                        @if (Model.ShowsEstablishment)
+                        {
+                            var establishment = row.Establishment ?? PositionEstablishment.Unfilled;
+
+                            <td class="text-end record-approved">@establishment.Approved</td>
+                            <td class="text-end record-filled">@establishment.Filled</td>
+                            <td class="text-end record-vacant">
+                                @* Negative is shown rather than clamped: an over-established post is
+                                   the one condition this number exists to surface, and clamping to
+                                   zero would hide it behind a figure that looks correct. D26 E. *@
+                                <span class="@(establishment.Vacant < 0 ? "text-danger" : null)">@establishment.Vacant</span>
+                            </td>
+                            <td class="record-allowed-grades">
+                                @if (row.AllowedGradeNames.Count == 0)
+                                {
+                                    @* A position with no grades is a post nobody can be given a
+                                       level in. Said rather than left blank, because blank reads as
+                                       "not loaded" next to three numbers that did load. *@
+                                    <span class="text-warning small">@T["None"]</span>
+                                }
+                                else
+                                {
+                                    <span dir="ltr" class="small">@string.Join(", ", row.AllowedGradeNames)</span>
+                                }
+                            </td>
+                        }
                         @foreach (var value in row.AttributeValues)
                         {
                             <td class="record-attribute">@value</td>

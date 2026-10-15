@@ -78,6 +78,10 @@ Organisation
         (Mapping)                  ← position reserved; slice F3
 ```
 
+> **Amended 14 October 2026 (D27).** There is no third entry under *Settings*. The Mapping screen is
+> dropped and ADR-0021 is withdrawn, so *Settings* holds **Dimension types** and **Structures** and
+> nothing else. Nothing else in this ADR changes.
+
 ### 1. Dimension types sharing an English singular name are one entry
 
 Grouped on `Name.En`, trimmed, case-insensitively — `DimensionMenuComposition.KeyOf`. The English

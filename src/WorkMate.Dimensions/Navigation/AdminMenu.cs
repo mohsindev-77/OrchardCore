@@ -27,7 +27,7 @@ namespace WorkMate.Dimensions.Navigation;
 ///     Settings
 ///         Dimension types
 ///         Structures
-///         Mapping                ← reserved; slice F3
+///         (no third entry — the Mapping screen is dropped, D27)
 /// </code>
 ///
 /// <b>This shipped once as one entry per dimension <em>type</em>, and the product owner withdrew it
@@ -153,7 +153,9 @@ internal sealed class AdminMenu : INavigationProvider
                     .Permission(Permissions.ManageStructures)
                     .LocalNav()));
 
-            // Position 3 under Settings is held for Mapping, which slice F3 builds.
+            // Settings holds two entries and no third. The Mapping screen that was reserved here
+            // is dropped (D27): the containment map on the Structures editor stays the single
+            // authority on what may sit under what, and ADR-0021 is withdrawn.
         });
     }
 

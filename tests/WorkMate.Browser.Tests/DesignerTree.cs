@@ -33,6 +33,27 @@ internal static class DesignerTree
             $"#designer-tree .designer-node:has(> .designer-card .designer-card-name:text-is('{nameEn}'))");
     }
 
+    /// <summary>
+    /// One unit's <em>own</em> card, by its English name — not its children's.
+    /// </summary>
+    /// <remarks>
+    /// <b>The other half of <see cref="Node"/>'s warning, and it cost a slice to learn.</b> That
+    /// one scopes to the right node; this is what a caller needs next. A node <em>contains</em> its
+    /// children's cards, so <c>Node(page, "Civil").Locator(".designer-card-head")</c> matches
+    /// Civil's head and every head beneath it, and Playwright refuses in strict mode — but only
+    /// once Civil has children. Every such assertion therefore passes for as long as the unit it
+    /// names is a leaf, and breaks on the day somebody puts something under it.
+    ///
+    /// That day was slice F5+F7, which gave Zenith's departments their positions: two assertions
+    /// that had been green since prompt 3 failed on a strict-mode violation naming three elements,
+    /// and neither said anything about the selector being the problem.
+    ///
+    /// <b>Use this for anything inside a card</b> — the head, the headcount link, the ⋯ menu — and
+    /// <see cref="Node"/> only for the node itself and its children.
+    /// </remarks>
+    public static ILocator Card(IPage page, string nameEn) =>
+        Node(page, nameEn).Locator("> .designer-card");
+
     /// <summary>Opens every branch, so the assertions see the whole tree rather than its top.</summary>
     /// <remarks>
     /// <b>Why this clicks an element handle rather than a locator.</b> A locator is a query, not an

@@ -61,6 +61,13 @@ public sealed class DimensionRecordsAdminController : Controller
     private readonly IDimensionGraphService _graph;
     private readonly IStructureService _structures;
     private readonly IEmployeeAssignmentService _assignments;
+
+    /// <summary>
+    /// The position-shaped reads: the reporting-line axis, whether a position can be placed yet,
+    /// and the three establishment figures the Positions list draws. Decisions D26 E and D26 F.
+    /// </summary>
+    private readonly IPositionService _positions;
+
     private readonly IEnumerable<IEmployeeLookup> _employeeLookups;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
@@ -74,6 +81,7 @@ public sealed class DimensionRecordsAdminController : Controller
         IDimensionGraphService graph,
         IStructureService structures,
         IEmployeeAssignmentService assignments,
+        IPositionService positions,
         IEnumerable<IEmployeeLookup> employeeLookups,
         IDimensionAuthorisation authorisation,
         IAuthorizationService authorizationService,
@@ -86,6 +94,7 @@ public sealed class DimensionRecordsAdminController : Controller
         _graph = graph;
         _structures = structures;
         _assignments = assignments;
+        _positions = positions;
         _employeeLookups = employeeLookups;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
@@ -193,6 +202,12 @@ public sealed class DimensionRecordsAdminController : Controller
             TreeTruncated = tree && found.Total > found.Items.Count,
             CanEdit = await CanEditAsync(),
             CanViewEmployees = await CanViewEmployeesAsync(),
+
+            // Approved / Filled / Vacant and Allowed grades, on a Positions screen only. Asked of
+            // every type the screen is listing rather than of one, because a tenant with two
+            // companies has two Position types in one group and both are positions.
+            ShowsEstablishment = siblings.Count > 0 &&
+                siblings.All(type => type.StandardRole == DimensionTypeRole.Position),
 
             // The attribute columns are one type's own schema, so they are only offered when the
             // screen is about one type. Three Department types can declare three different schemas,
@@ -540,6 +555,18 @@ public sealed class DimensionRecordsAdminController : Controller
         var shown = model.ShownColumns;
         var rows = new List<DimensionRecordRowViewModel>();
 
+        // The three establishment figures and the grades, on a Positions screen only (D26 C, D26 E).
+        // Both reads are batched over the whole page; neither runs at all for any other dimension,
+        // which is what keeps decision D25's "the All <plural> screens do not change" true of them.
+        var establishment = model.ShowsEstablishment
+            ? await _positions.GetEstablishmentAsync(recordIds, asAt, cancellationToken)
+            : null;
+
+        var allowedGrades = model.ShowsEstablishment
+            ? await _records.GetReferenceSetsAsync(
+                recordIds, DimensionReferenceKinds.AllowedGrade, asAt, cancellationToken)
+            : null;
+
         // Which organisation each row belongs to, when the screen is showing more than one type's
         // records. The same rule the menu uses for its brackets: a type on exactly one chart is that
         // chart's, and a type on several has no single answer, so the cell stays empty rather than
@@ -579,6 +606,12 @@ public sealed class DimensionRecordsAdminController : Controller
                 EmployeeCount = counts.TryGetValue(record.RecordId, out var count) ? count : null,
                 Placements = placements.GetValueOrDefault(record.RecordId) ?? [],
                 AttributeValues = values,
+                Establishment = establishment?.GetValueOrDefault(record.RecordId),
+                AllowedGradeNames =
+                [
+                    .. (allowedGrades?.GetValueOrDefault(record.RecordId) ?? [])
+                        .Select(grade => BilingualDisplay.Name(grade.NameEn, grade.NameAr)),
+                ],
             });
         }
 
@@ -663,7 +696,25 @@ public sealed class DimensionRecordsAdminController : Controller
 
         var date = IsoDate.TryParse(asAt, out var parsed) ? parsed : await _authorisation.TodayAsync();
         var structures = await StructuresForAsync(type, cancellationToken);
-        var scope = ResolveStructure(structures, structureId);
+        var isPosition = type.StandardRole == DimensionTypeRole.Position;
+
+        // A position's page is ALWAYS about its reporting line, whatever the URL says.
+        //
+        // A position is on two axes (ADR-0028), and only one of them is a tree it is the parent of:
+        // on the organisation chart a post is a leaf under a department. A page scoped there has no
+        // section at all, which is what manual testing found — Manager Technology and Site
+        // Supervisor each have posts reporting to them and each drew nothing, because the reader
+        // had arrived from a list carrying the organisation's structureId. Defaulting to the
+        // reporting line only when nothing was asked for was not enough: every link into this page
+        // asks for something.
+        //
+        // Where the post sits in the business is not lost — it is the Placements row above, which
+        // names every axis. What is on the chart is who answers to it, which is the question this
+        // page exists to answer.
+        var scope = isPosition
+            ? await ReportingAxisAsync(structures, cancellationToken)
+            : ResolveStructure(structures, structureId);
+
         var siblings = await ResolveGroupAsync(type.DimensionTypeId, group: null, cancellationToken);
 
         var model = new DimensionRecordDetailsViewModel
@@ -700,6 +751,12 @@ public sealed class DimensionRecordsAdminController : Controller
             CanEdit = await CanEditAsync(),
             CanMove = await _authorizationService.AuthorizeAsync(User, Permissions.MoveDimensionRecords),
             CanViewEmployees = await CanViewEmployeesAsync(),
+
+            // Set here rather than after the reads below, because what the page shows at all — the
+            // Head row, the headcount, the Structure chooser, the section's heading — hangs off it.
+            IsPosition = isPosition,
+            IsGrade = type.StandardRole == DimensionTypeRole.Grade,
+            IsReportingAxis = isPosition && scope is not null,
         };
 
         var placements = new List<DimensionRecordPlacementViewModel>();
@@ -733,8 +790,13 @@ public sealed class DimensionRecordsAdminController : Controller
         // guess rather than a gap.
         if (scope is not null)
         {
-            if (await _assignments.GetHeadAsync(scope.StructureId, record.RecordId, date, cancellationToken)
-                is { } head)
+            // A head is a unit's, never a post's (ADR-0012): somebody heads Finance, and nobody
+            // "heads" the HR Manager position. Asking at all on a reporting line would always answer
+            // nothing, and the page would print "Head: Vacant" at a reader about a question that
+            // does not apply to what they are looking at.
+            if (!model.IsReportingAxis &&
+                await _assignments.GetHeadAsync(scope.StructureId, record.RecordId, date, cancellationToken)
+                    is { } head)
             {
                 var employee = await ResolveEmployeeAsync(head.EmployeeId, cancellationToken);
 
@@ -744,6 +806,20 @@ public sealed class DimensionRecordsAdminController : Controller
             }
 
             await FillUnitsBelowAsync(model, scope.StructureId, record, date, includeRetired, cancellationToken);
+
+            // The chain ABOVE, which the section below cannot show: it draws what is under this
+            // post, and a leaf of the reporting line would otherwise say nothing about where on the
+            // line it sits. One more ancestor-path read, on the axis the page is already about.
+            if (model.IsReportingAxis)
+            {
+                model.ReportsTo = await PathAboveAsync(
+                    scope.StructureId, record.RecordId, date, cancellationToken);
+            }
+        }
+
+        if (isPosition)
+        {
+            await FillOrganisationPathAsync(model, structures, record.RecordId, date, cancellationToken);
         }
 
         var values = (await _records.GetAttributeValuesAsync(record.RecordId, cancellationToken))
@@ -751,14 +827,197 @@ public sealed class DimensionRecordsAdminController : Controller
 
         model.Attributes =
         [
-            .. type.AttributeSchema.Select(definition => new DimensionRecordAttributeViewModel(
-                BilingualText.Display(definition.Label.En, definition.Label.Ar),
-                values.TryGetValue(definition.Name, out var value)
-                    ? BilingualText.Display(value.Value, value.ValueAr)
-                    : string.Empty)),
+            // Approved headcount is not listed as an attribute on a position: it is the first
+            // number of the Headcount row, and printing it again under its raw label would be one
+            // figure twice under two names. It stays an ordinary attribute everywhere else,
+            // including on the editor that sets it — this hides a row, not a field.
+            .. type.AttributeSchema
+                .Where(definition => !isPosition || !string.Equals(
+                    definition.Name,
+                    PositionEstablishment.ApprovedHeadcountAttribute,
+                    StringComparison.Ordinal))
+                .Select(definition => new DimensionRecordAttributeViewModel(
+                    BilingualText.Display(definition.Label.En, definition.Label.Ar),
+                    values.TryGetValue(definition.Name, out var value)
+                        ? BilingualText.Display(value.Value, value.ValueAr)
+                        : string.Empty)),
         ];
 
+        // A grade's page says which positions allow it (D26 C). Off the type's declared role, never
+        // off its code or its name — DimensionTypeRole sets out why both of those break. Both roles
+        // were read onto the model above, where the page's shape is decided.
+        if (model.IsGrade)
+        {
+            await FillUsedByPositionsAsync(model, record.RecordId, date, cancellationToken);
+        }
+
+        if (model.IsPosition)
+        {
+            // The same three numbers the Positions list draws, from the same read (D26 E), and the
+            // grades beside them (D26 C) — on the page somebody opened to find out about this post
+            // rather than only as a badge on a chart.
+            model.Establishment = (await _positions.GetEstablishmentAsync(
+                [record.RecordId], date, cancellationToken)).GetValueOrDefault(record.RecordId);
+
+            model.AllowedGrades =
+            [
+                .. (await _positions.GetAllowedGradesAsync(record.RecordId, date, cancellationToken))
+                    .Select(grade => new DimensionRecordReferrerViewModel(
+                        grade.RecordId,
+                        grade.Code,
+                        BilingualDisplay.Name(grade.NameEn, grade.NameAr),
+                        UnitName: string.Empty)),
+            ];
+        }
+
         return View(model);
+    }
+
+    /// <summary>One ancestor path, root first, as linked steps.</summary>
+    private async Task<IReadOnlyList<DimensionRecordReportsToViewModel>> PathAboveAsync(
+        string structureId,
+        string recordId,
+        DateOnly date,
+        CancellationToken cancellationToken) =>
+        [
+            .. ((await _graph.GetAncestorPathsAsync(
+                structureId, [recordId], date, cancellationToken))
+                .GetValueOrDefault(recordId) ?? [])
+                .Select(above => new DimensionRecordReportsToViewModel(
+                    above.RecordId, BilingualDisplay.Name(above.NameEn, above.NameAr))),
+        ];
+
+    /// <summary>
+    /// Where a position sits in the business, and what to call the row that says so.
+    /// </summary>
+    /// <remarks>
+    /// <b>The organisation axis, found by elimination.</b> A Position type is a level of its
+    /// reporting line and of whatever chart a customer has allowed it on; the one that is not a
+    /// reporting line is the one this row is about. Asked of each axis's shape rather than its code,
+    /// for the reason <see cref="ReportingAxisAsync"/> gives.
+    ///
+    /// <b>The label is the parent's own dimension</b> — <em>Department</em> on Zenith — rather than
+    /// a fixed caption. A structure decides what may contain a position, so another tenant's answer
+    /// is Division or Section, and FRS Rule 6 lets any of them be renamed. A hard-coded
+    /// "Department" would be right for the demo and wrong for a customer.
+    /// </remarks>
+    private async Task FillOrganisationPathAsync(
+        DimensionRecordDetailsViewModel model,
+        IReadOnlyList<StructureChoiceViewModel> structures,
+        string recordId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        // The fallback caption, for a post that is placed nowhere and so has no parent dimension to
+        // be named after. Deliberately not the bare word "Organisation": the list screen already
+        // uses that msgid for the demo-company column and translates it المنظمة, and a second
+        // context-less entry meaning "the org chart" is the duplicate-msgid collision that put the
+        // wrong Arabic on the Organisation menu once already.
+        model.OrganisationLabel = S["Organisation unit"].Value;
+
+        foreach (var choice in structures)
+        {
+            if (await _positions.IsReportingLineAsync(choice.StructureId, cancellationToken))
+            {
+                continue;
+            }
+
+            var path = await PathAboveAsync(choice.StructureId, recordId, date, cancellationToken);
+
+            if (path.Count == 0)
+            {
+                continue;
+            }
+
+            model.OrganisationPath = path;
+
+            // The immediate parent is the last step, and its dimension is what the row is called.
+            var parent = await _records.GetAsync(path[^1].RecordId, date, cancellationToken);
+
+            if (parent is not null &&
+                await _types.GetAsync(parent.DimensionTypeId, date, cancellationToken) is { } parentType)
+            {
+                model.OrganisationLabel = BilingualText.Display(parentType.Name.En, parentType.Name.Ar);
+            }
+
+            return;
+        }
+    }
+
+    /// <summary>
+    /// The reporting line among the charts a Position type is a level of, or null if it is on none.
+    /// </summary>
+    /// <remarks>
+    /// Asked of each axis's <em>shape</em> rather than its code, which is what
+    /// <see cref="IPositionService.IsReportingLineAsync"/> is for: the base recipe's axis is coded
+    /// <c>reporting-line</c> and Zenith's is <c>zenith-reporting</c>, and a tenant may have renamed
+    /// either. Null is a real answer — a tenant that has deleted its reporting line has positions
+    /// with nothing to draw — and the page says so rather than falling back to the organisation
+    /// chart, where every post is a leaf and the section would be silently empty.
+    /// </remarks>
+    private async Task<StructureChoiceViewModel?> ReportingAxisAsync(
+        IReadOnlyList<StructureChoiceViewModel> structures,
+        CancellationToken cancellationToken)
+    {
+        foreach (var choice in structures)
+        {
+            if (await _positions.IsReportingLineAsync(choice.StructureId, cancellationToken))
+            {
+                return choice;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The positions that allow this grade, with the unit each sits in. Decision D26 C.
+    /// </summary>
+    /// <remarks>
+    /// <b>Three reads, whatever the answer's size.</b> One indexed read of the references by target,
+    /// one batched ancestor-path read for the positions' units, and whatever the reference read
+    /// itself costs to hydrate — never one query per position, which is the rule every read on this
+    /// page already follows.
+    ///
+    /// The unit comes from the <em>primary organisation</em> axis rather than from whichever chart
+    /// the page happens to be scoped to: a grade is on the grades axis, so the page's own structure
+    /// scope is the wrong one to ask, and "where does this position sit in the business" has one
+    /// answer regardless of which screen is asking.
+    /// </remarks>
+    private async Task FillUsedByPositionsAsync(
+        DimensionRecordDetailsViewModel model,
+        string gradeRecordId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var positions = await _records.GetReferrersAsync(
+            gradeRecordId, DimensionReferenceKinds.AllowedGrade, date, cancellationToken);
+
+        if (positions.Count == 0)
+        {
+            return;
+        }
+
+        var organisation = await _structures.GetPrimaryOrganisationAsync(cancellationToken);
+
+        var paths = organisation is null
+            ? new Dictionary<string, IReadOnlyList<DimensionNodeRef>>(StringComparer.Ordinal)
+            : await _graph.GetAncestorPathsAsync(
+                organisation.StructureId,
+                [.. positions.Select(position => position.RecordId)],
+                date,
+                cancellationToken);
+
+        model.UsedByPositions =
+        [
+            .. positions.Select(position => new DimensionRecordReferrerViewModel(
+                position.RecordId,
+                position.Code,
+                BilingualDisplay.Name(position.NameEn, position.NameAr),
+                paths.TryGetValue(position.RecordId, out var ancestors) && ancestors.Count > 0
+                    ? BilingualDisplay.Name(ancestors[^1].NameEn, ancestors[^1].NameAr)
+                    : string.Empty)),
+        ];
     }
 
     /// <summary>
@@ -913,6 +1172,77 @@ public sealed class DimensionRecordsAdminController : Controller
             .ToList();
 
         model.Hierarchy = Nest(model.Tree, record, model.EmployeeCount ?? 0, root.Count);
+
+        // On a reporting line, the boxes carry filled/approved instead of a headcount (D26 E). An
+        // assignment names the organisation axis, so every employee number on this chart is zero —
+        // a badge reading 0 on every box would be worse than no badge, and the number a reader of a
+        // reporting chart actually wants is how full each post is.
+        if (model.Hierarchy is { } chart &&
+            await _positions.IsReportingLineAsync(structureId, cancellationToken))
+        {
+            await FillEstablishmentAsync(model, chart, date, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Puts the approved and filled figures on a reporting chart — on all three views. Decision
+    /// D26 E.
+    /// </summary>
+    /// <remarks>
+    /// One batched read for the whole chart, walked iteratively — the depth of a customer's
+    /// reporting line is their business, and a stack overflow on a deep one would be a crash rather
+    /// than a message. The same rule <c>Nest</c> follows for the same reason.
+    ///
+    /// <b>The flat rows are filled from the same dictionary as the boxes.</b> The Tree and List
+    /// views show a <em>Holders</em> column where an organisation chart shows employees, and a
+    /// second read for it would be a second answer that could disagree with the chart's — the drift
+    /// <c>Nest</c> exists to prevent, arriving by another route.
+    /// </remarks>
+    private async Task FillEstablishmentAsync(
+        DimensionRecordDetailsViewModel model,
+        DimensionRecordHierarchyNodeViewModel root,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var boxes = new List<DimensionRecordHierarchyNodeViewModel>();
+        var pending = new Stack<DimensionRecordHierarchyNodeViewModel>([root]);
+
+        while (pending.Count > 0)
+        {
+            var box = pending.Pop();
+
+            boxes.Add(box);
+
+            foreach (var child in box.Children)
+            {
+                pending.Push(child);
+            }
+        }
+
+        var ids = boxes.Select(box => box.RecordId).ToList();
+
+        var establishment = await _positions.GetEstablishmentAsync(ids, date, cancellationToken);
+
+        // And where each post sits in the business, which is a question about the OTHER axis — on
+        // a reporting chart every box's dimension reads "Position", so the unit is the only thing
+        // telling two posts called Supervisor apart. ADR-0028 showing up on a screen.
+        var units = await _positions.GetUnitsAsync(ids, date, cancellationToken);
+
+        foreach (var box in boxes)
+        {
+            box.Establishment = establishment.GetValueOrDefault(box.RecordId);
+
+            box.UnitName = units.TryGetValue(box.RecordId, out var unit)
+                ? BilingualDisplay.Name(unit.NameEn, unit.NameAr)
+                : string.Empty;
+        }
+
+        // And the same figures on the flat rows the Tree and List views draw, from the dictionary
+        // that is already in hand.
+        foreach (var row in model.Tree)
+        {
+            row.Establishment = establishment.GetValueOrDefault(row.RecordId);
+        }
     }
 
     /// <summary>
@@ -1237,6 +1567,23 @@ public sealed class DimensionRecordsAdminController : Controller
             return View(model);
         }
 
+        // A position's second axis and its grades, both after the record exists because both name
+        // it. Neither is part of AddUnitAsync's all-or-nothing write, and that is the honest shape:
+        // a reporting line and a set of grades are facts about a post that already exists, where its
+        // place in the business is the act of creating it. A failure in either is reported and
+        // leaves the position created and placed, which is a state the screens can show and a reader
+        // can fix — unlike a half-created record, which is why AddUnitAsync is one call.
+        if (model.IsPosition)
+        {
+            await ApplyPositionFactsAsync(
+                result.Value!.RecordId,
+                model.ReportsToRecordId,
+                model.AllowedGradeRecordIds,
+                model.ReportingStructureId,
+                effectiveFrom,
+                cancellationToken);
+        }
+
         await _notifier.SuccessAsync(H["{0} '{1}' was created.", model.TypeName, result.Value!.NameEn]);
 
         return RedirectToAction(nameof(Index), new
@@ -1244,6 +1591,58 @@ public sealed class DimensionRecordsAdminController : Controller
             dimensionTypeId = model.DimensionTypeId,
             structureId = model.StructureId,
         });
+    }
+
+    /// <summary>
+    /// Puts a new position on the reporting line and gives it its grades. Decisions D26 C and
+    /// ADR-0028.
+    /// </summary>
+    /// <remarks>
+    /// <b>Both are refusable and neither is fatal.</b> A reporting line that would close a loop is
+    /// refused by the graph's existing cycle check — the same one that protects the organisation
+    /// chart, running on a second axis and needing no new code — and a grade that is not a grade is
+    /// refused by <c>IDimensionValidator.ValidateReferencesAsync</c>. Each failure is shown as a
+    /// warning against the position that was created, rather than rolled back: the post exists and
+    /// is placed, and telling somebody their position was not created would be untrue.
+    /// </remarks>
+    private async Task ApplyPositionFactsAsync(
+        string recordId,
+        string? reportsToRecordId,
+        IReadOnlyList<string> allowedGradeRecordIds,
+        string? reportingStructureId,
+        DateOnly effectiveFrom,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrEmpty(reportingStructureId) && !string.IsNullOrEmpty(reportsToRecordId))
+        {
+            var placed = await _graph.PlaceAsync(
+                reportingStructureId, recordId, reportsToRecordId, effectiveFrom, cancellationToken);
+
+            if (!placed.Succeeded)
+            {
+                await _notifier.WarningAsync(H["The position was created, but its reporting line was not set: {0}",
+                    string.Join(" ", placed.Errors.Select(error => error.Message.Value))]);
+            }
+        }
+
+        var grades = allowedGradeRecordIds
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (grades.Count == 0)
+        {
+            return;
+        }
+
+        var set = await _records.SetReferencesAsync(
+            recordId, DimensionReferenceKinds.AllowedGrade, grades, cancellationToken);
+
+        if (!set.Succeeded)
+        {
+            await _notifier.WarningAsync(H["The position was created, but its grades were not set: {0}",
+                string.Join(" ", set.Errors.Select(error => error.Message.Value))]);
+        }
     }
 
     /// <summary>
@@ -1263,7 +1662,43 @@ public sealed class DimensionRecordsAdminController : Controller
         }
 
         model.TypeName = BilingualText.Display(type.Name.En, type.Name.Ar);
-        model.Structures = await StructuresForAsync(type, cancellationToken);
+        model.IsPosition = type.StandardRole == DimensionTypeRole.Position;
+
+        var all = await StructuresForAsync(type, cancellationToken);
+
+        // The reporting axis THIS TYPE is on, not "the one called reporting-line": the demo
+        // companies have their own, for the reason their types are prefixed, and a form that
+        // reached for the base recipe's would try to place a Zenith position on an axis Zenith's
+        // Position type is not a level of. ADR-0028; IsReportingLineAsync asks the axis's shape.
+        if (model.IsPosition)
+        {
+            foreach (var choice in all)
+            {
+                if (await _positions.IsReportingLineAsync(choice.StructureId, cancellationToken))
+                {
+                    model.ReportingStructureId = choice.StructureId;
+
+                    break;
+                }
+            }
+        }
+
+        // A position is on two axes (ADR-0028) and only one of them is a question this form asks.
+        // "Place under" is the organisation chart; the reporting line has a control of its own, so
+        // offering it in the structure chooser would be asking the same reader the same question
+        // twice and letting them answer it in the wrong box.
+        model.Structures = model.ReportingStructureId is null
+            ? all
+            : [.. all.Where(choice => !string.Equals(
+                choice.StructureId, model.ReportingStructureId, StringComparison.Ordinal))];
+
+        if (model.IsPosition)
+        {
+            var readiness = await _positions.GetPlacementReadinessAsync(
+                type.DimensionTypeId, asAt: null, cancellationToken);
+
+            model.PositionsCanBePlaced = readiness.HasSomewhereToGo;
+        }
 
         var scope = ResolveStructure(model.Structures, model.StructureId);
 
@@ -1434,6 +1869,49 @@ public sealed class DimensionRecordsAdminController : Controller
             }
         }
 
+        // The position's grades, undated and only when the posted set differs from the stored one —
+        // the same rule the alias above follows, and for the same reason: a form posts every field
+        // it shows whether or not anybody touched it, and a write that happened anyway would leave
+        // an audit entry saying somebody re-graded a post on a form they opened to fix a name.
+        if (model.IsPosition && model.AllowedGradesChanged)
+        {
+            var grades = model.AllowedGradeRecordIds
+                .Where(gradeId => !string.IsNullOrEmpty(gradeId))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var set = await _records.SetReferencesAsync(
+                record.RecordId, DimensionReferenceKinds.AllowedGrade, grades, cancellationToken);
+
+            if (!set.IsAuthorised)
+            {
+                return Forbid();
+            }
+
+            if (!set.Succeeded)
+            {
+                AddErrors(set.Errors);
+
+                return View(model);
+            }
+
+            // D26 G: removing a grade an employee holds is permitted and never breaks their record,
+            // so this warns rather than refusing. Their own dated grade is untouched; what changes
+            // is what is offered next time.
+            var removed = model.CurrentAllowedGradeRecordIds
+                .Except(grades, StringComparer.Ordinal)
+                .ToList();
+
+            if (removed.Count > 0)
+            {
+                await _notifier.WarningAsync(H.Plural(
+                    removed.Count,
+                    "{0} grade was removed from this position. Anybody already on it keeps it; it is no longer offered.",
+                    "{0} grades were removed from this position. Anybody already on them keeps them; they are no longer offered.",
+                    removed.Count));
+            }
+        }
+
         await _notifier.SuccessAsync(H["'{0}' was updated.", model.Name.En]);
 
         return RedirectToAction(nameof(Index), new
@@ -1462,6 +1940,28 @@ public sealed class DimensionRecordsAdminController : Controller
         model.CurrentNameAr = record.NameAr;
         model.CurrentAliasEn = record.AliasEn;
         model.CurrentAliasAr = record.AliasAr;
+        model.IsPosition = type.StandardRole == DimensionTypeRole.Position;
+
+        if (model.IsPosition)
+        {
+            // Undated on purpose. The form is editing the set the position has <em>now</em>, and a
+            // reference has no effective range — so the grades it shows are the ones effective
+            // today, which is the only set anybody can sensibly be editing.
+            var allowed = await _records.GetReferencesAsync(
+                record.RecordId, DimensionReferenceKinds.AllowedGrade,
+                asAt: null, cancellationToken);
+
+            model.CurrentAllowedGradeRecordIds = [.. allowed.Select(grade => grade.RecordId)];
+
+            // A freshly opened form shows what is stored; a post shows what was posted, including
+            // the empty set. The two are told apart by the hidden empty value the Edit form renders
+            // beside the control: a multi-select with nothing chosen posts nothing at all, so
+            // without it "clear every grade" and "this form never asked" are the same request.
+            if (model.AllowedGradeRecordIds.Count == 0)
+            {
+                model.AllowedGradeRecordIds = [.. model.CurrentAllowedGradeRecordIds];
+            }
+        }
 
         var today = await _authorisation.TodayAsync();
         var structures = await StructuresForAsync(type, cancellationToken);

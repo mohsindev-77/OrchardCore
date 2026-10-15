@@ -85,7 +85,7 @@ public sealed class EmployeePickerBrowserTests
 
         // Back on the designer: the card names them. They work in Finance and head Civil, which is
         // the arrangement ADR-0012 exists to make expressible.
-        await Assertions.Expect(DesignerTree.Node(page, "Civil").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Civil").Locator(".designer-card-head"))
             .ToContainTextAsync(candidate.Name);
     }
 
@@ -212,7 +212,7 @@ public sealed class EmployeePickerBrowserTests
 
         await page.ClickAsync("#unit-head-set button[type='submit']");
 
-        await Assertions.Expect(DesignerTree.Node(page, "Electrical").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Electrical").Locator(".designer-card-head"))
             .ToContainTextAsync(candidate.Name);
     }
 

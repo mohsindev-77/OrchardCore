@@ -151,7 +151,11 @@ public sealed class DesignerCardMenuParityBrowserTests
         var civil = DesignerTree.Node(page, "Civil");
 
         await Assertions.Expect(civil).ToBeVisibleAsync();
-        await Assertions.Expect(civil.Locator(".designer-card-head")).ToContainTextAsync("Vacant");
+
+        // The card, not the node: a node contains its children's cards too, and Civil has
+        // positions under it since slice F5+F7. See DesignerTree.Card.
+        await Assertions.Expect(
+            DesignerTree.Card(page, "Civil").Locator(".designer-card-head")).ToContainTextAsync("Vacant");
 
         await civil.Locator(".designer-actions summary").First.ClickAsync();
         await civil.Locator("[data-designer-action='sethead']").First.ClickAsync();
@@ -167,7 +171,7 @@ public sealed class DesignerCardMenuParityBrowserTests
         // Back on the designer, which reopens the branch the appointment was made in: the redirect
         // carries the unit as the expand target, so the card is on screen without being clicked for
         // again. Clicking the toggle here would close it.
-        await Assertions.Expect(DesignerTree.Node(page, "Civil").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Civil").Locator(".designer-card-head"))
             .ToContainTextAsync("Adeel Mahmood");
 
         // And again on a card built from scratch: back to the chart with nothing expanded, then
@@ -179,12 +183,12 @@ public sealed class DesignerCardMenuParityBrowserTests
         await OpenZenithAsync(page);
         await DesignerTree.Node(page, "Engineering Division").Locator(".designer-toggle").First.ClickAsync();
 
-        await Assertions.Expect(DesignerTree.Node(page, "Civil").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Civil").Locator(".designer-card-head"))
             .ToContainTextAsync("Adeel Mahmood");
 
         // The posts next to it are still empty, which is a different statement from the one the
         // broken card made: "Vacant" has to be read off the appointment, not off the template.
-        await Assertions.Expect(DesignerTree.Node(page, "Electrical").Locator(".designer-card-head"))
+        await Assertions.Expect(DesignerTree.Card(page, "Electrical").Locator(".designer-card-head"))
             .ToContainTextAsync("Vacant");
     }
 

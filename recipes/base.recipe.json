@@ -164,12 +164,73 @@
         "AUTHORED, never derived: the per-dimension menu shipped once with a guessed plural and was",
         "withdrawn because it read Branchs in English and had no Arabic plural at all. A type with",
         "no authored plural falls back to its singular, which is short and never wrong.",
-        "menuOrder 90 puts Cost centre after the organisational levels the shipped set adds in",
-        "slice F5 (Business Unit 10, Division 20, Department 30, ...) and before anything a",
-        "customer invents, which lands unordered at 0 and sorts by name."
+        "menuOrder 90 puts Cost centre after the organisational levels (Business Unit 10,",
+        "Division 20, Department 30, ...) and before anything a customer invents, which lands",
+        "unordered at 0 and sorts by name.",
+        "GRADE is added by slice F5+F7 (decision D26 C). It is NOT an organisational level and so",
+        "does not breach the rule above: a grade is a level WITHIN a position, it never appears on",
+        "the organisation tree, and shipping it guesses nothing about how a customer describes their",
+        "company. Its menuOrder 70 puts it just before Cost centre.",
+        "role: Grade is how the product FINDS this dimension — the employee form's grade drop-down",
+        "and a position's allowed-grades picker both ask for the type whose role is Grade. Declared",
+        "here rather than guessed from the code or the name, because the demo recipes ship",
+        "zenith-grade and because FRS Rule 6 lets a customer rename Grade to Band without thereby",
+        "losing the drop-down. See DimensionTypeRole.",
+        "There is NO grade-step type. D26 C removes the step level that D5 and D7 described: a",
+        "position's allowed grades ARE its levels. A tenant that wants a heading above SE-1..SE-3",
+        "creates an ordinary Grade value and uses the grade > grade diagonal on the grades axis",
+        "below, which is a grouping and not a level."
       ],
       "name": "dimension-types",
       "types": [
+        {
+          "$comment": [
+            "POSITION. The post an employee holds — D20: Position, Job title and Designation are",
+            "one concept, always Position. role: Position is how the employee form's position",
+            "drop-down and a grade picker find it; see DimensionTypeRole for why a code or a name",
+            "cannot be read instead.",
+            "nameAr is the indefinite singular منصب, like every other type here (إدارة, فرع), and the",
+            "plural carries the article. D26 A writes the label as المنصب; that is the definite form",
+            "a sentence uses, and StandardDimensionPlurals — frozen by ADR-0009 — keys منصب.",
+            "ApprovedHeadcount is an ATTRIBUTE rather than a field on DimensionRecordPart, because",
+            "that part is carried by every generated dimension content type and a Division does not",
+            "have a headcount. Not required: absent means 1 (D26 E), which is the common case of a",
+            "post held by one person. Attributes are undated, so 'what was the approved headcount",
+            "last March' is not answerable — D15, a stated limitation and not an oversight.",
+            "Position is NOT added to the organisation structure's levels. ADR-0028: where a",
+            "position sits in the business is the customer's shape to declare, so they add it to",
+            "their own chart. Until they do, a position can report to another and has nowhere in the",
+            "business to sit, and the Add form says exactly that."
+          ],
+          "code": "position",
+          "nameEn": "Position",
+          "nameAr": "منصب",
+          "pluralEn": "Positions",
+          "pluralAr": "المناصب",
+          "menuOrder": 60,
+          "role": "Position",
+          "allowsSelfNesting": false,
+          "attributes": [
+            {
+              "name": "ApprovedHeadcount",
+              "labelEn": "Approved headcount",
+              "labelAr": "العدد المعتمد",
+              "kind": "Number",
+              "isRequired": false
+            }
+          ]
+        },
+        {
+          "code": "grade",
+          "nameEn": "Grade",
+          "nameAr": "درجة",
+          "pluralEn": "Grades",
+          "pluralAr": "الدرجات",
+          "menuOrder": 70,
+          "role": "Grade",
+          "allowsSelfNesting": true,
+          "attributes": []
+        },
         {
           "code": "cost-centre",
           "nameEn": "Cost centre",
@@ -192,7 +253,20 @@
         "isPrimaryOrganisation makes this the default scope for approvals and data visibility, which",
         "is a decision about which axis is authoritative rather than about its shape, so it is safe to",
         "take here. A Cost structure is NOT created: see the module README for why that is a customer",
-        "decision rather than a platform one."
+        "decision rather than a platform one.",
+        "THE GRADES AXIS IS NOT AN EXCEPTION TO THAT RULE, and ADR-0028 says why in full. A grade",
+        "ladder is not the customer's organisation chart: it has exactly one level, it carries no",
+        "units, nothing rolls up through it, and no employee is placed on it. Shipping it guesses",
+        "nothing about the company and is what makes Organisation > Grades usable on a new tenant",
+        "without somebody first having to invent an axis for it. What is still NOT shipped is any",
+        "grade VALUE and any place for Position on the organisation chart.",
+        "grade > grade is ticked so a tenant MAY group its grades - an SE heading above SE-1..SE-3,",
+        "decision D26 C. The shipped data is flat; the diagonal only means the tenant is allowed to",
+        "do it, which is the one thing a step concept would have decided for them.",
+        "employeeAttachableTypeCodes is deliberately absent rather than stated as []: an empty list",
+        "means UNCONSTRAINED, not 'nothing may hold employees', so stating it would read as a",
+        "restriction while being none. Nothing ever writes an assignment on this axis, which is what",
+        "actually guarantees no employee is placed on a grade."
       ],
       "name": "structures",
       "structures": [
@@ -205,6 +279,45 @@
           "containment": {},
           "isStrict": true,
           "isPrimaryOrganisation": true
+        },
+        {
+          "code": "grades",
+          "nameEn": "Grades",
+          "nameAr": "الدرجات",
+          "shortNameEn": "Grades",
+          "shortNameAr": "الدرجات",
+          "levelTypeCodes": ["grade"],
+          "rootTypeCodes": ["grade"],
+          "containment": { "grade": ["grade"] },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
+        },
+        {
+          "$comment": [
+            "THE REPORTING LINE. ADR-0028: a position needs two parents at once — its unit in the",
+            "business (FRS figure 9) and the position it reports to (FRS 4.1.4) — and D19 gives a",
+            "value exactly one parent PER AXIS. So they are two axes, which is the mechanism ADR-0005",
+            "scoped links to a structure for, and neither tree knows about the other.",
+            "position > position is the whole containment: a reporting line is positions all the way",
+            "down. Every position may be a root, because the CEO reports to nobody.",
+            "NOTHING IS EVER PLACED HERE. An assignment names the structure it is on, and employees",
+            "are placed at positions on the ORGANISATION axis, so no headcount rolls up a reporting",
+            "line — which is the point. 'How many people are under the COO' and 'how many are in",
+            "Corporate' are different questions and must not share a number.",
+            "employeeAttachableTypeCodes is absent rather than [] for the reason given on the grades",
+            "axis: empty means unconstrained, so stating it would read as a restriction while being",
+            "none."
+          ],
+          "code": "reporting-line",
+          "nameEn": "Reporting line",
+          "nameAr": "خط التبعية",
+          "shortNameEn": "Reporting",
+          "shortNameAr": "التبعية",
+          "levelTypeCodes": ["position"],
+          "rootTypeCodes": ["position"],
+          "containment": { "position": ["position"] },
+          "isStrict": true,
+          "isPrimaryOrganisation": false
         }
       ]
     },

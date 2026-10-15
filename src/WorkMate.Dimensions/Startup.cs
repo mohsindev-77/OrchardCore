@@ -18,6 +18,7 @@ using WorkMate.Dimensions.Handlers;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal.Graph;
 using WorkMate.Dimensions.Internal.Lookups;
+using WorkMate.Dimensions.Internal.References;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Navigation;
 using WorkMate.Dimensions.Recipes;
@@ -112,10 +113,21 @@ public sealed class Startup : StartupBase
         // the remarks on HeadAppointmentDocument.
         services.AddIndexProvider<UnitHeadIndexProvider>();
 
+        // References: one record pointing at another, of a named kind — a Position's allowed
+        // grades (D26 C). Not a parent and not on any axis; DimensionReferenceKinds sets out why a
+        // link cannot carry it, and ADR-0028 records that as the reason this table exists.
+        services.AddIndexProvider<DimensionReferenceIndexProvider>();
+
         services.AddScoped<IDimensionGraphService, DimensionGraphService>();
         services.AddScoped<IEmployeeAssignmentService, EmployeeAssignmentService>();
         services.AddScoped<IDimensionService, DimensionService>();
         services.AddScoped<IDimensionValidator, DimensionValidator>();
+
+        // Positions: a reader over the three services above, not a second aggregate. ADR-0022 keeps
+        // a Position an ordinary dimension record; this is where the Positions list, the two
+        // pickers and slice F6's employee form get one composition of the same batched reads rather
+        // than three.
+        services.AddScoped<IPositionService, PositionService>();
 
         // This module's audit trail category and its three events, so an administrator can find
         // and filter them alongside Orchard's own.
@@ -126,6 +138,12 @@ public sealed class Startup : StartupBase
         services.AddRecipeExecutionStep<DimensionTypesRecipeStep>();
         services.AddRecipeExecutionStep<StructuresRecipeStep>();
         services.AddRecipeExecutionStep<DimensionRecordsRecipeStep>();
+
+        // After the records, because a reference needs both ends to exist and the records step
+        // creates them in one pass. Not part of that step, because a reference is not a placement:
+        // it enters no closure index and reaches no tree (D21, D26 C), and filing it beside
+        // `placements` would be filing it as the thing it most needs not to be mistaken for.
+        services.AddRecipeExecutionStep<DimensionReferencesRecipeStep>();
 
         // And after the records, the two steps that put people on them. Both resolve employees by
         // code through IEmployeeLookup, so both are no-ops on a tenant with no employee module —

@@ -46,6 +46,30 @@
     <workmate-bilingual for-en="AliasEn" for-ar="AliasAr" label="@T["Alias"]"
                         hint="@aliasHint" max-length="255" />
 
+    @* A position's grades are here where its parent is not, and the difference is what each does to
+       history: changing a parent rewrites what every historical report under the unit resolves to,
+       which is why it is a dated move with its own permission and its own dry run below. Changing
+       which grades a post offers is ordinary record upkeep that no past report resolves through —
+       the same line the alias above is on. D26 C.
+
+       Who it reports to is a parent too, on the reporting-line axis (ADR-0028), so it is in the
+       "Where it sits" table below with its own Move button rather than being a box here. *@
+    @if (Model.IsPosition)
+    {
+        <h2 class="fs-5 mt-4">@T["Grades"]</h2>
+
+        @* A checklist with nothing ticked posts nothing at all, so without this "clear every grade"
+           and "this form never asked about grades" arrive identically. The empty value is filtered
+           out before the write; what it carries is the fact that the question was asked. *@
+        <input type="hidden" name="AllowedGradeRecordIds" value="" />
+
+        var gradesHint = T["The levels of this post. Removing one never changes the grade of anybody already on it — it stops being offered."].Value;
+
+        <workmate-grade-picker for="AllowedGradeRecordIds" label="@T["Allowed grades"]"
+                               multiple="true"
+                               hint="@gradesHint" />
+    }
+
     @if (Model.Attributes.Count > 0)
     {
         <h2 class="fs-5 mt-4">@T["Details"]</h2>
@@ -115,3 +139,10 @@
         }
     </tbody>
 </table>
+
+@if (Model.IsPosition)
+{
+    @* The allowed-grades checklist's search box and live count. The checkboxes themselves work
+       without it — see GradePickerTagHelper. *@
+    <script asp-name="workmate-grade-picker" at="Foot"></script>
+}

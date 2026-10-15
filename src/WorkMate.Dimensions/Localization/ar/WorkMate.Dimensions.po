@@ -99,7 +99,6 @@ msgstr "يجب أن يبدأ رمز الهيكل بحرف، ويمكن أن يح
 msgid "A structure with the code '{0}' already exists in this tenant."
 msgstr "يوجد بالفعل هيكل بالرمز '{0}' في هذا المستأجر."
 
-
 #: WorkMate.Dimensions.Services.StructureService
 msgid "A dimension type may appear only once in a structure's levels."
 msgstr "لا يمكن أن يظهر نوع البعد إلا مرة واحدة في مستويات الهيكل."
@@ -319,6 +318,18 @@ msgstr "تم تحديث نوع البعد '{0}'."
 msgid "Dimension type '{0}' was retired from {1:d}."
 msgstr "تم إيقاف نوع البعد '{0}' اعتبارًا من {1:d}."
 
+#. THIS ENTRY NEEDS ITS CONTEXT, and the reason is a defect the Arabic click-through found.
+#. There are two "Organisation" strings in this module and they are different words in Arabic: the
+#. admin menu's group is الهيكل التنظيمي — the organisational structure — and the dimension list's
+#. column, which says which COMPANY a row belongs to on a tenant with more than one, is المنظمة.
+#. A PO entry with no msgctxt applies to every localiser in the module, so the two collided and the
+#. later one won: the Arabic menu read المنظمة, which is the wrong word for a menu group and was
+#. invisible until a test clicked the Arabic menu by name.
+#. Orchard Core 3.0.1 keys a translation by (msgid, context) and falls back to the context-less
+#. entry — verified against CultureDictionaryRecord.GetKey and PortableObjectStringLocalizer with
+#. tools/api-probe. The context is the localiser's own type, which for IStringLocalizer<AdminMenu>
+#. is its full name. The list screen's entry below stays context-less and is the fallback.
+msgctxt "WorkMate.Dimensions.Navigation.AdminMenu"
 #: Navigation/AdminMenu.cs
 msgid "Organisation"
 msgstr "الهيكل التنظيمي"
@@ -715,9 +726,12 @@ msgstr "تعذر إنشاء '{0}'."
 msgid "'{0}' could not be placed."
 msgstr "تعذر وضع '{0}'."
 
+#. Replaces "its parent was not found. Parents must be listed before their children", which was
+#. enforcing a stronger rule than it described: a parent already in the tenant is resolved now, so
+#. one recipe can hang something off a tree another built.
 #: Recipes/DimensionRecordsRecipeStep.cs
-msgid "Record '{0}' could not be placed: its parent '{1}' was not found. Parents must be listed before their children."
-msgstr "تعذر وضع السجل '{0}': لم يتم العثور على الأصل '{1}'. يجب إدراج الأصول قبل أبنائها."
+msgid "Record '{0}' could not be placed: its parent '{1}' is neither in this recipe nor already in the tenant. A parent listed in this file must come before its children; one that is not in this file must already exist."
+msgstr "تعذر وضع السجل '{0}': الأصل '{1}' ليس في هذه الوصفة ولا موجوداً في المستأجر. الأصل المُدرج في هذا الملف يجب أن يسبق أبناءه، والأصل غير المُدرج يجب أن يكون موجوداً بالفعل."
 
 #: Recipes/DimensionRecordsRecipeStep.cs
 msgid "Record '{0}' is placed on structure '{1}', which does not exist."
@@ -1254,7 +1268,6 @@ msgid "Taking the unit off the tree on {0} is removed from the record."
 msgstr "تُزال من السجل عملية إخراج الوحدة من الشجرة في {0}."
 
 # ---- ADR-0011 and the audit display decision ----
-
 
 #: WorkMate.Dimensions.Deployment.DimensionsDeploymentStepDriver
 msgid "Records reference their dimension type and their structure by code, so exporting them needs both to be included too."
@@ -2106,3 +2119,363 @@ msgstr "الاسم المختصر"
 #: Views/StructuresAdmin/Edit.cshtml
 msgid "Optional. Used where there is no room for the whole name — the Organisation menu shows it in brackets after a unit when two organisations share a dimension. Left empty, the full name is used."
 msgstr "اختياري. يُستخدم حيث لا تتسع المساحة للاسم الكامل — تعرضه قائمة الهيكل التنظيمي بين قوسين بعد الوحدة عندما تشترك منظمتان في بُعد واحد. إن تُرك فارغاً يُستخدم الاسم الكامل."
+
+#. ---- Slice F5+F7 grades and positions ---------------------------------------------------
+
+#. A grade's value page: which positions allow it (decision D26 C). Shown even when the answer
+#. is none, because a grade no position allows is a grade nobody can be given.
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Used by positions"
+msgstr "تستخدمها المناصب"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "No position allows this grade yet, so nobody can be given it."
+msgstr "لا يسمح أي منصب بهذه الدرجة بعد، فلا يمكن منحها لأحد."
+
+#. A reference kind the product does not ship. Reachable only from a recipe or an API call, never
+#. from a screen, because every screen names the kind itself.
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is not a kind of reference this product knows about."
+msgstr "‏'{0}' ليس نوع إسناد يعرفه هذا المنتج."
+
+#. Only a Position has allowed grades — read off the dimension type's declared role, never off
+#. its code or its name. Decision D26 C.
+#: Internal/Graph/DimensionValidator.cs
+msgid "Only a position has allowed grades. '{0}' is not one."
+msgstr "المنصب وحده له درجات مسموح بها. و'{0}' ليس منصباً."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is not a grade, so it cannot be one of a position's allowed grades."
+msgstr "‏'{0}' ليس درجة، فلا يمكن أن يكون من الدرجات المسموح بها لمنصب."
+
+#. Decision D26 G: the employee's grade must be one of their position's levels. A position with
+#. no grades has none to choose, so an empty grade is accepted there and refused here.
+#: Internal/Graph/DimensionValidator.cs
+msgid "Choose a grade. '{0}' has {1} to choose from."
+msgstr "اختر درجة. لدى '{0}' عدد {1} للاختيار منها."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is not one of the grades '{1}' allows."
+msgstr "‏'{0}' ليست من الدرجات التي يسمح بها '{1}'."
+
+#. ---- The position picker (D26 F) --------------------------------------------------------
+
+#: Components/PositionPickerTagHelper.cs
+msgid "Choose a position…"
+msgstr "اختر منصباً…"
+
+#. The CEO reports to nobody, which is a choice somebody makes rather than a box they left empty.
+#: Components/PositionPickerTagHelper.cs
+msgid "— reports to nobody —"
+msgstr "— لا يتبع أحداً —"
+
+#. A stored position the control can no longer name. Named as what it is rather than dropped: a
+#. field that quietly empties itself is how a decision disappears with nobody deciding.
+#: Components/PositionPickerTagHelper.cs
+msgid "A position that is not active on that date"
+msgstr "منصب غير فعّال في ذلك التاريخ"
+
+#: Components/PositionPickerTagHelper.cs
+msgid "No position is active on that date. Create one first."
+msgstr "لا يوجد منصب فعّال في ذلك التاريخ. أنشئ منصباً أولاً."
+
+#: Components/PositionPickerTagHelper.cs
+msgid "Showing {0} of {1} positions."
+msgstr "عرض {0} من {1} منصباً."
+
+#. D26 F: a full position warns and is allowed. Refusing would stop the product recording what an
+#. organisation has actually done.
+#: Components/PositionPickerTagHelper.cs
+msgid "This position is already at its approved headcount. You can still choose it."
+msgstr "بلغ هذا المنصب عدده المعتمد. ما زال بإمكانك اختياره."
+
+#: Components/PositionPickerTagHelper.cs
+msgid "Search by position name, unit or code"
+msgstr "ابحث باسم المنصب أو الوحدة أو الرمز"
+
+#: Components/PositionPickerTagHelper.cs
+msgid "No position matches. Try part of a name, a unit's name, or a code."
+msgstr "لا يوجد منصب مطابق. جرّب جزءاً من الاسم أو اسم الوحدة أو الرمز."
+
+#: Components/PositionPickerTagHelper.cs
+msgid "Choose a position from the list, or clear the box."
+msgstr "اختر منصباً من القائمة أو أفرغ الحقل."
+
+#. ---- The grade picker (D26 G) -----------------------------------------------------------
+
+#: Components/GradePickerTagHelper.cs
+msgid "Choose a grade…"
+msgstr "اختر درجة…"
+
+#. D26 G: the grade control is empty and disabled until a position is chosen.
+#: Components/GradePickerTagHelper.cs
+msgid "Choose a position first, and this will offer the grades it allows."
+msgstr "اختر منصباً أولاً، وستعرض هنا الدرجات التي يسمح بها."
+
+#: Components/GradePickerTagHelper.cs
+msgid "This position allows no grades, so there is nothing to choose."
+msgstr "لا يسمح هذا المنصب بأي درجة، فلا يوجد ما يُختار."
+
+#: Components/GradePickerTagHelper.cs
+msgid "No grade is active on that date. Create one in the Grades dimension first."
+msgstr "لا توجد درجة فعّالة في ذلك التاريخ. أنشئ درجة في بُعد الدرجات أولاً."
+
+#. ---- The Position Add and Edit forms ----------------------------------------------------
+
+#. ADR-0028: base.recipe.json ships the Position dimension and no organisation chart, so a brand
+#. new tenant has positions with nowhere in the business to sit until somebody adds Position to
+#. their structure's levels.
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Positions can't be placed yet — allow Position in your organisation structure (Settings → Structures)."
+msgstr "لا يمكن إسناد المناصب بعد — اسمح بالمنصب في هيكلك التنظيمي (الإعدادات ← الهياكل)."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Go to Structures"
+msgstr "الذهاب إلى الهياكل"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Reporting line"
+msgstr "خط التبعية"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "This tenant has no reporting line axis, so a position cannot be given one. The base recipe ships a structure called “Reporting line”."
+msgstr "لا يحتوي هذا المستأجر على محور خط تبعية، فلا يمكن منح المنصب خط تبعية. تُنشئ الوصفة الأساسية هيكلاً باسم «خط التبعية»."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Reports to"
+msgstr "يتبع"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Who this post answers to. A separate tree from the one above: the CEO reports to nobody and still sits in a unit."
+msgstr "الجهة التي يتبعها هذا المنصب. شجرة منفصلة عن التي أعلاه: الرئيس التنفيذي لا يتبع أحداً ومع ذلك يقع ضمن وحدة."
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Grades"
+msgstr "الدرجات"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "Allowed grades"
+msgstr "الدرجات المسموح بها"
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "The levels of this post. Somebody holding it takes one of these as their grade."
+msgstr "مستويات هذا المنصب. من يشغله يأخذ إحداها درجةً له."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "The levels of this post. Removing one never changes the grade of anybody already on it — it stops being offered."
+msgstr "مستويات هذا المنصب. حذف إحداها لا يغيّر درجة من يشغلها فعلاً — يتوقف عرضها فقط."
+
+#. ---- The Positions list's three columns (D26 E) ------------------------------------------
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Approved"
+msgstr "المعتمد"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "Filled"
+msgstr "المشغول"
+
+#: Views/DimensionRecordsAdmin/Index.cshtml
+msgid "None"
+msgstr "لا شيء"
+
+#. ---- A position's own page (D26 C, D26 E) -----------------------------------------------
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "This position allows no grades, so nobody holding it can be given a level."
+msgstr "لا يسمح هذا المنصب بأي درجة، فلا يمكن منح من يشغله أي مستوى."
+
+#. The reporting chart's badge: filled over approved, green when full and amber when there is a
+#. vacancy. D26 E.
+#: Views/DimensionRecordsAdmin/_ValueHierarchyNode.cshtml
+msgid "{0} filled of {1} approved"
+msgstr "{0} مشغول من {1} معتمد"
+
+#. ---- Creating and editing a position -----------------------------------------------------
+
+#. The position exists and is placed; only the second write failed. Saying it was not created
+#. would be untrue.
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "The position was created, but its reporting line was not set: {0}"
+msgstr "أُنشئ المنصب، لكن لم يُضبط خط تبعيته: {0}"
+
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "The position was created, but its grades were not set: {0}"
+msgstr "أُنشئ المنصب، لكن لم تُضبط درجاته: {0}"
+
+#. D26 G: removing a grade is permitted and never breaks the record of anybody already on it.
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "{0} grade was removed from this position. Anybody already on it keeps it; it is no longer offered."
+msgid_plural "{0} grades were removed from this position. Anybody already on them keeps them; they are no longer offered."
+msgstr[0] "لم تُحذف أي درجة من هذا المنصب."
+msgstr[1] "حُذفت درجة واحدة من هذا المنصب. من يشغلها يحتفظ بها؛ لم تعد تُعرض."
+msgstr[2] "حُذفت درجتان من هذا المنصب. من يشغلهما يحتفظ بهما؛ لم تعودا تُعرضان."
+msgstr[3] "حُذفت {0} درجات من هذا المنصب. من يشغلها يحتفظ بها؛ لم تعد تُعرض."
+msgstr[4] "حُذفت {0} درجة من هذا المنصب. من يشغلها يحتفظ بها؛ لم تعد تُعرض."
+msgstr[5] "حُذفت {0} درجة من هذا المنصب. من يشغلها يحتفظ بها؛ لم تعد تُعرض."
+
+#. ---- The dimension-references recipe step (D26 C) ----------------------------------------
+
+#: Recipes/DimensionReferencesRecipeStep.cs
+msgid "There is no dimension record with the code '{0}'."
+msgstr "لا يوجد سجل بُعد بالرمز '{0}'."
+
+#: Recipes/DimensionReferencesRecipeStep.cs
+msgid "'{0}' points at {1}, which {2} does not have."
+msgstr "‏'{0}' يشير إلى {1}، وهو ما لا يملكه {2}."
+
+#: Recipes/DimensionReferencesRecipeStep.cs
+msgid "'{0}' already has {1} set to {2} in this tenant, but the recipe says {3}."
+msgstr "‏'{0}' لديه {1} مضبوطة على {2} في هذا المستأجر، بينما تقول الوصفة {3}."
+
+#: Recipes/DimensionReferencesRecipeStep.cs
+msgid "References for '{0}' could not be set."
+msgstr "تعذّر ضبط إسنادات '{0}'."
+
+#. ---- The additive form of the structures step (ADR-0008, 14 October addendum) -------------
+#. A row that says "add Position as a level, and permit a Position under a Department" rather
+#. than describing the whole structure. Every message below names the structure and the thing
+#. at fault, because the administrator reading it is being told which row to correct.
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' states both what to add and what the structure is. An additive row says only what to add; use one form or the other."
+msgstr "الهيكل '{0}' يذكر ما يُضاف وما هو الهيكل في آنٍ واحد. الصف الإضافي يذكر ما يُضاف فقط؛ استخدم إحدى الصيغتين."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' cannot be added to because it does not exist. An additive row extends a structure another recipe created; it never creates one."
+msgstr "لا يمكن الإضافة إلى الهيكل '{0}' لأنه غير موجود. الصف الإضافي يوسّع هيكلًا أنشأته وصفة أخرى، ولا ينشئ هيكلًا."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds level type '{1}', which does not exist. Levels must be listed after the types that back them."
+msgstr "الهيكل '{0}' يضيف نوع المستوى '{1}'، وهو غير موجود. يجب إدراج المستويات بعد الأنواع التي تستند إليها."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds a rule under '{1}', which does not exist."
+msgstr "الهيكل '{0}' يضيف قاعدة تحت '{1}'، وهو غير موجود."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds a rule under '{1}', which is not one of its levels and is not being added as one."
+msgstr "الهيكل '{0}' يضيف قاعدة تحت '{1}'، وهو ليس أحد مستوياته ولا يُضاف كمستوى."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds a rule permitting '{1}', which does not exist."
+msgstr "الهيكل '{0}' يضيف قاعدة تسمح بـ '{1}'، وهو غير موجود."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds a rule permitting '{1}', which is not one of its levels and is not being added as one."
+msgstr "الهيكل '{0}' يضيف قاعدة تسمح بـ '{1}'، وهو ليس أحد مستوياته ولا يُضاف كمستوى."
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "'{0}' could not be extended."
+msgstr "تعذّر توسيع '{0}'."
+
+#. ---- F5+F7 polish: a position's page is its reporting line ------------------------------
+#. A post's page is always the chart of who answers to it. "Units under" is wrong there twice
+#. over — what is below a post is other posts, and what joins them is answering to it rather
+#. than sitting in it — and the headcount question is Holders rather than Employees.
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Positions reporting to {0}"
+msgstr "المناصب التابعة لـ {0}"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Holders"
+msgstr "شاغلو المنصب"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} of {1}"
+msgstr "{0} من {1}"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "No establishment is recorded for this post."
+msgstr "لا يوجد عدد معتمد مسجّل لهذا المنصب."
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Reports to"
+msgstr "يتبع"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "nobody — this is the top of the reporting line"
+msgstr "لا أحد — هذا أعلى خط التبعية"
+
+#. ---- The allowed-grades checklist (D26 C) -----------------------------------------------
+#. A list of checkboxes with a search box, not a multi-select: no control-click, nothing to
+#. learn, and no silent loss of every other choice on a plain click.
+
+#: Components/GradePickerTagHelper.cs
+msgid "Search grades"
+msgstr "البحث في الدرجات"
+
+#: Components/GradePickerTagHelper.cs
+msgid "Selected: {0}"
+msgstr "المحدّد: {0}"
+
+#: Components/GradePickerTagHelper.cs
+msgid "No grade matches. Try part of a name or a code."
+msgstr "لا توجد درجة مطابقة. جرّب جزءًا من الاسم أو الرمز."
+
+#: Components/GradePickerTagHelper.cs
+msgid "Showing {0} of {1} grades. Narrow the set on the Grades screen before choosing."
+msgstr "يُعرض {0} من {1} درجة. قلّص المجموعة من شاشة الدرجات قبل الاختيار."
+
+#. ---- The unit picker's Within scope ------------------------------------------------------
+#. Narrowing the scope can contradict a choice already made. The choice is dropped and the drop
+#. is said out loud, because a control that silently emptied itself would send the reader to
+#. Save believing a unit was still named.
+
+#: Components/UnitPickerTagHelper.cs
+msgid "The unit you had chosen is not inside that scope, so it has been cleared. Choose one from the narrowed list, or set Within back to anywhere."
+msgstr "الوحدة التي اخترتها ليست داخل ذلك النطاق، لذلك أُلغي اختيارها. اختر واحدة من القائمة المقلَّصة، أو أعد «ضمن» إلى أي مكان."
+
+#. ---- The position value page, redesigned (D26 C–E, ADR-0028) ----------------------------
+#. A post has two parents on two axes, so it gets two rows rather than one Parent row listing
+#. both. Its headcount is one row of three numbers from one read, not an Employees count that is
+#. always zero plus an attribute plus an Establishment row repeating it.
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Not placed in the organisation"
+msgstr "غير مُلحق بالهيكل التنظيمي"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "This tenant has no reporting line axis. The base recipe ships a structure called “Reporting line”."
+msgstr "لا يوجد في هذا المستأجر محور خط تبعية. الوصفة الأساسية تتضمّن هيكلًا باسم «خط التبعية»."
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Headcount"
+msgstr "العدد"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} approved"
+msgstr "{0} معتمد"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} filled"
+msgstr "{0} مشغول"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "{0} vacant"
+msgstr "{0} شاغر"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "No one holds this position yet."
+msgstr "لا يشغل هذا المنصب أحد حتى الآن."
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Employee"
+msgstr "الموظف"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Grade"
+msgstr "الدرجة"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Since"
+msgstr "منذ"
+
+#. The fallback caption for a position that is placed nowhere, so has no parent dimension to be
+#. named after. NOT the bare "Organisation" msgid above, which the list screen uses for its
+#. demo-company column and translates المنظمة.
+#: Controllers/DimensionRecordsAdminController.cs
+msgid "Organisation unit"
+msgstr "وحدة تنظيمية"
+

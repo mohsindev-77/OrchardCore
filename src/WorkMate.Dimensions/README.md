@@ -9,8 +9,18 @@ contracted in section 4 of `/docs/technical-specification.md`.
 ### Configuration layer — built
 - **`DimensionTypeDocument`** — a kind of unit (Business Unit, Department,
   Cost Centre, anything a customer invents): code, bilingual name,
-  system-defined flag, attribute schema, and the name of the
-  content type generated for it. Indexed by `DimensionTypeIndex`.
+  system-defined flag, attribute schema, the menu entry (ADR-0024), the
+  **standard role** (below), and the name of the content type generated for it.
+  Indexed by `DimensionTypeIndex`.
+- **`DimensionTypeRole`** — the part a dimension plays in the product:
+  `Position`, `Grade`, or `None` for almost everything. **Declared on the type,
+  never derived** — the product has to be able to ask *"which dimension type is
+  the Grade one?"* and all three available derivations are wrong: by **code**
+  because the demo recipes ship `zenith-grade`, by **name** because FRS Rule 6
+  lets a customer rename Grade to Band, and by **menu group** because D23 B says
+  in terms that the grouping is a menu concept that owns no records. A document
+  property with a zero default, so every existing type reads `None` and nothing
+  changes. See the type's own remarks for the full argument.
 - **`StructureDocument`** — a named axis. `Levels` is its vocabulary in reading
   order; `RootDimensionTypeIds` and `Containment` are its rules, per ADR-0010;
   `IsStrict` and `IsPrimaryOrganisation` are flags. `AllowSkipLevel` survives as
@@ -100,13 +110,92 @@ place. Storage is decided in ADR-0005.
 - **`IDimensionGraphService`** — ancestors, descendants, children, is-under,
   depth; link and closure maintenance; rebuild; verify with a divergence
   report. Cycles are refused across **every** date, not only today.
+- **`DimensionReferenceDocument` / `DimensionReferenceIndex`** — one record
+  pointing at another, of a named kind, in `Internal.References`. Today there is
+  one kind: a **Position's allowed grades** (D26 C). One document per
+  `(record, kind)`; one index row per reference, because the table is read from
+  both ends — *what does this position allow* and *which positions allow this
+  grade*.
+
+  **A reference is not a parent**, and the distinction is the whole of why this
+  table exists rather than a second axis. A link gives a record one parent per
+  structure in one direction or the other: put the grade under the position and
+  SE-1 may be allowed by exactly one position; put the position under the grade
+  and a position may allow exactly one grade. The fact is many-to-many, so the
+  graph genuinely cannot carry it (ADR-0028). It never enters the closure index,
+  nothing rolls up through it, and no tree draws it (D21, confirmed).
+
+  **Undated.** A reference is a fact about how a post is configured, like an
+  attribute. The *targets* are dated records, so "the grades this position allows
+  today" leaves out one retired last year without the reference having been
+  removed — which is what makes D26 G's "removing a grade never breaks that
+  employee's record" cost nothing.
 - **`IDimensionService`** — create, update, retire, move, merge, cancel a move;
-  the two renames; resolve by id and by code. Merge and cancelling a move both
-  compute their plan once and `apply` only decides whether the writes follow,
-  so the dry run cannot drift from what happens.
+  the two renames; resolve by id and by code; and a record's **references** of a
+  kind, read from either end and stated as a whole set. Merge and cancelling a
+  move both compute their plan once and `apply` only decides whether the writes
+  follow, so the dry run cannot drift from what happens.
 - **`IEmployeeAssignmentService`** — place, end, reallocate; effective
   assignment on a date; employees under a node, paged; and the unit head's
   appointment, ended and read.
+- **`IPositionService`** — the position-shaped reads, and **a reader rather than
+  a second aggregate**: ADR-0022 keeps a Position an ordinary dimension record,
+  so every write still goes through `IDimensionService`. What is here is one
+  composition of existing batched reads — `SearchRecordsOfTypesAsync`,
+  `GetAncestorPathsAsync`, `CountEmployeesAtAsync`, `GetAttributeValueSetsAsync`
+  and `GetReferenceSetsAsync` — so the Positions list, the two pickers and slice
+  F6's employee form cannot each put them together slightly differently.
+
+  Its two headline reads are the ones **F6 is built on**, built and tested a
+  slice early because D26 F and D26 G specify two drop-downs whose contents are
+  exactly them: *"positions selectable as at this date"* (active only,
+  searchable, each with its unit and its filled/approved count, full ones
+  flagged) and *"the grades this position allows as at this date"*.
+
+### Positions and grades — built
+- **Two axes, one record** (ADR-0028). A position's **unit** is its parent on
+  the organisation chart; the position it **reports to** is its parent on a
+  `reporting-line` axis of its own. D19 gives a value one parent *per axis*, and
+  FRS figure 9 and §4.1.4 want it in two places at once, so this is ADR-0005's
+  own mechanism rather than a new one — two independent trees, neither aware of
+  the other, and the existing cycle check refuses a reporting loop with no new
+  code. **No headcount rolls up a reporting line**, because an assignment names
+  a structure and nothing ever names that one.
+- **Approved headcount is an attribute** on the shipped Position type, so it
+  ships through the recipe, exports and renders on the Add/Edit form with no new
+  code. **Undated**, which means *"what was the approved headcount last March"*
+  is **not answerable** — D15, a stated limitation rather than an oversight.
+  Absent means **1** (D26 E). `Vacant` is approved − filled and is **negative
+  when a post is over-established**, never clamped: clamping would hide the one
+  condition the number exists to surface.
+- **One Position per job, not per post** (D26 D). *HR Manager* is one position
+  with an approved headcount of 3 and grades HRM-1..HRM-3; *Labourer* is one
+  with 44. A position per person would make every headcount 1 and every vacancy
+  0 or 1, which is a column that can only repeat what the row already says.
+- **A position's allowed grades are its levels** (D26 C), held in the reference
+  table above. There is **no grade step**: the `grade-step` dimension D5 and D7
+  described is not built, and a tenant that wants a heading above SE-1..SE-3
+  makes an ordinary Grade value on the self-nesting grades axis.
+- **`IDimensionValidator.ValidateEmployeeGradeAsync`** — an employee's grade has
+  to be one of their position's allowed grades (D26 G). Built here and called by
+  F6, because the rule is the product's and not a screen's: a grade control
+  populated from the position's set is a control, and a recipe, an import or a
+  replayed form post goes round it.
+- **`workmate-position-picker` and `workmate-grade-picker`** — two tag helpers in
+  the shape of the unit and employee pickers: a `<select>` that is named, posted,
+  bound and validated whether or not the script runs, with a server-side search
+  over the whole tenant rather than a filter over the page it was sent.
+
+  The grade picker has **two modes**, because there are two questions. Without
+  `position-field` it is a multi-select of every grade — a Position's allowed
+  set (D26 C). With it, it offers only the chosen position's grades and is
+  **empty and disabled until a position is chosen** (D26 G).
+
+  **`grade-picker.js` drives the second mode only, and nothing in this slice uses
+  it**: no screen here has a position and a grade on one form. It is prepared and
+  its endpoint is tested (`/Admin/Dimensions/PositionPicker/Grades`) because the
+  employee form **F6** is built on exactly it, and building the control a slice
+  early is what lets F6 be a screen rather than a screen and an engine.
 
 Two things worth knowing before changing any of it:
 
@@ -432,6 +521,30 @@ use — no screen holds a privileged path:
   the same day-to-day capability that already lets a caller create and change
   records, not a reason for an eighth permission — see "Who may do what" below.
   Move, merge and cancel-move are a later slice.
+
+### Which axis the designer opens on
+
+Whichever was asked for; else **the primary organisation axis, once somebody has
+given it levels**; else the first axis that has any. `base.recipe.json` seeds an
+empty primary `organisation` on every tenant so the customer names their own
+levels, and opening on an empty axis while the tenant's real chart sits on
+another hides the data — so a configured axis beats an unconfigured one, and
+among configured ones the primary still wins.
+
+**"Configured" means configured *as an organisation chart*, and that
+qualification is new with slice F5+F7.** Before it, every configured axis was
+one: the only way an axis got levels was somebody building their company on it.
+That slice ships two that are configured and are not — the **grade ladder** and
+the **reporting line** (ADR-0028) — and both sort before a customer's own code,
+so the designer opened on an empty Grades axis on every tenant until the rule was
+qualified. **An axis made entirely of Positions or Grades is not an organisation
+chart; one with so much as a Department on it is.** Both stay in the chooser;
+only the default changed.
+
+**It took the browser suite to find it.** The view model was perfectly consistent
+with itself and drew the wrong axis, so thirteen unrelated browser tests failed
+on a missing `#designer-tree` and nothing in the integration suite noticed. Worth
+remembering the next time this module ships an axis of its own.
 
 ### A card is drawn twice, from one description of it
 
@@ -773,6 +886,32 @@ for an English one, and under a culture whose default calendar is not Gregorian
 (ar-SA uses Umm al-Qura) a different year. Pinned by `IsoDateTests` across en,
 en-US, en-GB, ar and ar-SA.
 
+### Two screens can want the same English word and different Arabic ones
+
+**A PO entry with no `msgctxt` applies to every localiser in the module**, so two
+strings that happen to share an English word collide and the later one wins —
+silently, in one language only.
+
+This module had exactly that and nobody noticed until an Arabic click-through
+looked for the menu by name. **Organisation** is *الهيكل التنظيمي* as the admin
+menu's group — the organisational structure — and *المنظمة* as the dimension
+list's column, which says which **company** a row belongs to on a tenant with
+more than one. Both entries were context-less, so the Arabic menu group read
+*المنظمة*: a real word, in the wrong place, on every Arabic reader's sidebar.
+
+**The fix is `msgctxt`, and Orchard Core 3.0.1 supports it.** A translation is
+keyed by `(messageId, context)` with the context-less entry as the fallback —
+verified against `CultureDictionaryRecord.GetKey` and
+`PortableObjectStringLocalizer` with `tools/api-probe`. The context is the
+localiser's own type, so `IStringLocalizer<AdminMenu>` resolves
+`WorkMate.Dimensions.Navigation.AdminMenu`. The menu's entry carries that; the
+list screen's stays context-less.
+
+**`LocalisationResourceTests` cannot catch this** — it asks whether every msgid
+has an entry, and both did. What catches it is a browser test that opens the
+Arabic menu **by its Arabic caption**, which `OrganisationMenuBrowserTests` and
+`PositionsClickBrowserTests` now do.
+
 ### Names: English required, Arabic optional
 
 ADR-0003's addendum. `WorkMateSettings.RequireArabicNames` is off by default, and
@@ -1022,8 +1161,11 @@ Organisation
     Settings
         Dimension types
         Structures
-        (Mapping)              ← position reserved; slice F3
 ```
+
+The Mapping screen that once held a third place under *Settings* is **dropped** (decision **D27**,
+14 October 2026): the Structures editor's containment map stays the single authority on what may sit
+under what, and **ADR-0021 is withdrawn**.
 
 **This shipped once, was withdrawn by the product owner on sight, and is back in a different
 shape.** On a real tenant the withdrawn version read *Branchs, Cost centres, Departments,
@@ -1431,8 +1573,9 @@ grouping comments in that file are for a reader; the order is a contract.
 `InvalidValue` is therefore at the end rather than beside `CodeFormat`.
 
 ## Recipe steps
-`dimension-types`, `structures`, `dimension-records`, `employee-assignments` and
-`unit-heads`, all in `Recipes/`. A recipe lists them in that order: a structure
+`dimension-types`, `structures`, `dimension-records`, `dimension-references`,
+`employee-assignments` and `unit-heads`, all in `Recipes/`. A recipe lists them
+in that order: a structure
 resolves its level types by code, a record resolves its type and structure, and
 the last two resolve units — and people, through `IEmployeeLookup`, which means
 `WorkMate.Records`' own `employees` step has to come before either of them.
@@ -1447,6 +1590,106 @@ guessing which half was meant is worse than taking the default. The export state
 all four unconditionally, for the reason ADR-0008's sort-order addendum gives:
 "this dimension is hidden" and "this file says nothing about the menu" are
 different tenants, and an export reproduces a tenant.
+
+**`dimension-types` carries `role` since slice F5+F7** — `Position`, `Grade`, or
+absent — under the same nullable rule and for the same reason. This is how the
+product finds its Position and Grade dimensions; see `DimensionTypeRole` for why
+the alternative of guessing from a code or a name is wrong. `base.recipe.json`
+ships both dimensions with their roles, and the demo recipes give their own
+prefixed types the same roles.
+
+### A position's value page
+
+**It is always about the reporting line**, whatever the URL says, and the Structure
+chooser is not rendered on it. A position is on two axes (ADR-0028) and only one
+of them is a tree it is the parent of: on the organisation chart a post is a
+*leaf* under a department. The page used to take its axis from the query string,
+and every link into it carries one — so arriving from the Positions list put a
+post's page on the axis where it has nothing under it. **Manager Technology has
+three posts reporting to it and Site Supervisor has one, and both drew no section
+at all.** Defaulting to the reporting line when nothing was asked for was not
+enough, because something is always asked for.
+
+Where the post sits in the business did not go away; it became a row of its own.
+The page carries **two parent rows** rather than the generic Parent row that
+listed both axes one under the other — that was accurate and unreadable, because
+the reader had to work out which line answered which question. The organisation
+row is named for the dimension the post actually sits under (*Department* on
+Zenith), never a fixed caption: a structure decides what may contain a position,
+and FRS Rule 6 lets a customer rename it.
+
+**One Headcount row replaced three.** A post used to carry *Employees: 0 directly
+· 0 including units below* (a count of assignments on the organisation axis,
+which on a post is zero by construction), an *Approved headcount* attribute row,
+and an *Establishment* row repeating that same approved figure. Now: approved,
+filled and vacant from the single establishment read, with the filled-over-approved
+badge beside them — green when full, amber when not, that way round because a
+reader scanning for something to act on is looking for the gaps.
+
+Also on a position and nowhere else: no **Head** row (a head is a unit's
+appointment, ADR-0012 — nobody *heads* the HR Manager position), no **Dimension**
+row (the subtitle says it three rows higher), allowed grades as **chips** with the
+code on hover, and a **Holders** section whose empty state ships now. That last is
+deliberate: a reader told *3 approved · 0 filled* immediately wants the other
+half, and a page with no such section leaves them unsure whether it is missing.
+Nothing assigns an employee to a position before slice F6, so it cannot be
+anything but empty today — which `PositionPageTenantTests` asserts rather than
+assumes.
+
+**Every one of those is behind a position test**, and `AUnitsPageIsUntouched` is
+the guard on the other side: a department still has a head, employees, a Dimension
+row, a Parent row and the chooser. The cheapest way to get one of these wrong is
+to apply it to every dimension.
+
+### Two controls manual testing sent back
+
+**The allowed-grades picker is a list of checkboxes, not a `<select multiple>`.**
+The listbox was unusable in a way nobody could see: adding a second grade needed
+control-click and a run needed shift-click, and a plain click silently dropped
+everything else — so somebody ticking four grades one after another saved one.
+Checkboxes need nothing learnt, are keyboard-operable as they come, and post the
+same field in the same way. What is chosen is rendered first; the search box is
+rendered hidden and unhidden by the script, because filtering is over markup
+already in the page and without the script it would be a control that visibly does
+nothing. The count reads *Selected: 3* rather than "3 grades selected", because the
+script substitutes one number into a server-supplied template and Arabic's six
+plural forms are not a rule a script can carry.
+
+**The unit picker's *Within* filter no longer contradicts the choice beside it.**
+Pick Civil, narrow the scope to Corporate, and the form held a unit the filter said
+was out of bounds. The choice is now dropped and the drop is **said** — a control
+that silently emptied itself would send the reader to Save believing a unit was
+still named. The control cannot answer "is Civil inside Corporate" itself (it holds
+a page of twenty and the chosen one may be nowhere near it), so
+`UnitPickerAdminController.Search` takes a `check` parameter and answers
+`checkInScope`, resolved through the closure index on the same date the search
+beside it uses. A failed request leaves the choice alone rather than clearing on a
+guess.
+
+**`structures` rows come in two forms, and a row is one or the other.** The
+ordinary form **describes** a structure — levels, roots, containment, the flags —
+and the step decides whether the tenant's matches, filling a gap where ADR-0008
+allows one and refusing a difference by name. The **additive** form states
+`addLevelTypeCodes` and `addContainment` and nothing else but the code: it
+**instructs**, naming levels to append and pairings to permit, and says nothing
+about what is already there. That is what lets one recipe extend an axis another
+built — and extend one that has drifted, which a tenant built from an earlier
+version of the same demo always has. A row that did both would have two answers
+to one question, so mixing them is refused, exactly as stating both
+`allowSkipLevel` and an explicit `containment` is. Additive rows go through
+`IStructureService.UpdateAsync` like every other write here, so the level change
+is previewed by `PlanLevelChangeAsync` and audited like an administrator's edit;
+a level or pairing already present is not added twice, so a re-run writes
+nothing. See `StructuresRecipeStep.AddToAsync` and ADR-0008's 14 October
+addendum.
+
+**`dimension-references` is a sixth step, after `dimension-records`** (D26 C): a
+record's references of a named kind, by code. Its own step for two reasons — a
+reference needs both ends to exist and the records step creates them in one pass,
+so a reference stated on a record row would be a forward reference half the time;
+and a reference is **not a placement**, so putting it beside `placements` would
+file it as the thing it most needs not to be mistaken for. Re-running follows
+ADR-0008: a matching set is skipped, a differing one fails naming both sets.
 
 **A change, not a placement, is `employee-assignments`' unit.** Each entry is one
 employee on one axis carrying dated changes, and each change is the whole set of
@@ -1538,6 +1781,40 @@ off an axis entirely; exports both modules into one recipe; imports it into a
 fresh tenant; and compares the answers on dates either side of every change.
 
 ### The demo recipes
+
+**Zenith is two files, in order.** `organisation-designer-zenith` builds the
+organisation; `organisation-designer-zenith-positions` adds the posts, the grade
+ladder and the reporting line. The Recipes screen says so in both descriptions,
+because the order is load-bearing — the second places its positions under the
+first's departments.
+
+**Why it is split, and the rule it taught us.** Slice F5+F7 first put the
+positions in the main file, and that made the main file unapplicable to any
+tenant built from an earlier version of it: ADR-0008 refuses a re-run whose
+`dimension-types` rows differ, and slice F2 had since given every type a
+`menuOrder` those tenants do not have. So the positions never reached the
+tenants that already had the organisation to hang them on — *"existing tenants
+are unaffected unless the recipe is re-applied"* turned out to name the case
+that fails. Found in manual testing, not by the suite.
+
+The split is the fix: **the part that adds is a file that states only new
+things**, and the part that would collide is never restated. ADR-0008's
+14 October addendum carries the rules that make it work — a stored `menuOrder` of
+zero is an absence, a `structures` row may state `addLevelTypeCodes` and
+`addContainment` instead of describing a structure, and `allowsSelfNesting` is
+still refused. `ZenithPositionsRecipeTenantTests` proves it against the pre-F1
+recipe taken out of git rather than a reconstruction of it.
+
+**The second attempt got the additive rule's shape wrong, and the mistake is
+worth keeping.** It restated the whole of `zenith-org` and *inferred* "additive"
+when the tenant's levels were a prefix of the row's and its pairings a subset.
+The real tenant refused it: its map carries `department → department` and
+`team → team`, self-pairs `StructureContainmentDerivation.FromChain` derived from
+the old `allowsSelfNesting` flags, which no current row restates — so the tenant
+was not a subset of anything. **A description can only ever be compared against
+what is there, and a tenant is entitled to hold things no description mentions.**
+The additive row is therefore an instruction stated outright, and mixing the two
+forms in one row is refused.
 
 `organisation-designer-demo` is the small three-level example the designer tests
 run against.
@@ -1835,7 +2112,38 @@ with different content.
 - **ADR-0020** — *withdrawn* by decision D19 before any of it was built. A value
   has exactly one parent; `DimensionLinkDocument.ParentOn` keeps returning one and
   the closure index keeps one path per pair. The ADR file is kept for the analysis
-  in it, and ADR-0021 is amended to a single parent, Required or Optional.
+  in it.
+- **ADR-0022** — **Position is the one master**, and an employee joins the
+  organisation by holding one. Position, Job Title and Designation are one
+  concept (D20); a Position is an ordinary **dimension type** with no new
+  aggregate, table or write service, and `IPositionService` is a reader over the
+  three that exist. Approved headcount is an **attribute** and is therefore
+  **undated** — a stated limitation (D15), not an oversight. One Position per
+  **job**, not per post (D26 D), which is what makes the headcount a number worth
+  having. The employee side — `EmployeeAttachableDimensionTypeIds = [position]`
+  and the derived block — is **slice F6**, so every position's Filled count is 0
+  until then.
+- **ADR-0028** — **a Position sits on two axes**: its unit on the organisation
+  chart, and the position it reports to on a `reporting-line` axis of its own.
+  D19 gives a value one parent per axis, and a position genuinely needs two
+  places at once (FRS figure 9 and §4.1.4), so this is ADR-0005's one-record-two
+  -axes mechanism rather than a workaround. It also records why a Position's
+  **allowed grades** cannot be a third axis and need a reference table: a link
+  gives one parent per axis in either direction, and *"which positions allow
+  SE-1"* is many-to-many.
+
+  `base.recipe.json` ships the `grade` and `position` types and the
+  `reporting-line` and `grades` axes, and **still ships no organisation chart**.
+  Neither of those axes is the customer's chart — a grade ladder has one level,
+  holds no units and has nobody placed on it — so the base recipe's rule that
+  "every new tenant gets an organisation chart to fill in" is untouched. What a
+  tenant still has to do before a Position can sit anywhere in the business is
+  add `position` to their own organisation structure's levels.
+- **ADR-0021** — *withdrawn* by decision D27, also before any of it was built. The
+  Mapping screen and slice F3 are dropped; `StructureDocument.Mappings`,
+  `MappingCardinality` and the Rule 3 check do not exist. The containment map
+  (ADR-0010) is the single authority on what may sit under what, and a parent stays
+  optional on every dimension. The ADR file is kept for the same reason ADR-0020's is.
 
 ## Open questions this module is waiting on
 

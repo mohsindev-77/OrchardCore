@@ -88,6 +88,83 @@ public sealed class DimensionRecordDetailsViewModel
     /// <summary>The charts this value's type is a level of. Fewer than two means no choice to offer.</summary>
     public IReadOnlyList<StructureChoiceViewModel> Structures { get; set; } = [];
 
+    /// <summary>
+    /// Whether <see cref="StructureId"/> is a reporting line rather than an organisation chart.
+    /// </summary>
+    /// <remarks>
+    /// <b>What a position's page is about.</b> A position sits on two axes (ADR-0028) and only one
+    /// of them is a tree it is the parent of: on the organisation chart a post is a leaf under a
+    /// department, so a page scoped there has no section at all, which is what manual testing found
+    /// on <em>Manager Technology</em> and <em>Site Supervisor</em>. Their reporting lines were three
+    /// and one deep respectively, and the page drew neither.
+    ///
+    /// So a position's page is always resolved to its reporting axis and this is true; every other
+    /// dimension keeps the structure the reader chose, and this is false.
+    /// </remarks>
+    public bool IsReportingAxis { get; set; }
+
+    /// <summary>
+    /// Whether to offer the Structure chooser. Never on a position.
+    /// </summary>
+    /// <remarks>
+    /// The chooser exists for a type that is a level of several charts and no way to tell which the
+    /// reader means. A position is always on two — its unit's chart and its reporting line — but
+    /// there is nothing to ask: its page is about the reporting line, and where it sits in the
+    /// business is one row of the facts above. A control whose only two settings are "the right one"
+    /// and "a chart where this is a leaf" is a way to make the page wrong.
+    /// </remarks>
+    public bool ShowsStructureChooser => !IsPosition && Structures.Count > 1;
+
+    /// <summary>
+    /// The units above this position on the organisation axis, highest first. Positions only.
+    /// </summary>
+    /// <remarks>
+    /// <b>A position's page shows its two parents as two rows, not as one list of placements.</b>
+    /// The generic Parent row prints one line per axis — <em>"Zenith reporting line: CEO › Director
+    /// Technology"</em> beside <em>"Zenith Engineering: Corporate › HR"</em> — which is accurate and
+    /// unreadable: the two are different questions about the post and a reader has to work out which
+    /// line answers which. ADR-0028 says a position has two parents on two axes; the page now says
+    /// the same thing in two rows with their own names.
+    /// </remarks>
+    public IReadOnlyList<DimensionRecordReportsToViewModel> OrganisationPath { get; set; } = [];
+
+    /// <summary>
+    /// What to call the organisation row — the dimension the post actually sits under.
+    /// </summary>
+    /// <remarks>
+    /// <b>"Department" on Zenith, and not hard-coded to it.</b> A structure decides what may contain
+    /// a position, so on another tenant the answer is Division or Section or whatever a customer has
+    /// renamed those to under FRS Rule 6. A fixed caption would be right for the demo and a lie
+    /// everywhere else, so the row is named for the immediate parent's own dimension and falls back
+    /// to <em>Organisation</em> when the post is not placed and there is nothing to name.
+    /// </remarks>
+    public string OrganisationLabel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Who holds this position today. Empty until slice F6 gives employees their positions.
+    /// </summary>
+    /// <remarks>
+    /// <b>The empty state ships now, deliberately.</b> An establishment of three approved and none
+    /// filled is a fact about a post that a reader will immediately want the other half of, and a
+    /// page that simply had no such section leaves them wondering whether it is missing or whether
+    /// nobody holds the post. Saying "no one holds this position yet" answers that, and it is the
+    /// true answer until F6 — nothing assigns a position to an employee before then, so this list
+    /// cannot be anything but empty, and that is asserted rather than assumed.
+    /// </remarks>
+    public IReadOnlyList<PositionHolderViewModel> Holders { get; set; } = [];
+
+    /// <summary>
+    /// The posts between the top of the reporting line and this one, highest first. Empty for a
+    /// position that reports to nobody, and on every other dimension.
+    /// </summary>
+    /// <remarks>
+    /// <b>The chain above, where the section below is the chain beneath.</b> A reader opening
+    /// <em>Software Engineer</em> is shown who answers to it — nobody — and would otherwise be told
+    /// nothing at all about where it sits on the line. One row of links is the whole answer, and it
+    /// is the same ancestor-path read the Placements row already makes, on the other axis.
+    /// </remarks>
+    public IReadOnlyList<DimensionRecordReportsToViewModel> ReportsTo { get; set; } = [];
+
     /// <summary>Who leads this unit on the chosen chart today, or empty when nobody does.</summary>
     public string HeadName { get; set; } = string.Empty;
 
@@ -128,6 +205,59 @@ public sealed class DimensionRecordDetailsViewModel
 
     /// <summary>The value's own attributes and their values, in schema order.</summary>
     public IReadOnlyList<DimensionRecordAttributeViewModel> Attributes { get; set; } = [];
+
+    /// <summary>
+    /// Whether this value is a position, which is what puts its establishment and its grades on the
+    /// page. Decisions D26 C and D26 E.
+    /// </summary>
+    /// <inheritdoc cref="IsGrade" path="/remarks"/>
+    public bool IsPosition { get; set; }
+
+    /// <summary>
+    /// How many of this post are approved, filled and vacant. Null on every other dimension.
+    /// Decision D26 E.
+    /// </summary>
+    /// <remarks>
+    /// <b>Beside the facts rather than only on the chart.</b> The badge on a reporting box answers
+    /// "how full is that one" while a reader is scanning; this answers "how full is this one" on the
+    /// page they opened to find out. The same three numbers the Positions list draws, from the same
+    /// read.
+    /// </remarks>
+    public Services.PositionEstablishment? Establishment { get; set; }
+
+    /// <summary>
+    /// The grades this position allows: its levels, in the order somebody chose. Decision D26 C.
+    /// </summary>
+    /// <remarks>
+    /// <b>Shown even when empty</b>, for the reason <see cref="UsedByPositions"/> is: a position
+    /// with no grades is a post nobody can be given a level in, and that is what somebody looking at
+    /// it needs to be told.
+    /// </remarks>
+    public IReadOnlyList<DimensionRecordReferrerViewModel> AllowedGrades { get; set; } = [];
+
+    /// <summary>
+    /// Whether this value is a grade, which is the one thing that puts <see cref="UsedByPositions"/>
+    /// on the page. Decision D26 C.
+    /// </summary>
+    /// <remarks>
+    /// Read off the dimension type's declared <c>StandardRole</c>, never off its code or its name —
+    /// <c>DimensionTypeRole</c> gives the argument, and the short form of it is that the demo
+    /// recipes ship <c>zenith-grade</c> and FRS Rule 6 lets a customer rename Grade to Band.
+    /// </remarks>
+    public bool IsGrade { get; set; }
+
+    /// <summary>
+    /// The positions that allow this grade, effective on the date the page is about. Decision
+    /// D26 C's <em>"Used by positions: …"</em>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Empty is a real answer and is said out loud</b>, rather than the section being hidden: a
+    /// grade no position allows is a grade nobody can be given, and that is exactly what somebody
+    /// looking at a grade's page needs to be told. It is the opposite judgement from
+    /// <see cref="Tree"/>, where a leaf shows no section at all — a unit with nothing under it is
+    /// ordinary, and a grade nothing uses is a loose end.
+    /// </remarks>
+    public IReadOnlyList<DimensionRecordReferrerViewModel> UsedByPositions { get; set; } = [];
 
     /// <summary>
     /// Everything under this value on the chosen chart, in tree order, each row carrying its depth.
@@ -223,6 +353,40 @@ public sealed class DimensionRecordDetailsViewModel
 public sealed record DimensionRecordAttributeViewModel(string Label, string Value);
 
 /// <summary>
+/// One record that points at the value whose page this is — a position that allows this grade.
+/// </summary>
+/// <param name="UnitName">
+/// Where that position sits in the business, so two positions of the same name on two charts are
+/// tellable apart. Empty when it is unplaced, which is a state the page shows rather than hides.
+/// </param>
+public sealed record DimensionRecordReferrerViewModel(
+    string RecordId,
+    string Code,
+    string Name,
+    string UnitName);
+
+/// <summary>
+/// One step in a path above this record — a unit on the organisation axis, or a post on the
+/// reporting line. Linked, so the chain walks.
+/// </summary>
+public sealed record DimensionRecordReportsToViewModel(string RecordId, string Name);
+
+/// <summary>
+/// One person holding a position: who, at what grade, since when. Decision D26 D.
+/// </summary>
+/// <remarks>
+/// Nothing produces one of these yet — an employee's position arrives in slice F6. The shape is
+/// fixed here because the section that shows it ships now with its empty state, and a section whose
+/// row shape was decided later would be a second design meeting with the first one's markup already
+/// in the wild.
+/// </remarks>
+public sealed record PositionHolderViewModel(
+    string EmployeeId,
+    string Name,
+    string GradeName,
+    DateOnly Since);
+
+/// <summary>
 /// The three ways the "Units under this one" section can be drawn. Decision D25.
 /// </summary>
 /// <remarks>
@@ -275,6 +439,34 @@ public sealed class DimensionRecordHierarchyNodeViewModel
 
     /// <summary>Employees at this unit itself, distinct. The badge's hover text.</summary>
     public int EmployeeCount { get; set; }
+
+    /// <summary>
+    /// How many of this post are approved and filled, when the chart is a reporting line.
+    /// Decision D26 E.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null on every chart but a reporting one</b>, and the box then shows the employee badge it
+    /// has always shown. On a reporting chart the employee counts are the wrong number to draw: an
+    /// assignment names the organisation axis, so "employees below this box" on a reporting line
+    /// counts nobody, and a badge reading zero on every box would be worse than no badge.
+    ///
+    /// <b>Green when full, amber when there is a vacancy</b>, which is the brief's own wording and
+    /// is deliberately not the other way round: a reader scanning a reporting chart for something to
+    /// act on is looking for the gaps.
+    /// </remarks>
+    public Services.PositionEstablishment? Establishment { get; set; }
+
+    /// <summary>
+    /// The unit this post sits in, on a reporting chart. Empty elsewhere, and empty for a position
+    /// nothing has placed in the business yet.
+    /// </summary>
+    /// <remarks>
+    /// On a reporting chart the box's dimension is <em>Position</em> on every box, which tells a
+    /// reader nothing. What tells two posts called <em>Supervisor</em> apart is where they sit, and
+    /// that is a question about the <em>other</em> axis — which is the whole of ADR-0028 showing up
+    /// on a screen.
+    /// </remarks>
+    public string UnitName { get; set; } = string.Empty;
 
     /// <summary>Whether the unit's own effective range covers the date the page is about.</summary>
     public bool IsEffective { get; set; } = true;
@@ -339,6 +531,18 @@ public sealed class DimensionRecordTreeRowViewModel
 
     /// <summary>Employees at this unit itself, distinct. Shown on hover.</summary>
     public int EmployeeCount { get; set; }
+
+    /// <summary>
+    /// How many of this post are filled and approved, on a reporting line. Null on every other
+    /// chart.
+    /// </summary>
+    /// <remarks>
+    /// <b>The same reason the hierarchy box carries it</b> (D26 E), arriving in the other two views:
+    /// an assignment names the organisation axis, so an employee count on a reporting line is zero
+    /// on every row. The Tree and List views show <em>Holders</em> here instead, filled over
+    /// approved, from the one read that fills the chart.
+    /// </remarks>
+    public Services.PositionEstablishment? Establishment { get; set; }
 
     /// <summary>Whether the unit's own effective range covers the date the page is about.</summary>
     public bool IsEffective { get; set; }

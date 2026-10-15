@@ -48,15 +48,23 @@ Proposed shape:
 The UI offers Delete. A value never used (no employees, children, links or history) is really
 deleted. A value that is or was used is set Inactive with an end date, and the user is told why.
 
-## D5 Grades and steps — AMENDED BY D20
-- "Grade Steps" is one dimension with its own tree: grades as parents, steps as children
+## D5 Grades and steps — AMENDED BY D20, **SUPERSEDED IN PART BY D26 C**
+> **D26 C removes the step.** There is no `grade-step` dimension, no step control and no step on an
+> employee. A Position carries a **set** of allowed grades and the employee's **grade** — not a step
+> within one — is the dated fact. The three struck-through bullets below are kept so a reader meeting
+> "G7-S3" in an earlier document can find out what happened to it.
+
+- ~~"Grade Steps" is one dimension with its own tree: grades as parents, steps as children
   (G7 -> G7-S1..S5). Refined by **D7**: one dimension in the menu and on screen, two dimension
-  types underneath.
-- A position **references** a GRADE (optionally a grade range, e.g. G7-G8). **Amended by D19:**
-  this is a reference and not a parent — see **D21**.
-- The employee holds a STEP, chosen only from the steps of the position's grade(s); dated
-  (G7-S2 from Jan 2025, G7-S3 from Jan 2026). Steps optional for clients that do not use them.
-- Promotion = new position; grade follows; HR picks a step in the new grade.
+  types underneath.~~ **Struck out by D26 C.** One dimension, **Grade**, with no step level.
+- A position **references** a GRADE. **Amended by D19:** a reference and not a parent — see **D21**.
+  **Amended again by D26 C:** a **set** of grades rather than a range.
+- ~~The employee holds a STEP, chosen only from the steps of the position's grade(s); dated
+  (G7-S2 from Jan 2025, G7-S3 from Jan 2026). Steps optional for clients that do not use them.~~
+  **Struck out by D26 C.** The employee holds a **grade**, chosen only from the position's allowed
+  grades, dated. What was optional about steps is now simply absent.
+- Promotion = new position or a new grade within the same one (**D26 D**); HR picks a grade the new
+  position allows.
 - ~~Job Title is a dimension that positions point to (e.g. "Engineer" used by several positions).~~
   **Struck out by D20.** Position, Job Title and Designation are one concept, always called
   **Position**. There is no Job Title dimension and nothing points at one.
@@ -78,7 +86,13 @@ Recorded 12 October 2026 by Mohsin Hasnain, answering the questions raised in
 Binding for design and implementation unless the product owner changes them. Each carries the
 question number it answers, so the design document and these decisions can be read together.
 
-## D7 Grade Steps is two dimension types behind one menu entry (Q-a)
+## D7 Grade Steps is two dimension types behind one menu entry (Q-a) — **SUPERSEDED BY D26 C**
+> **D26 C ships one dimension type, `grade`, and no `grade-step`.** The menu entry reads **Grades**
+> / **الدرجات**. The answer below was the right one to the question as it stood — "is a grade a node
+> at depth 0, or a type of its own" — and D26 removes the question by removing the second level. The
+> reasoning is kept because its argument against depth rules is the reason a *group* above SE-1..SE-3
+> is an ordinary grade value on a self-nesting axis rather than a level.
+
 Option B of the design. Two dimension types — `grade` and `grade-step` — with `grade -> grade-step`
 in the containment map and `grade-step` mapped to `grade`. The menu carries **one** entry,
 "Grade Steps", whose tree shows grades at the top level and steps indented under them.
@@ -88,14 +102,18 @@ built from two dimension types. Taken because the alternative — one self-nesti
 is a node at depth 0 — makes "is this a grade or a step" a depth rule, which breaks the first time a
 customer puts a band above their grades.
 
-## D8 Grade attaches to the position, not the person (Q-b)
-- A position is mapped to a grade. Cardinality `ExactlyOne` by default.
-- **Grade ranges are allowed**: a mapping set to `OneOrMore` lets a position carry G7 and G8.
-- **Steps are optional by not configuring them.** A tenant that creates grades and no steps has
-  nothing to pick, and the step control is absent rather than empty. No flag and no setting; the
-  absence of data is the switch.
-- **The employee's dated step is an `EmployeeAssignment` on a Grade axis**, not a field on the
-  employee. Dated, historical, audited and exportable with no new storage.
+## D8 Grade attaches to the position, not the person (Q-b) — **AMENDED BY D26 C AND D26 G**
+- A position carries a **set of allowed grades** (D26 C), not a mapping with a cardinality.
+- ~~**Grade ranges are allowed**: a mapping set to `OneOrMore` lets a position carry G7 and G8.~~
+  **Replaced by D26 C**: a set, which expresses the non-contiguous case a range cannot.
+- ~~**Steps are optional by not configuring them.**~~ **Struck out by D26 C** — there are no steps.
+- **The employee's dated grade is an `EmployeeAssignment` on a Grade axis**, not a field on the
+  employee. Dated, historical, audited and exportable with no new storage. D26 G adds that it is
+  chosen **only** from the position's allowed grades, and that the control is disabled until a
+  position is chosen.
+
+What this decision got right and D26 keeps: **the grade belongs to the post, and the person's grade
+is a dated assignment rather than a field.**
 
 ## D9 Position is the master (Q-c) — SUPERSEDED BY D20
 **As recorded 12 October 2026**, this named three nouns and kept two of them: Position as the master
@@ -205,7 +223,9 @@ keeps its prefixed type codes and its plain plurals.
 The test D17 asked for exists and is stronger: `OrganisationMenuTenantTests` loads base + Zenith +
 Crescent + the demo sample — twelve dimension types — and asserts **eight** menu entries.
 
-## D18 Slice order — REVISED BY D19 AND D20
+## D18 Slice order — REVISED BY D19 AND D20, **SUPERSEDED BY D27**
+> **D27 carries the current order:** `F1 ✓ → F2 ✓ → F5+F7 → F6 → F8 → F9`. F3 is dropped, and F5 and
+> F7 are one slice. The table below is the order as it stood on 13 October.
 
 **As recorded 12 October 2026:** `F1 -> F2 -> F3 -> F4 -> F8 -> F5 -> F6 -> F7 -> F9`.
 
@@ -350,9 +370,12 @@ The session-B design predicted this exact outcome and left room for it: *"a code
 a position by another name, and introducing one as a side-effect of a lookup list would settle that
 question by accident."* It is now settled deliberately, the other way.
 
-## D21 A position's grade is a reference, not a parent
+## D21 A position's grade is a reference, not a parent — **CONFIRMED, AND AMENDED BY D26 C**
 
-**Pending product owner confirmation.** The team's reading; flag it in review.
+> **Confirmed.** Question Q-k is answered: a grade is **never** a level of the organisation tree.
+> **Amended** in one respect only — the reference is a **set** of grades, not a range, and
+> `OneOrMore` as a mapping cardinality goes with ADR-0021 (**D27**). The rest of this decision is
+> what D26 C rests on.
 
 D19 makes a value's single parent its place in the tree. A position has exactly one parent — a
 Branch, or a Department, per **D14** — and that is its place in the organisation. Its **grade** is a
@@ -681,3 +704,193 @@ expand, zoom and fit are a few lines in `workmate-dimension-records`.
 | **Labels** | Bilingual: *Hierarchy* / **الهيكل**, *Tree* / **شجرة**, *List* / **قائمة** |
 
 Tested on a chart of **fifty-odd units across four levels**, in all three views.
+
+---
+
+# D26 and D27 — positions, grades, access roles, and the end of the Mapping slice
+
+Recorded 14 October 2026 by Mohsin Hasnain, from the manager's review of the F2 polish.
+**Status: product owner decisions.** Both override earlier recorded decisions, and each names what
+it supersedes. Binding for design and implementation.
+
+## D26 Positions, grades, users and access roles
+
+### D26 A One concept, one word
+
+**Position = Designation = Job title.** On screen it is always **Position**; in Arabic
+**المنصب**. This restates **D20** and adds nothing to it — it is here because the manager asked the
+question again, and the answer should be findable from the decision that was asked about.
+
+### D26 B Orchard Roles are "Access roles", and they are not Positions
+
+Three things a customer runs together, kept apart in the product:
+
+| | What it is | Where it lives |
+| --- | --- | --- |
+| **Position** | the post a person holds — HR Manager, Labourer | the Position dimension |
+| **User** | a login | Orchard's user store |
+| **Access role** | a permission set | Orchard's roles, relabelled |
+
+**On screen, Orchard Roles read "Access roles" / أدوار الصلاحيات.** The bare word *Role* is exactly
+the ambiguity D20 exists to remove: a customer saying "his role is HR Manager" means his position,
+and a customer saying "give him the HR role" means his permissions. Neither sentence is wrong; the
+product has to stop using one word for both.
+
+A Position carries no permissions and an Access role carries no headcount. What joins them is a
+person: an employee holds a position and, if they are given system access, a user holds access roles.
+
+### D26 C Grades belong to Positions — SUPERSEDES D5, D7 and part of D21
+
+**What is superseded.** D5 made *"Grade Steps"* one dimension with grades as parents and steps as
+children (G7 → G7-S1..S5). D7 built that as two dimension types, `grade` and `grade-step`, behind
+one menu entry. D21 let a position reference a grade **range** (G7–G8) through `OneOrMore`.
+
+**The decision: there is no grade step, and a position has a *set* of allowed grades.**
+
+- Grades are values of **one** dimension — **Grade** — created like any other dimension value:
+  SE-1, SE-2, SE-3, PSE-1, PSE-2, PSE-3, HRM-1, HRM-2, HRM-3, LAB-1, LAB-2.
+- **Each Position is given a set of allowed grades.** Software Engineer → SE-1, SE-2, SE-3.
+  Principal Software Engineer → PSE-1, PSE-2, PSE-3.
+- **A position's grades are its levels.** There is no second level below a grade, so the
+  `grade-step` dimension type is **not built** and the *Grade Steps* menu entry does not exist.
+
+**What survives from D21, and it is the important half.** An allowed grade is a **reference, not a
+parent**. It never enters the closure index, no grade appears on the organisation tree, and no
+employee rolls up to a grade through their position. What changes is only the shape of the
+reference: a **set** of grades rather than a range. A range says "any grade between these two",
+which needs grades to be ordered; a set says which grades, which needs nothing of them and expresses
+the non-contiguous case a range cannot.
+
+**Optional grouping, never a level.** A tenant that wants an *SE* heading above SE-1..SE-3 can have
+one, because grades sit on their own axis and the Structures containment map can permit a Grade
+under a Grade. That is a tenant's choice and the shipped data is flat. It is **not** the step
+concept returning under another name: a group is a grade value like any other, and a position may
+allow it or not.
+
+### D26 D One Position per job — SUPERSEDES the "three HR Managers = three Positions" note
+
+**What is superseded.** A note raised in review — *"three HR Managers are three Positions"* — read a
+Position as one **post** rather than one **job**. It is not written down in this file, which is why
+it is written down here: it had been said often enough to be acted on. It also pulls against **D2**'s
+own *"a position holds MANY employees"*, and D2 is the half that survives.
+
+**The decision: people doing the same job share one Position, and their level is their grade.**
+
+- *HR Manager* is **one** Position, with allowed grades HRM-1/HRM-2/HRM-3 and an approved headcount
+  of 3. Each of the three holders has their own grade.
+- *Labourer* is **one** Position with an approved headcount of 44.
+- A new Position is created for a **different job**, never for another person doing the same one.
+
+This is what makes approved headcount mean something. A Position per person makes every headcount 1
+and every vacancy 0 or 1, which is a column that can only ever repeat what the row already says.
+
+### D26 E A Position has an approved headcount
+
+`Approved headcount`, defaulting to **1**. **Filled** is the number of employees holding the
+position on the date; **Vacant** is approved − filled, shown as a negative where a position is
+over-established rather than clamped to zero. Undated, per **D15**, and still a stated limitation.
+
+### D26 F Position is a drop-down on the employee, never free text
+
+- The employee's Position is chosen from the Positions created in the **Position dimension**:
+  active as at the effective date, retired ones hidden, searchable, each option showing its **name**,
+  its **unit** and its **filled/approved** count.
+- **No free-text position anywhere** — not on the employee, not on a section, not in a form.
+- **A full position (filled ≥ approved) warns and is allowed.** Refusing would stop the product
+  recording what an organisation has actually done, which is not the engine's call to make. The
+  warning is the point: somebody should know.
+
+### D26 G Grade is a drop-down of the chosen Position's allowed grades
+
+- The Grade control lists **only** the chosen Position's allowed grades. It is **empty and disabled
+  until a Position is chosen**, and it is refreshed when the Position changes.
+- **The employee's grade is dated**, like every other fact about where they sit.
+- **Changing the Position requires choosing a grade of the new Position.** A grade of the old one is
+  not carried across, because it is not one of the new position's levels.
+- **Removing a grade from a Position an employee currently holds warns and never breaks that
+  employee's record.** The stored grade stays and keeps resolving; what changes is what is offered
+  next time.
+
+### D26 H Holding a Position is what puts an employee in the organisation
+
+Confirms **D2** and FRS §1.2. Department, division, business unit and cost centre are **derived**
+from the Position's placement; **Reports to** comes from the Position's reporting line. A main
+position and additional ones are allowed, with an allocation percentage, which is the existing
+`EmployeeAssignment` split. **The employee side is built in F6**; F5+F7 prepares and tests the two
+reads it needs and the two controls it is drawn with.
+
+### D26 I "Give system access" is optional, and is its own slice
+
+A toggle on employee creation: a new or existing **User**, **one User ↔ one Employee**, existing
+**Access roles** or a new one where the operator holds *Manage access roles*. Login is **disabled
+until the employee is Activated**, and disabled again on **Suspend** or **Exit**. Changing somebody's
+position raises a **"review access roles"** reminder rather than changing anything by itself, because
+what permissions a post implies is a customer's policy and not a derivation.
+
+**Built in the security slice**, not in F5+F7. Recorded here because it is the reason D26 B draws the
+line it does.
+
+## D27 Slice F3 is dropped; ADR-0021 is withdrawn
+
+**The decision: the Settings → Mapping screen is not built.**
+
+The **Structures containment map (ADR-0010) stays the single source of truth** for which dimension
+may sit under which. The Add form's **Place under** picker and the **Organisation designer** keep
+enforcing it through `ContainmentRules.Decide`, exactly as they do today.
+
+**ADR-0021 is marked *Withdrawn — superseded by D27*, and its text is kept.** What it designed —
+`StructureDocument.Mappings`, `MappingCardinality`, Rule 3 in `IDimensionValidator`, the
+`StructureIndex.MappingCount` migration — was **never built**, so no tenant and no line of code
+changes when it goes. The text stays for the reason ADR-0020's does: a reader meeting "mapping is
+containment plus a cardinality" in the design document needs to find out what happened to it, and the
+analysis of *why* obligation cannot live on the containment grid is correct and worth having if
+required parents are ever asked for again.
+
+**What goes with it.** FRS Rule 3 — *"every new value must be assigned to one value from each mapped
+parent before it can be saved"* — is **not built**. A parent stays optional on every dimension, which
+is what the engine does today and what the unplaced panel already reports on. Rule 4 is unaffected: a
+dimension the containment map gives no parent for shows no parent step.
+
+### The new slice order
+
+```
+F1 ✓ → F2 ✓ → F5+F7 (Positions and Grades) → F6 (employees via positions) → F8 → F9
+```
+
+| | Slice | Changed by D26 / D27? |
+| --- | --- | --- |
+| **F1** ✓ | Alias, Status, the two views | — |
+| **F2** ✓ | The menu, value pages, the three views | — |
+| ~~F3~~ | ~~Mapping~~ | **Dropped by D27** |
+| ~~F4~~ | ~~The DAG~~ | Deleted by D19 |
+| **F5+F7** ✓ | **Positions and Grades, as one slice** | D26 merges them: a position's allowed grades cannot be built without grades, and grades have little to belong to without positions. **Grades first.** Shipped 14 October 2026, with **ADR-0022** (Position is the one master) and **ADR-0028** (a Position sits on two axes) |
+| **F6** | Employees join through a position | Gains D26 F and D26 G — the two drop-downs — and keeps D22 |
+| **F8** | The Organisation tree enquiry report | Was "runs after F3"; F3 is gone, so it runs after F6 |
+| **F9** | Demo recipes, export and Delete | — |
+
+**ADR-0026 is restated** rather than written as D5/D7 described it: grades are a dimension, there is
+no grade-step dimension, a position's allowed grades are a set of references, and the employee's
+dated grade is an assignment on the Grade axis.
+
+### What F5+F7 actually shipped, and what it left
+
+**Built, 14 October 2026.** The Grade dimension and its axis; the reference table that a position's
+allowed grades live in (`UpdateFrom12Async`); the declared **role** on a dimension type, which is how
+the product finds its Position and Grade dimensions without guessing from a code or a name; the
+Position dimension with its approved headcount; the **reporting-line** axis (**ADR-0028**);
+`IPositionService` and the two reads F6's drop-downs are built on; the Add/Edit form's *Reports to*
+and *Allowed grades*; the Positions list's Approved / Filled / Vacant / Allowed grades; a position
+page that opens on its reporting line with a filled/approved badge; and the Zenith demo.
+**ADR-0022** and **ADR-0028** are written, both *accepted, pending second review*.
+
+**Deliberately not built, and both are F6's.** `EmployeeAttachableDimensionTypeIds` is unchanged, so
+employees still attach where they did and **every position's Filled count is 0** — repointing them
+here would have moved every demo employee's placement as a side effect of adding positions.
+`JobDetails.JobTitle`, `JobDetails.GradeCode` and the `grade` and `job-title` lookup lists are
+untouched, per **D22**.
+
+**Still owed.** **ADR-0023** — *WorkMate ships the pre-configured dimension set* — is **not** written:
+F5+F7 shipped Position and Grade because the slice needed them, and the other eleven rows of figure
+2 have not shipped, so the ADR would be describing something that does not exist. It is owed by
+whichever slice ships the rest. **ADR-0026** is owed by **F6**, which is where the employee's dated
+grade and the unbinding of `GradeCode` land.

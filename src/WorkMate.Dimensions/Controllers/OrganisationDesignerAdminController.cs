@@ -134,7 +134,20 @@ public sealed class OrganisationDesignerAdminController : Controller
         // nothing on it, while the tenant's actual organisation sits on another, shows an empty
         // screen and hides the data. A configured axis beats an unconfigured one; among configured
         // ones the primary still wins.
-        var configured = structures.Where(structure => structure.Levels.Count > 0).ToList();
+        //
+        // "Configured" means configured AS AN ORGANISATION CHART, and that qualification is new
+        // with slice F5+F7. Before it, every configured axis was one: the only way an axis had
+        // levels was somebody building their company on it. base.recipe.json now ships two that are
+        // configured and are not — the grade ladder and the reporting line (ADR-0028) — and both
+        // sort before a customer's own code, so without this the organisation designer opened on an
+        // empty Grades axis on every tenant. An axis made entirely of Positions or Grades is not an
+        // organisation chart; one with so much as a Department on it is.
+        //
+        // Both stay in the chooser above. What changes is only which one opens by default.
+        var configured = structures
+            .Where(structure => structure.Levels.Count > 0 && structure.DimensionTypeIds.Any(id =>
+                !typesById.TryGetValue(id, out var type) || type.StandardRole == DimensionTypeRole.None))
+            .ToList();
 
         var selected = (structureId is not null
                 ? structures.FirstOrDefault(structure => structure.StructureId == structureId)

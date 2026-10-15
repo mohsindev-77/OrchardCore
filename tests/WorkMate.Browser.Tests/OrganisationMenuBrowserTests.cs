@@ -50,8 +50,9 @@ public sealed class OrganisationMenuBrowserTests
     /// distinct ones is what "each dimension appears exactly once" means without reading a single
     /// caption — which is the only way to ask the same question of an Arabic page and an English one.
     ///
-    /// Seven, on a tenant with nine dimension types: Zenith and Crescent each declare a Division and
-    /// a Department, and each pair is one entry.
+    /// Nine, on a tenant with eleven dimension types: Zenith and Crescent each declare a Division
+    /// and a Department, and each pair is one entry — plus the Position and Grade dimensions the
+    /// base recipe ships (D26), which are one type and one entry each.
     /// </remarks>
     [Theory]
     [InlineData("en")]
@@ -65,11 +66,12 @@ public sealed class OrganisationMenuBrowserTests
 
         var hrefs = await DimensionHrefsAsync(page);
 
-        hrefs.Should().HaveCount(
-            7,
-            "nine types, but Zenith's and Crescent's Divisions are one entry and their Departments another");
-
-        hrefs.Should().OnlyHaveUniqueItems("one entry per dimension name, and one name per entry");
+        // Distinct, because a dimension with more values than a menu entry lists earns a second
+        // link to the same screen — *Show all (16)* under Grades on this tenant. "Each dimension
+        // appears exactly once" is a statement about the screens, not about the anchors.
+        hrefs.Distinct().Should().HaveCount(
+            9,
+            "eleven types, but Zenith's and Crescent's Divisions are one entry and their Departments another");
     }
 
     /// <summary>
@@ -241,6 +243,45 @@ public sealed class OrganisationMenuBrowserTests
             .ToContainTextAsync("Zenith");
 
         await Assertions.Expect(page.Locator("#record-organisation")).ToBeAttachedAsync();
+    }
+
+    /// <summary>
+    /// The Grade dimension the base recipe ships is reachable by clicking, in both languages.
+    /// </summary>
+    /// <remarks>
+    /// <b>Decision D26 C, and the click is the point.</b> The grade ladder is a dimension type plus a
+    /// structure shipped by a recipe, and nothing in the code names either — so the way this fails is
+    /// that a tenant has a Grade dimension with no axis to put a value on, the menu entry opens a
+    /// screen that cannot add anything, and no unit test notices because every piece exists.
+    ///
+    /// <b>Both languages, because the caption is the only thing being asserted</b> and an
+    /// untranslated plural reads as the English. <em>الدرجات</em> is the authored Arabic plural of
+    /// درجة; nothing derives it, for the reason no plural in this menu is derived.
+    /// </remarks>
+    [Theory]
+    [InlineData("en", "Organisation", "Grades", "All Grades")]
+    [InlineData("ar", "الهيكل التنظيمي", "الدرجات", "كل الدرجات")]
+    public async Task TheGradeDimensionIsInTheMenuAndOpensItsOwnList(
+        string culture,
+        string organisation,
+        string caption,
+        string all)
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        await OpenAdminInAsync(page, culture);
+
+        // The group's own caption is localised too — الهيكل التنظيمي — so an Arabic reader's menu
+        // cannot be opened by the English word. Passing it per culture is what makes this a test of
+        // the Arabic menu rather than of the English one rendered under an Arabic cookie.
+        await AdminMenu.ClickAsync(page, all, organisation, caption);
+
+        await Assertions.Expect(page.Locator("#record-list-heading")).ToContainTextAsync(caption);
+
+        // The toolbar's Add is what proves the axis arrived with the type: without a structure the
+        // type is a level of, the Add form has nowhere to put a grade and the screen says so instead.
+        await Assertions.Expect(page.Locator("#record-new")).ToBeVisibleAsync();
     }
 
     /// <summary>

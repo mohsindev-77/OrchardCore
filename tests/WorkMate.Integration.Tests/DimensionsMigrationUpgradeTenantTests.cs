@@ -6,6 +6,7 @@ using OrchardCore.Data.Migration.Records;
 using WorkMate.Core;
 using WorkMate.Dimensions.Indexes;
 using WorkMate.Dimensions.Internal.Graph;
+using WorkMate.Dimensions.Internal.References;
 using WorkMate.Dimensions.Models;
 using WorkMate.Dimensions.Services;
 using WorkMate.Platform.Services;
@@ -186,7 +187,7 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             await session.SaveChangesAsync();
 
             // A tenant at version 4 does not have the tables the later steps create, and the catch-up
-            // re-runs those steps. See TablesByVersion.
+            // re-runs those steps. See DimensionSchema.TablesByVersion.
             await DropTablesCreatedAfterAsync(services, 4);
 
             await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
@@ -424,6 +425,12 @@ public sealed class DimensionsMigrationUpgradeTenantTests
 
             await DropAliasColumnsAsync(services);
 
+            // And the tables a tenant at version 9 does not have yet. The columns are only half of
+            // what "stuck at 9" means — see DimensionSchema.TablesByVersion, which exists because leaving a later
+            // step's table in place makes the catch-up fail on "table already exists" and strands
+            // the shared tenant below head for every test after this one.
+            await DropTablesCreatedAfterAsync(services, 9);
+
             await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
 
             var after = (await session.Query<DataMigrationRecord>().FirstOrDefaultAsync())!
@@ -538,6 +545,12 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             migration.Version = 10;
             session.Save(record);
             await session.SaveChangesAsync();
+
+            // The tables a tenant at version 10 does not have yet — see DimensionSchema.TablesByVersion. Rolling
+            // the number back is only half of simulating that tenant, and leaving a later step's
+            // table in place makes the catch-up fail on "table already exists" and strands the
+            // shared tenant below head for every test after this one.
+            await DropTablesCreatedAfterAsync(services, 10);
         });
 
         await InTenantAsSystemAsync(async services =>
@@ -657,6 +670,9 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             migration.Version = 11;
             session.Save(record);
             await session.SaveChangesAsync();
+
+            // As above: the tables a tenant at version 11 does not have yet. See DimensionSchema.TablesByVersion.
+            await DropTablesCreatedAfterAsync(services, 11);
         });
 
         await InTenantAsSystemAsync(async services =>
@@ -730,58 +746,139 @@ public sealed class DimensionsMigrationUpgradeTenantTests
     }
 
     /// <summary>
-    /// The index tables this module creates, and the schema version each one first appears at.
+    /// A tenant that predates the reference table catches up, and a position's allowed grades
+    /// become writable. Decision D26 C, slice F5+F7.
     /// </summary>
     /// <remarks>
-    /// Rolling the recorded version back to N is only half of simulating a tenant at version N: that
-    /// tenant also does not have the tables the steps above N create, and
-    /// <c>CreateMapIndexTableAsync</c> fails on one that is already there. When it fails the whole
-    /// catch-up fails, which rolls back the document rewrites <c>UpdateFrom4Async</c> had already
-    /// made and leaves the shared tenant stuck below head — so the test that forgot it fails, and so
-    /// does every test in the collection that runs after it.
+    /// The fourth of the append-only upgrade tests and the same shape as the three above it: roll
+    /// the recorded version back, put the schema into the state a tenant at that version really had
+    /// — which for a new <em>table</em> means dropping it, exactly as the unit-head test does — let
+    /// the application catch up, and then do the real operation through the real service.
     ///
-    /// <b>A new <c>UpdateFromNAsync</c> that creates a table has to be added here.</b> This map is
-    /// the one place that knowledge lives, so adding a row is the whole of it.
+    /// <b>Why the real operation matters here more than usual.</b> The step creates a table and two
+    /// indexes over it, and a table that exists but has not been indexed, or is indexed on the wrong
+    /// columns, passes a column check and then quietly scans. Writing a position's grades and
+    /// reading them back from both ends — <c>GetReferencesAsync</c> and <c>GetReferrersAsync</c>,
+    /// which are the two indexes — is what actually exercises what the step built.
+    ///
+    /// <b>Nothing is migrated into the table</b>, because there is nowhere a position's grades were
+    /// stored before this slice. So the assertion that a tenant on today's model behaves
+    /// identically afterwards is the trivial one, and the one worth making is that the catch-up
+    /// reaches head rather than stopping at 12.
     /// </remarks>
-    private static readonly IReadOnlyList<(Type IndexType, int FirstVersion)> TablesByVersion =
-    [
-        (typeof(DimensionLinkIndex), 3),
-        (typeof(DimensionClosureIndex), 3),
-        (typeof(EmployeeAssignmentIndex), 3),
-        (typeof(UnitHeadIndex), 6),
-    ];
+    [Fact]
+    public async Task ATenantStuckBeforeTheReferenceTableUpgradesAndAPositionCanBeGivenGrades()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+            var head = migration.Version;
+
+            head.Should().BeGreaterThanOrEqualTo(
+                13, "this test's premise is a schema that already includes the reference table");
+
+            migration.Version = 12;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            // Version 12 means UpdateFrom12Async has never run, so a real tenant at that version
+            // has no DimensionReferenceIndex table at all.
+            await DropTablesCreatedAfterAsync(services, 12);
+
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+
+            var after = (await session.Query<DataMigrationRecord>().FirstOrDefaultAsync())!
+                .DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            after.Version.Should().Be(head, "the upgrade runs every step the tenant had not reached");
+        });
+
+        // A second scope, because the migration above committed its schema change in the first one
+        // and the references have to be written through a session that opened after it.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var records = services.GetRequiredService<IDimensionService>();
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var opened = new DateOnly(2024, 1, 1);
+
+            var positionType = await RoleTypeAsync(types, "upgrade-ref-position", "Position", DimensionTypeRole.Position);
+            var gradeType = await RoleTypeAsync(types, "upgrade-ref-grade", "Grade", DimensionTypeRole.Grade);
+
+            var position = await ValueAsync(records, positionType, "upgrade-ref-pos-1", "Software Engineer", opened);
+            var first = await ValueAsync(records, gradeType, "upgrade-ref-se-1", "SE-1", opened);
+            var second = await ValueAsync(records, gradeType, "upgrade-ref-se-2", "SE-2", opened);
+
+            var set = await records.SetReferencesAsync(
+                position, DimensionReferenceKinds.AllowedGrade, [first, second]);
+
+            set.Succeeded.Should().BeTrue(
+                string.Join("; ", set.Errors.Select(error => error.Message.Value)));
+
+            // The source index: what does this position allow.
+            (await records.GetReferencesAsync(position, DimensionReferenceKinds.AllowedGrade, opened))
+                .Select(grade => grade.Code)
+                .Should().Equal(["upgrade-ref-se-1", "upgrade-ref-se-2"]);
+
+            // The target index: which positions allow this grade. The other end of the same rows,
+            // and the half a single index would not have served.
+            (await records.GetReferrersAsync(first, DimensionReferenceKinds.AllowedGrade, opened))
+                .Select(referrer => referrer.Code)
+                .Should().Equal(["upgrade-ref-pos-1"]);
+        });
+    }
+
+    /// <summary>A dimension type with a declared role, created once for one of these tests.</summary>
+    private static async Task<string> RoleTypeAsync(
+        IDimensionTypeService types,
+        string code,
+        string name,
+        DimensionTypeRole role)
+    {
+        if (await types.GetByCodeAsync(code) is { } existing)
+        {
+            return existing.DimensionTypeId;
+        }
+
+        var created = await types.CreateAsync(
+            code, new BilingualText(name, name), [], allowsSelfNesting: false, standardRole: role);
+
+        created.Succeeded.Should().BeTrue(
+            string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+        return created.Value!.DimensionTypeId;
+    }
+
+    /// <summary>A value of that type. Unplaced, because a reference is not a placement.</summary>
+    private static async Task<string> ValueAsync(
+        IDimensionService records,
+        string dimensionTypeId,
+        string code,
+        string name,
+        DateOnly from)
+    {
+        var created = await records.CreateAsync(
+            dimensionTypeId, code, new BilingualText(name, name), new EffectiveRange(from, null));
+
+        created.Succeeded.Should().BeTrue(
+            string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+        return created.Value!.RecordId;
+    }
 
     /// <summary>
     /// Drops every index table a tenant recorded at <paramref name="version"/> would not yet have.
     /// </summary>
-    private static async Task DropTablesCreatedAfterAsync(IServiceProvider services, int version)
-    {
-        var store = services.GetRequiredService<IStore>();
-        var connection = store.Configuration.ConnectionFactory.CreateConnection();
-
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync();
-        }
-
-        try
-        {
-            foreach (var (indexType, _) in TablesByVersion.Where(entry => entry.FirstVersion > version))
-            {
-                var tableName = store.Configuration.TablePrefix
-                    + store.Configuration.TableNameConvention.GetIndexTable(indexType, string.Empty);
-
-                using var command = connection.CreateCommand();
-                command.CommandText = $"DROP TABLE IF EXISTS {tableName}";
-                await command.ExecuteNonQueryAsync();
-            }
-        }
-        finally
-        {
-            await connection.CloseAsync();
-            await connection.DisposeAsync();
-        }
-    }
+    /// <remarks>
+    /// <b>Moved to <see cref="DimensionSchema"/>, which carries the map and the reasoning.</b> It
+    /// was private here until a table-creating step was added and broke
+    /// <c>DisplayTextRepairTenantTests</c>, which rewinds this module's version too and could not
+    /// reach the list it needed. Three classes rewind it; one list, every reader.
+    /// </remarks>
+    private static Task DropTablesCreatedAfterAsync(IServiceProvider services, int version) =>
+        DimensionSchema.DropTablesCreatedAfterAsync(services, version);
 
     private static async Task RevertSchemaToVersion2Async(IServiceProvider services)
     {
@@ -812,7 +909,7 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             await connection.DisposeAsync();
         }
 
-        // Everything the steps above version 2 create. Kept in one place — see TablesByVersion —
+        // Everything the steps above version 2 create. Kept in one place — see DimensionSchema.TablesByVersion —
         // because the failure when a new table is missed from it is loud and misleading: this test
         // fails on "table already exists", and then so does every other test in the collection,
         // because the tenant they share is left stuck below head with a half-reverted schema.
