@@ -12,5 +12,11 @@
         "EmployeeContact"
       ]
     }
-  ]
+  ],
+
+  "Content_PublishButton": [ { "place": "-", "contentType": [ "Employee" ] } ],
+  "Content_UnpublishButton": [ { "place": "-", "contentType": [ "Employee" ] } ],
+  "Content_DeleteButton": [ { "place": "-", "contentType": [ "Employee" ] } ],
+  "Content_SaveButton": [ { "place": "-", "contentType": [ "Employee" ] } ],
+  "Content_SaveDraftButton": [ { "place": "-", "contentType": [ "Employee" ] } ]
 }

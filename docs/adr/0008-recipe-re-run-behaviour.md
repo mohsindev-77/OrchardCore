@@ -425,6 +425,30 @@ What a recipe still cannot do is take something away.
 that computes the set the tenant already holds returns before writing — so a re-run is a no-op in
 the audit trail as well as in the data.
 
+**A third key, added by slice F6a: `addEmployeeAttachableTypeCodes`.** It adds to the set of types
+that may hold employees, which is the one line that makes a position somewhere an employee can be
+placed (D26 H, ADR-0029). It is additive for the reason the other two are: the describing form
+states the *whole* set, so a recipe wanting to add Position would have to restate the units a tenant
+has chosen, and get them wrong for any tenant that has changed them.
+
+**An empty set is "already satisfied", and the type is skipped.** Empty means *unconstrained* —
+`StructureDocument.PermitsEmployeesAt` returns true for every type against one — so such a structure
+already permits what the row is asking for. Writing a one-item list would be the only way to "add"
+it, and that would narrow the axis from *anything may hold employees* to *only this may*: an
+additive row taking everything else away. So the set is left empty, the step logs at Information and
+carries on. An unknown type code is still refused, because that is a row naming something that does
+not exist rather than asking for something already true.
+
+**This was a refusal first, and the refusal was wrong.** The step reported *"this would narrow it
+rather than widen it — state the whole set instead"* and stopped the recipe. A real tenant met it on
+15 October: `zenith-org` placed employees anywhere, the positions recipe asked for a type that was
+already permitted, and the run failed over a difference that did not exist. Two mistakes in one
+message — it treated *already true* as a conflict, and it asked the author to restate a whole set,
+which is the thing the additive form exists to avoid. **`Migrations.UpdateFrom14Async` leaves an
+empty set alone for exactly this reason, and the two have to agree**: a tenant that upgrades and a
+tenant that is built from the recipes must arrive at the same place, which is what
+`DimensionsMigrationUpgradeTenantTests` is for.
+
 ### Decision 3 — `allowsSelfNesting` is still refused, and no migration aligns it
 
 Deliberately, for three reasons, and the first settles it.

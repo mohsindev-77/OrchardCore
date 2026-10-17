@@ -24,6 +24,11 @@ public interface IEmployeeAssignmentService
     /// Whether this is the placement that answers "where does this person work". Exactly one of
     /// an employee's concurrent placements on a structure is primary.
     /// </param>
+    /// <param name="gradeRecordId">
+    /// The grade the employee holds here, when the node is a position (D26 G). Null for a placement
+    /// at a unit, and null is what every caller written before slice F6 passes. ADR-0026 gives the
+    /// argument for its being a column on this row rather than an assignment of its own.
+    /// </param>
     Task<DimensionResult<EmployeeAssignment>> PlaceAsync(
         string employeeId,
         string structureId,
@@ -31,6 +36,7 @@ public interface IEmployeeAssignmentService
         DateOnly effectiveFrom,
         decimal allocationPercent = 100m,
         bool isPrimary = true,
+        string? gradeRecordId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

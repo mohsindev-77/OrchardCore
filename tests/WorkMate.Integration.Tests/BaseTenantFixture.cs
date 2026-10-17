@@ -445,6 +445,44 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
         return body;
     }
 
+    /// <summary>
+    /// Fetches a form, posts it back with <paramref name="fields"/>, and returns what comes back.
+    /// </summary>
+    /// <remarks>
+    /// <b>The GET is not optional.</b> Every admin form is antiforgery-protected, so the token has
+    /// to come from the page being posted — which is also what makes this reproduce what a browser
+    /// does rather than what a test wishes were true.
+    ///
+    /// A redirect is followed and its body returned, because the interesting answer to "add this
+    /// employee" is the page they land on. A form that re-renders with validation errors returns
+    /// 200 and its own body, which is the other half of what callers assert on.
+    /// </remarks>
+    public static async Task<string> PostFormAsync(
+        HttpClient client,
+        string path,
+        IDictionary<string, string> fields)
+    {
+        var page = await GetPageAsync(client, path);
+
+        var posted = new Dictionary<string, string>(fields, StringComparer.Ordinal)
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTokenIn(page),
+        };
+
+        var response = await client.PostAsync(path, new FormUrlEncodedContent(posted));
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = body.Length > 2000 ? body[..2000] : body;
+
+            throw new InvalidOperationException(
+                $"POST {path} returned {(int)response.StatusCode}.{Environment.NewLine}{detail}");
+        }
+
+        return body;
+    }
+
     private async Task SetUpTenantAsync()
     {
         var page = await GetPageAsync(Anonymous, "/");

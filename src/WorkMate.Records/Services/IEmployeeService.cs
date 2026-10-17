@@ -56,6 +56,36 @@ public interface IEmployeeService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sets or clears who manages this employee, and nothing else. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>Its own method because it is its own write, from a screen that owns nothing else.</b>
+    /// The Place and Change-position forms settle the line manager as part of a placement; going
+    /// through <see cref="UpdateAsync"/> would mean reading the record and posting back every
+    /// other field to leave it alone, which is how a placement screen comes to overwrite somebody's
+    /// nationality.
+    ///
+    /// <b>Null clears.</b> Clearing is the ordinary outcome, not an edge case: a derived answer —
+    /// the sole holder of the post above, or of the acting post — is stored nowhere, so moving
+    /// somebody into a post whose line already answers removes whatever a previous choice left.
+    ///
+    /// Keeps the same cycle and self-reference checks <see cref="UpdateAsync"/> applies, because a
+    /// line manager who reports to the person they manage is the same loop whichever screen wrote
+    /// it.
+    /// </remarks>
+    /// <param name="lineManagerEmployeeId">The chosen person, or null to derive live.</param>
+    /// <param name="kind">
+    /// What kind of answer it is — a pick among the holders of the post above, a pick among acting
+    /// holders, or a deliberate exception. Forced to
+    /// <see cref="StoredLineManagerKind.None"/> when nobody is named.
+    /// </param>
+    Task<RecordResult<EmployeeRecord>> SetLineManagerAsync(
+        string employeeId,
+        string? lineManagerEmployeeId,
+        StoredLineManagerKind kind,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Corrects the join date, which every question about tenure is computed from.
     /// </summary>
     /// <remarks>
@@ -229,7 +259,19 @@ public sealed record EmployeeRecord(
     string NationalityCode,
     Gender Gender,
     string LineManagerEmployeeId,
-    string PhotoPath)
+    string PhotoPath,
+
+    /// <summary>
+    /// Whether the line manager was set deliberately against the reporting line. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// The one thing that tells a stale choice, an ended acting arrangement and a deliberate
+    /// exception apart — see <c>EmployeePart.LineManagerKind</c> for why it cannot be derived from
+    /// the chart. Defaulted so every existing construction of this record keeps compiling and
+    /// reads as <see cref="StoredLineManagerKind.None"/>, which is correct for a record written
+    /// before the distinction existed.
+    /// </remarks>
+    StoredLineManagerKind LineManagerKind = StoredLineManagerKind.None)
 {
     /// <summary>The name as the value object the services pass around.</summary>
     public BilingualText Name => new(NameEn, NameAr);
@@ -258,7 +300,17 @@ public sealed record EmployeeDetails(
     string? NationalityCode = null,
     Gender Gender = Gender.Unspecified,
     string? LineManagerEmployeeId = null,
-    string? PhotoPath = null);
+    string? PhotoPath = null,
+
+    /// <summary>
+    /// What kind of answer <see cref="LineManagerEmployeeId"/> is. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="StoredLineManagerKind.None"/> where nobody is named. See
+    /// <c>EmployeePart.LineManagerKind</c> for why the three kinds cannot be told apart by
+    /// comparing the stored person with the holders.
+    /// </remarks>
+    StoredLineManagerKind LineManagerKind = StoredLineManagerKind.None);
 
 /// <summary>What an exit did: the record as it now stands, and what it closed.</summary>
 public sealed record EmployeeExit(

@@ -84,6 +84,27 @@ public sealed class Startup : StartupBase
         services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
         services.AddScoped<IContentPickerResultProvider, EmployeePickerResultProvider>();
 
+        // Where an employee sits, derived from the position they hold (D30). One read behind the
+        // Create form, the employee page, the Placement screen and the Change-position form, so
+        // four screens cannot compose it four slightly different ways.
+        services.AddScoped<IEmployeeOrganisationService, EmployeeOrganisationService>();
+
+        // The one-time repair behind Migrations.UpdateFrom5Async (D31 addendum 2). A service rather
+        // than a body inside the step, because a shipped step is never edited and so the logic it
+        // calls has to be somewhere a test can run twice and assert counts on.
+        services.AddScoped<ILineManagerBackfill, LineManagerBackfill>();
+
+        // The one place the product says "this position changed — look at the access roles" (D26 I).
+        // A class rather than three copies of a string, so the security slice has one thing to
+        // replace when the notice gains somewhere to link to.
+        services.AddScoped<AccessRoleReminder>();
+
+        // The sections THIS TENANT has, read from its content definition rather than from the six
+        // the product ships. The employee page renders its fixed core and then loops over this, so
+        // a seventh section arriving with the form designer in B3 appears without anybody editing a
+        // view — the design note's §9.2 Rule 2.
+        services.AddScoped<IEmployeeSectionCatalogue, EmployeeSectionCatalogue>();
+
         // This module's audit trail category and its three events, so an administrator can find and
         // filter them alongside Orchard's own.
         services.AddTransient<IConfigureOptions<AuditTrailOptions>, RecordsAuditTrailOptionsConfiguration>();

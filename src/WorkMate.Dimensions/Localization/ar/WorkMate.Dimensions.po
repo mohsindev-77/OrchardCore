@@ -2479,3 +2479,97 @@ msgstr "منذ"
 msgid "Organisation unit"
 msgstr "وحدة تنظيمية"
 
+#. ---- Slice F6a: employees hold positions (D26 D–H, ADR-0026, ADR-0029) ------------------
+#. The Holders section stops being empty: a position's Filled count and the list beneath it are
+#. drawn from the same assignment rows, so they cannot disagree about who is in a post.
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "No grade recorded"
+msgstr "لم تُسجَّل درجة"
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Showing {0} of {1}."
+msgstr "يُعرض {0} من {1}."
+
+#. The grade on a placement. Blocking where a full position only warns (D26 F): a grade outside
+#. the set is a level the post does not have, so there is nothing real for it to be recording.
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is not a grade, so an employee cannot hold a position at it."
+msgstr "‏'{0}' ليست درجة، فلا يمكن لموظف أن يشغل منصبًا عليها."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "A grade belongs to a position. '{0}' is a {1}, so a placement there carries no grade."
+msgstr "الدرجة تخصّ منصبًا. '{0}' هو {1}، فالإلحاق به لا يحمل درجة."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is not one of the grades '{1}' allows. A position's grades are its levels, so somebody holding it takes one of those."
+msgstr "‏'{0}' ليست من الدرجات التي يسمح بها '{1}'. درجات المنصب هي مستوياته، فمن يشغله يأخذ إحداها."
+
+#. The additive structures row's third key (ADR-0008's 14 October addendum, extended by F6a).
+
+#: Recipes/StructuresRecipeStep.cs
+msgid "Structure '{0}' adds '{1}' as holding employees, which does not exist."
+msgstr "الهيكل '{0}' يضيف '{1}' كجهة تضمّ موظفين، وهو غير موجود."
+
+
+#. D30 / ADR-0030: on an axis that has positions, an employee joins the organisation by holding one.
+#. Refused on the WRITE, so a row already there is untouched — ADR-0029.
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is a {1}. On '{2}' an employee joins the organisation by holding a position, and their {1} is derived from where that position sits — so choose a position instead."
+msgstr "‏'{0}' هو {1}. في '{2}' ينضم الموظف إلى الهيكل التنظيمي بشغل منصب، وتُشتق {1} الخاصة به من موقع ذلك المنصب — فاختر منصبًا بدلًا من ذلك."
+
+#. ---- Slice F6b polish B: a position must say what it reports to (D31) ----
+#. "Nobody" stays a real answer — a placement row with a null parent, as the CEO has. What the
+#. rule refuses is silence, which was being read as "top of the line" while writing no row at all.
+
+#: Views/DimensionRecordsAdmin/Create.cshtml
+msgid "— Reports to nobody (top of the reporting line) —"
+msgstr "— لا يتبع أحدًا (أعلى خط التبعية) —"
+
+#: Components/PositionPickerTagHelper.cs
+msgid "Choose…"
+msgstr "اختر…"
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "Choose who this position reports to, or choose 'Reports to nobody' for the top of the reporting line."
+msgstr "اختر الجهة التي يتبعها هذا المنصب، أو اختر «لا يتبع أحدًا» ليكون في أعلى خط التبعية."
+
+#. Advisory, never blocking: an organisation mid-handover, or one with joint chief executives, is
+#. entitled to record what it actually has.
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is already at the top of this reporting line."
+msgstr "«{0}» موجود بالفعل في أعلى خط التبعية هذا."
+
+#. The Edit form shows the reporting line and does not edit it: changing a parent is a dated move
+#. with its own permission and dry run, and this form has neither.
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Nobody — this is the top of the reporting line."
+msgstr "لا أحد — هذا هو أعلى خط التبعية."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "This position is not on the reporting line at all, so nothing below it answers to it. Put it on the line to fix that."
+msgstr "هذا المنصب ليس على خط التبعية إطلاقًا، فلا يتبعه شيء. أضفه إلى الخط لمعالجة ذلك."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Changing this moves the post to another part of the reporting line, which is a dated change with its own permission."
+msgstr "تغيير هذا ينقل المنصب إلى موضع آخر من خط التبعية، وهو تغيير مؤرخ له صلاحيته الخاصة."
+
+#: Views/DimensionRecordsAdmin/Edit.cshtml
+msgid "Open the reporting line"
+msgstr "افتح خط التبعية"
+
+#. ---- D30, where the rule is applied: a structure that is not somewhere a person goes ----
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is a reporting line: it records what each position answers to, not where anybody sits. Place this employee on an organisation structure instead."
+msgstr "‏'{0}' خط تبعية: يسجّل الجهة التي يتبعها كل منصب، لا مكان عمل أي شخص. ضع هذا الموظف على هيكل تنظيمي بدلاً من ذلك."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' is a grade ladder. A grade is recorded on the placement itself, not somewhere an employee is put — place them on an organisation structure and set the grade there."
+msgstr "‏'{0}' سلّم درجات. تُسجَّل الدرجة على التعيين التنظيمي نفسه، وليست مكاناً يوضع فيه الموظف — ضعه على هيكل تنظيمي وحدّد الدرجة هناك."
+
+#: Internal/Graph/DimensionValidator.cs
+msgid "'{0}' has no levels yet, so there is nowhere on it to place anybody. Build its levels first."
+msgstr "‏'{0}' ليس له مستويات بعد، فلا يوجد عليه مكان لوضع أي شخص. ابنِ مستوياته أولاً."

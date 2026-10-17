@@ -35,6 +35,10 @@ public sealed class EmployeesAdminController : Controller
     private readonly IStructureService _structures;
     private readonly IDimensionService _dimensions;
     private readonly EmployeeUnitNames _units;
+    private readonly IPositionService _positions;
+    private readonly IEmployeeOrganisationService _organisation;
+    private readonly IEmployeeSectionCatalogue _sections;
+    private readonly AccessRoleReminder _accessRoles;
     private readonly IRecordsAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
     private readonly INotifier _notifier;
@@ -47,6 +51,10 @@ public sealed class EmployeesAdminController : Controller
         IStructureService structures,
         IDimensionService dimensions,
         EmployeeUnitNames units,
+        IPositionService positions,
+        IEmployeeOrganisationService organisation,
+        IEmployeeSectionCatalogue sections,
+        AccessRoleReminder accessRoles,
         IRecordsAuthorisation authorisation,
         IAuthorizationService authorizationService,
         INotifier notifier,
@@ -58,6 +66,10 @@ public sealed class EmployeesAdminController : Controller
         _structures = structures;
         _dimensions = dimensions;
         _units = units;
+        _positions = positions;
+        _organisation = organisation;
+        _sections = sections;
+        _accessRoles = accessRoles;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
         _notifier = notifier;
@@ -341,12 +353,16 @@ public sealed class EmployeesAdminController : Controller
             return Forbid();
         }
 
-        return View(new EmployeeCreateViewModel
+        var model = new EmployeeCreateViewModel
         {
             // A suggestion on the form, not a default on the write: the service refuses a create
             // with no join date, and a person can see and change this before committing.
             JoinDate = (await _authorisation.TodayAsync()).ToIso(),
-        });
+        };
+
+        await FillJobChoicesAsync(model, cancellationToken);
+
+        return View(model);
     }
 
     [HttpPost]
@@ -361,10 +377,39 @@ public sealed class EmployeesAdminController : Controller
             return Forbid();
         }
 
+        // FIRST, AND ON EVERY PATH THROUGH THIS ACTION. Whether the chosen axis places employees at
+        // positions is answered from the axis, never from the post: IsPositionBased is a property of
+        // the tenant's chart, and a form that carried it would be a form that could be told the
+        // wrong answer. It also has to be settled before anything below reads it — the defect this
+        // replaced placed nobody, because the flag arrived false from a post that never sent it and
+        // every position-shaped branch then quietly did nothing.
+        await FillJobChoicesAsync(model, cancellationToken);
+
+        // Changing the position or the axis is navigation, not a save. The same flag and the same
+        // reason as the Placement screen's: without it, picking a position re-ran the whole save
+        // path and answered "an employee code is needed" before anybody had typed one.
+        if (model.IsRefresh)
+        {
+            model.IsRefresh = false;
+
+            return View(model);
+        }
+
         if (!IsoDate.TryParse(model.JoinDate, out var joinDate))
         {
             ModelState.AddModelError(nameof(model.JoinDate), S["A join date is needed."].Value);
 
+            return View(model);
+        }
+
+        // ASKED BEFORE THE PERSON EXISTS. The validator is the authority and refuses a grade that
+        // is not one of the position's on the write (D26 G) — but by then the employee has been
+        // created, and an error about a grade is a strange thing to meet on the editor of somebody
+        // who was just added. This is the same question read forwards, so the ordinary mistake is
+        // answered on the form that made it.
+        if (!await JobChoiceIsCoherentAsync(model, joinDate, cancellationToken) ||
+            !LineManagerChoiceIsCoherent(model))
+        {
             return View(model);
         }
 
@@ -378,7 +423,12 @@ public sealed class EmployeesAdminController : Controller
                 dateOfBirth,
                 model.NationalityCode,
                 model.Gender,
-                model.LineManagerEmployeeId),
+                model.LineManagerEmployeeId,
+                PhotoPath: null,
+                // D31 addendum 2: which of three kinds of answer this is, stated by the form
+                // because nothing can work it out later. FillJobChoicesAsync has already reduced
+                // the id to a choice or to nothing, so a derived answer arrives here as None.
+                LineManagerKind: model.LineManager.KindFor(model.LineManagerEmployeeId)),
             cancellationToken);
 
         if (!created.IsAuthorised)
@@ -396,9 +446,294 @@ public sealed class EmployeesAdminController : Controller
         await _notifier.SuccessAsync(H["{0} was added, and is prospective until somebody activates them.",
             created.Value!.NameEn]);
 
+        await PlaceAtChosenPositionAsync(model, created.Value, joinDate, cancellationToken);
+
         // The editor, told that this is a brand-new record, so it can offer the step the person
         // almost certainly came to take next rather than leaving them to find it.
         return RedirectToAction(nameof(Edit), new { id = created.Value.EmployeeId, created = true });
+    }
+
+    /// <summary>
+    /// Places a newly created employee at the position the form chose, from their join date.
+    /// </summary>
+    /// <remarks>
+    /// <b>The same write path as the Placement screen</b> — <c>IEmployeeAssignmentService</c>'s
+    /// <c>PlaceAsync</c>, which is a one-row reallocation and not a second mechanism. A second write
+    /// path is how a screen and an import come to disagree about what a placement means, which is
+    /// the reason <c>EmployeePlacementAdminController</c>'s own header gives.
+    ///
+    /// <b>The join date is the effective date, and it is not a default.</b> CLAUDE.md rule 3 bans
+    /// defaulting on a write, and this does not default: the person typed the date, on this form,
+    /// in the field above. That a new employee's first placement starts the day they join is the
+    /// statement the form is making, and it is why the Create screen may ask for a position at all
+    /// when the editor may not — the editor has no date to offer (design note §2.1).
+    ///
+    /// <b>A failure here does not undo the employee.</b> They were created and the notification said
+    /// so; the placement is reported separately and they land on the editor unplaced, with
+    /// <em>Choose position</em> waiting. Silently discarding a person because a placement was
+    /// refused would be worse than either half.
+    /// </remarks>
+    private async Task PlaceAtChosenPositionAsync(
+        EmployeeCreateViewModel model,
+        EmployeeRecord employee,
+        DateOnly joinDate,
+        CancellationToken cancellationToken)
+    {
+        if (!model.IsPositionBased ||
+            string.IsNullOrEmpty(model.StructureId) ||
+            string.IsNullOrEmpty(model.PositionRecordId))
+        {
+            // Left blank, which creates an unplaced employee exactly as this screen always has.
+            return;
+        }
+
+        var placed = await _assignments.PlaceAsync(
+            employee.EmployeeId,
+            model.StructureId,
+            model.PositionRecordId,
+            joinDate,
+            // A position-based form does not ask: the answer is always the main placement at 100
+            // per cent, and a second concurrent position is a later slice.
+            100m,
+            isPrimary: true,
+            model.GradeRecordId,
+            cancellationToken);
+
+        if (!placed.IsAuthorised || !placed.Succeeded)
+        {
+            // Authorisation is re-checked by the service and not only by the screen (CLAUDE.md
+            // rule 5). It should be unreachable — FillJobChoicesAsync does not offer the block to
+            // somebody who may not place — but an unauthorised result carries no errors to report,
+            // so it is folded in here rather than left to print nothing at all.
+            foreach (var error in placed.Errors)
+            {
+                await _notifier.WarningAsync(new LocalizedHtmlString(
+                    error.Message.Name, error.Message.Value));
+            }
+
+            await _notifier.WarningAsync(
+                H["{0} was added but not placed. Choose a position from their record.", employee.NameEn]);
+
+            return;
+        }
+
+        await _notifier.SuccessAsync(H["{0} holds their position from {1}.",
+            employee.NameEn, EmployeeDisplay.Date(joinDate)]);
+
+        // D26 I. A position carries no permissions, so nothing is changed here — somebody is told
+        // to look. One class raises it everywhere, so the security slice has one thing to replace.
+        await _accessRoles.RaiseAsync(employee.NameEn ?? employee.EmployeeId);
+
+        foreach (var advisory in placed.Errors)
+        {
+            await _notifier.WarningAsync(new LocalizedHtmlString(
+                advisory.Message.Name, advisory.Message.Value));
+        }
+    }
+
+    /// <summary>
+    /// Whether the position and grade the form chose can be written, asked before anybody is created.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately only the questions a <em>read</em> can answer: is a position named when the axis
+    /// needs one, and is the grade one of that position's (D26 G). It is not a copy of the
+    /// validator and must not become one — the validator stays the authority, and runs on the write
+    /// where a recipe and an import also pass. What this buys is that the common mistake is
+    /// answered on the form, beside the control that made it.
+    ///
+    /// <b>A full position is not asked about</b>, because D26 F says a full post warns and is
+    /// allowed: refusing it would stop the product recording what an organisation has actually done.
+    /// </remarks>
+    private async Task<bool> JobChoiceIsCoherentAsync(
+        EmployeeCreateViewModel model,
+        DateOnly joinDate,
+        CancellationToken cancellationToken)
+    {
+        if (!model.IsPositionBased || string.IsNullOrEmpty(model.PositionRecordId))
+        {
+            // No position is a valid answer on this form: it creates an unplaced employee.
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(model.GradeRecordId))
+        {
+            // Allowed, and the right default: a position whose grades a tenant has not set up has
+            // none to offer, and "no grade recorded" is the truth rather than an invention.
+            return true;
+        }
+
+        var allowed = await _positions.GetAllowedGradesAsync(
+            model.PositionRecordId, joinDate, cancellationToken);
+
+        if (allowed.Any(grade => string.Equals(
+            grade.RecordId, model.GradeRecordId, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        ModelState.AddModelError(
+            nameof(model.GradeRecordId),
+            S["Choose one of this position's own grades."].Value);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the line manager the form posted is one this position's reporting line allows.
+    /// Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only the one case that is required.</b> With several holders of the post above, D28 A
+    /// refuses to pick and D31 requires that somebody does — so an empty answer is refused and an
+    /// answer outside those holders is refused, because the control offered only them and anything
+    /// else arrived by a replayed post.
+    ///
+    /// Every other case is already an answer: one holder is derived, a vacant or top post has none,
+    /// and an override is a deliberate exception that may name anyone. The override is checked for
+    /// nothing beyond being somebody, which is what makes it an escape hatch rather than a second
+    /// rule.
+    /// </remarks>
+    private bool LineManagerChoiceIsCoherent(EmployeeCreateViewModel model)
+    {
+        var lineManager = model.LineManager;
+
+        if (lineManager.Mode != LineManagerMode.Choose)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(model.LineManagerEmployeeId))
+        {
+            ModelState.AddModelError(
+                nameof(model.LineManagerEmployeeId),
+                S["{0} is held by {1} people. Choose which of them this person answers to.",
+                    lineManager.PositionName, lineManager.Holders.Count].Value);
+
+            return false;
+        }
+
+        if (lineManager.Holders.Any(holder => string.Equals(
+            holder.EmployeeId, model.LineManagerEmployeeId, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        ModelState.AddModelError(
+            nameof(model.LineManagerEmployeeId),
+            S["Choose one of the people who hold {0}, or use Change to name somebody else.",
+                lineManager.PositionName].Value);
+
+        return false;
+    }
+
+    /// <summary>
+    /// The axes an employee may join on, and what the chosen position would mean. D28 A, D30.
+    /// </summary>
+    /// <remarks>
+    /// The Placement screen's <c>FillChoicesAsync</c>, asked of the Create form's model. Both go
+    /// through <see cref="IPositionService.GetEmployeeAxesAsync"/> — never every structure, because
+    /// that offered the grade ladder and the reporting line, and neither is anywhere a person goes
+    /// (ADR-0030) — and both compose the derived block through
+    /// <see cref="IEmployeeOrganisationService"/>, so the two forms cannot come to disagree about
+    /// where a position puts somebody.
+    /// </remarks>
+    private async Task FillJobChoicesAsync(
+        EmployeeCreateViewModel model,
+        CancellationToken cancellationToken)
+    {
+        // NOT RENDERED RATHER THAN RENDERED AND THEN REFUSED, which is this module's rule and the
+        // one the lifecycle controls and the sections Save button already follow. Placing somebody
+        // is AssignEmployees, a dimension-engine permission, and ManageEmployees does not imply it:
+        // a recruiter who may add people and may not place them gets the form they have always had
+        // rather than a block that fails on submit.
+        if (!await _authorisation.AuthoriseAsync(WorkMate.Dimensions.Permissions.AssignEmployees))
+        {
+            model.Structures = [];
+            model.IsPositionBased = false;
+            model.PositionRecordId = null;
+            model.GradeRecordId = null;
+            model.Organisation = null;
+
+            return;
+        }
+
+        var axes = await _positions.GetEmployeeAxesAsync(cancellationToken);
+
+        model.Structures = [.. axes.Select(axis => new StructureOptionViewModel
+        {
+            StructureId = axis.Structure.StructureId,
+            Code = axis.Structure.Code,
+            NameEn = axis.Structure.Name.En,
+            NameAr = axis.Structure.Name.Ar,
+        })];
+
+        // One axis is the ordinary tenant, so the screen chooses it rather than asking a question
+        // with one answer.
+        if (string.IsNullOrEmpty(model.StructureId) && axes.Count == 1)
+        {
+            model.StructureId = axes[0].StructureId;
+        }
+
+        var chosen = axes.FirstOrDefault(axis =>
+            string.Equals(axis.StructureId, model.StructureId, StringComparison.Ordinal));
+
+        model.IsPositionBased = chosen?.IsPositionBased == true;
+
+        if (!model.IsPositionBased)
+        {
+            // A tenant that has built no positions sees the form it has always seen. Anything the
+            // post carried about a position belonged to an axis that does not ask, so it is
+            // dropped rather than written.
+            model.PositionRecordId = null;
+            model.GradeRecordId = null;
+            model.Organisation = null;
+
+            return;
+        }
+
+        if (string.IsNullOrEmpty(model.PositionRecordId))
+        {
+            model.Organisation = null;
+
+            return;
+        }
+
+        var date = IsoDate.TryParse(model.JoinDate, out var parsed)
+            ? parsed
+            : await _authorisation.TodayAsync();
+
+        // Resolved as at the JOIN DATE, not as at today: somebody hired in March joins the chart as
+        // it stood in March, and a department renamed in June must not rewrite what they joined.
+        model.Organisation = await _organisation.PreviewAsync(
+            model.PositionRecordId, date, cancellationToken);
+
+        // D31: THE LINE MANAGER FOLLOWS THE POSITION, so with one holder of the post above it is
+        // set rather than defaulted — every time, overwriting whatever the last render left behind.
+        // Defaulting only into an empty field was right while the field was free and is wrong now:
+        // choosing a different position would have kept the previous position's manager, which is
+        // the stale answer this decision exists to stop.
+        //
+        // An override is left alone, because that is the whole point of one.
+        if (!model.LineManagerOverride)
+        {
+            var lineManager = model.LineManager;
+
+            // D31 ADDENDUM 2: THE FORM CARRIES WHAT IT WILL STORE, AND IT STORES ONLY A CHOICE.
+            //
+            // A sole holder — of the post above, or of the acting post above a vacant one — is
+            // what the chart says, so the form shows it and saves nothing. Writing it down was the
+            // defect: the moment that post changed hands, the employee kept the old person for
+            // ever and every screen showed it. Derived answers are read live by
+            // IEmployeeOrganisationService.GetLineManagerAsync.
+            //
+            // A pick among several IS stored, because nothing can re-derive which of them somebody
+            // meant — D28 A refuses to choose, and so must a later read.
+            model.LineManagerEmployeeId = lineManager.Mode == LineManagerMode.Choose &&
+                lineManager.Holders.Any(holder => string.Equals(
+                    holder.EmployeeId, model.LineManagerEmployeeId, StringComparison.Ordinal))
+                ? model.LineManagerEmployeeId
+                : null;
+        }
     }
 
     /// <param name="created">
@@ -424,7 +759,40 @@ public sealed class EmployeesAdminController : Controller
         model.IsNewlyCreated = created;
         model.CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus);
 
+        await FillFixedCoreAsync(model, cancellationToken);
+
         return View(model);
+    }
+
+    /// <summary>
+    /// The second half of the fixed core — where this person sits — and the section list beneath it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two reads, and neither of them is a field on the record.</b> The organisation block is
+    /// derived from the position held on the date (D30) and the section list is read from the
+    /// tenant's content definition (§9.2 Rule 2). Both are recomputed on every render, which is
+    /// what keeps them right when somebody transfers or when B3 publishes a new section.
+    /// </remarks>
+    private async Task FillFixedCoreAsync(
+        EmployeeEditViewModel model,
+        CancellationToken cancellationToken)
+    {
+        // Reads default to today; writes never do.
+        var today = await _authorisation.TodayAsync();
+
+        model.Organisation = await _organisation.GetAsync(model.EmployeeId, today, cancellationToken);
+
+        // Whether to offer the block at all. A tenant that has built no positions is left exactly
+        // as it was, which is D30's own scope — so the question is asked of the axes rather than of
+        // this employee, who may simply not be placed yet.
+        model.IsPositionBased = (await _positions.GetEmployeeAxesAsync(cancellationToken))
+            .Any(axis => axis.IsPositionBased);
+
+        model.Sections = await _sections.ListAsync(cancellationToken);
+
+        // Who manages them, from the ONE read path. D31 addendum 2.
+        model.LineManager = await _organisation.GetLineManagerAsync(
+            model.EmployeeId, today, cancellationToken);
     }
 
     [HttpPost]
@@ -448,6 +816,9 @@ public sealed class EmployeesAdminController : Controller
 
         DateOnly? dateOfBirth = IsoDate.TryParse(model.DateOfBirth, out var born) ? born : null;
 
+        var lineManager = await SettledLineManagerAsync(
+            employee, model.LineManagerEmployeeId, cancellationToken);
+
         var updated = await _employees.UpdateAsync(
             model.EmployeeId,
             new BilingualText(model.NameEn ?? string.Empty, model.NameAr ?? string.Empty),
@@ -455,8 +826,9 @@ public sealed class EmployeesAdminController : Controller
                 dateOfBirth,
                 model.NationalityCode,
                 model.Gender,
-                model.LineManagerEmployeeId,
-                model.PhotoPath),
+                lineManager.EmployeeId,
+                model.PhotoPath,
+                lineManager.Kind),
             cancellationToken);
 
         if (!updated.IsAuthorised)
@@ -475,12 +847,63 @@ public sealed class EmployeesAdminController : Controller
             model.JoinDate = employee.JoinDate;
             model.CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus);
 
+            await FillFixedCoreAsync(model, cancellationToken);
+
             return View(model);
         }
 
         await _notifier.SuccessAsync(H["{0} was updated.", updated.Value!.NameEn]);
 
         return RedirectToAction(nameof(Index));
+    }
+
+    /// <summary>
+    /// What the line manager should be after this save. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>This form does not always ask the question, so it must not always answer it.</b> On a
+    /// tenant with positions the line-manager control is in the read-only organisation block,
+    /// <em>outside</em> this form — so nothing is posted, and taking that absence at face value
+    /// would clear a deliberate override every time somebody corrected a spelling. The stored value
+    /// is therefore carried forward.
+    ///
+    /// <b>Except one case, which is the addendum's own rule.</b> An acting choice is valid only
+    /// while the post above stays vacant; once it is filled, <c>GetLineManagerAsync</c> has already
+    /// stopped obeying it and derives live instead. The next save is where it is cleared — and the
+    /// test for that is the same single question asked of the read path: does its answer still name
+    /// the person the record holds? If it does not, the record has stopped being the answer and
+    /// stops holding one.
+    ///
+    /// A stale <em>choice</em> survives that test, because <c>NeedsChoice</c> still names the
+    /// person it is asking about. That is deliberate: the screen must keep saying who no longer
+    /// holds the post, and a save that quietly blanked it would turn an explicit question into
+    /// silence.
+    /// </remarks>
+    private async Task<(string? EmployeeId, StoredLineManagerKind Kind)> SettledLineManagerAsync(
+        EmployeeRecord employee,
+        string? posted,
+        CancellationToken cancellationToken)
+    {
+        var positionBased = (await _positions.GetEmployeeAxesAsync(cancellationToken))
+            .Any(axis => axis.IsPositionBased);
+
+        if (!positionBased)
+        {
+            // No reporting line to follow, so the picker on this form is the only answer there is
+            // and what it posts is what is stored — including an empty box, which clears it.
+            // D30's scope, and the state every pre-F6 tenant stays in.
+            return (posted, StoredLineManagerKind.None);
+        }
+
+        var answer = await _organisation.GetLineManagerAsync(
+            employee.EmployeeId, await _authorisation.TodayAsync(), cancellationToken);
+
+        var stillTheAnswer = !string.IsNullOrEmpty(employee.LineManagerEmployeeId) &&
+            string.Equals(answer.EmployeeId, employee.LineManagerEmployeeId, StringComparison.Ordinal);
+
+        return stillTheAnswer
+            ? (employee.LineManagerEmployeeId, employee.LineManagerKind)
+            : (null, StoredLineManagerKind.None);
     }
 
     private static EmployeeEditViewModel ToEditModel(EmployeeRecord employee) => new()

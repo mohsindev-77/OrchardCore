@@ -217,6 +217,46 @@ public interface IDimensionValidator
         DateOnly asAt,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// What a position says it reports to, and whether that is an answer at all. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>The rule is "say something", not "name somebody".</b> A position may legitimately report
+    /// to nobody — the CEO does — and that is expressed, as it always has been, by a placement row
+    /// on the reporting-line axis with a null parent. What this refuses is the third state the
+    /// screen used to allow: no statement at all, which was being read as "top of the line" while
+    /// actually writing no reporting-line row, leaving the post off that axis entirely.
+    ///
+    /// <b>Stated here so the screen, the recipe and any later import refuse it in the same
+    /// words</b> — CLAUDE.md rule 5, and the same shape as
+    /// <see cref="ValidateEmployeeGradeAsync"/>: the control that offers the choice is a control,
+    /// and only a rule is a rule.
+    ///
+    /// <b>The recipe is unaffected</b>, which is worth stating because it is the test of whether
+    /// this rule is the right one: every position in the Zenith positions recipe already states
+    /// its reporting line, the CEO's as <c>"parentCode": null</c>. A rule that broke it would be
+    /// a rule about the screen rather than about positions.
+    ///
+    /// <b>Silent on a tenant with no reporting line.</b> <paramref name="reportingStructureId"/>
+    /// null means the axis does not exist — a tenant that has not run the base recipe, or has
+    /// renamed it away — and demanding an answer to a question the tenant cannot be asked would
+    /// make positions uncreatable there.
+    /// </remarks>
+    /// <param name="intent">
+    /// What the caller said: <see cref="ReportsToIntent.Unstated"/> is the one this refuses.
+    /// </param>
+    /// <returns>
+    /// Errors, which are blocking, and advisories, which are not. A second position at the top of
+    /// the same line is an advisory: it is unusual and worth naming, and an organisation that has
+    /// two chief executives is entitled to record that it does.
+    /// </returns>
+    Task<IReadOnlyList<DimensionError>> ValidateReportsToAsync(
+        string? reportingStructureId,
+        ReportsToIntent intent,
+        string? reportsToRecordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Rules for folding one record into another.</summary>
     Task<IReadOnlyList<DimensionError>> ValidateMergeAsync(
         string structureId,
@@ -239,7 +279,15 @@ public interface IDimensionValidator
 }
 
 /// <summary>One line of a split allocation, as the validator and the assignment service pass it.</summary>
-public sealed record AssignmentSplitEntry(string RecordId, decimal AllocationPercent, bool IsPrimary);
+/// <param name="GradeRecordId">
+/// The grade held at this node, when the node is a position. Optional, and null is what every
+/// caller written before slice F6 states — ADR-0026.
+/// </param>
+public sealed record AssignmentSplitEntry(
+    string RecordId,
+    decimal AllocationPercent,
+    bool IsPrimary,
+    string? GradeRecordId = null);
 
 /// <summary>
 /// What the validator has already seen in the current run.
@@ -327,3 +375,57 @@ public interface IDimensionDeletionBlockerProvider
 /// and refusing outright.
 /// </param>
 public sealed record DeletionBlocker(DimensionError Error, bool IsHistoricalOnly);
+
+/// <summary>
+/// What a caller said about a position's place on the reporting line. Decision D31.
+/// </summary>
+/// <remarks>
+/// <b>Three states, where the model has two.</b> Storage has only "has a parent" and "has none",
+/// and that is deliberately unchanged — "nobody" is still a placement row with a null parent. The
+/// third state exists only at the point of the write, and only so that silence can be told from an
+/// answer and refused. Nothing persists it.
+/// </remarks>
+public enum ReportsToIntent
+{
+    /// <summary>
+    /// The caller said nothing. Refused where a reporting line exists — this is the whole point of
+    /// the enum.
+    /// </summary>
+    Unstated,
+
+    /// <summary>
+    /// Explicitly the top of the reporting line: a placement row with a null parent, as the CEO
+    /// has today.
+    /// </summary>
+    Top,
+
+    /// <summary>Explicitly under another position, named by <c>reportsToRecordId</c>.</summary>
+    UnderPosition,
+}
+
+/// <summary>
+/// The value the <em>Reports to</em> control posts when somebody chooses "nobody". Decision D31.
+/// </summary>
+/// <remarks>
+/// <b>A form value, never a stored one.</b> Storage still has only "has a parent" and "has none";
+/// this exists so an unanswered control and a deliberate "top of the line" post different things
+/// and can be told apart on the server. It is read once, at the controller, and turned into a
+/// <see cref="ReportsToIntent"/>.
+///
+/// Named <c>ReportsToChoice</c> rather than <c>ReportsTo</c> because <c>WorkMate.Records</c> has a
+/// <c>ReportsTo</c> of its own — the derived answer shown on an employee — and a view that imported
+/// both namespaces would have to disambiguate a name that means two different things.
+/// </remarks>
+public static class ReportsToChoice
+{
+    /// <summary>Explicitly the top of the reporting line.</summary>
+    public const string Nobody = "__nobody__";
+
+    /// <summary>What the posted control value means. Empty is silence, which D31 refuses.</summary>
+    public static ReportsToIntent IntentOf(string? posted) => posted switch
+    {
+        null or "" => ReportsToIntent.Unstated,
+        Nobody => ReportsToIntent.Top,
+        _ => ReportsToIntent.UnderPosition,
+    };
+}

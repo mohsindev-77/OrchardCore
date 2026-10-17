@@ -12,6 +12,80 @@
     @T["The employee record holds no department and no cost centre. Every placement below is a dated row in the dimension engine, which is what makes a mid-month transfer two rows rather than an overwrite — and what lets this screen answer the question for any date."]
 </p>
 
+@* What the position they hold means. D30: the organisation chain is computed from it, never
+   stored, so this block is a fact about the chart rather than a field on the record. *@
+@if (Model.Organisation?.HasNoPositionYet == true)
+{
+    @* ADR-0029's mid-migration state, made legible rather than hidden — decision D28 C. The row is
+       valid and nothing has been lost; what is missing is the position everything else derives
+       from, and there is a way to supply it. *@
+    <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2"
+         id="placement-no-position">
+        <span>
+            @T["No position yet — {0}.", Model.Organisation.LegacyUnitPath]
+            <span class="d-block small">
+                @T["This placement is still valid and nothing has been lost. Choosing a position is what gives this person a derived department, grade and reporting line."]
+            </span>
+        </span>
+        @if (Model.CanAssign)
+        {
+            <a class="btn btn-primary" id="placement-choose-position"
+               asp-action="Place" asp-route-id="@Model.EmployeeId"
+               asp-route-structureId="@Model.Organisation.StructureId">@T["Choose position"]</a>
+        }
+    </div>
+}
+
+@if (Model.Organisation?.Position is null && Model.LineManager.How == LineManagerHow.Stored)
+{
+    @* D31 addendum 2: no position, so no reporting line to derive from and nothing to be an
+       exception to. The stored value is the only answer there is, shown with no label. *@
+    <dl class="row mb-3" id="placement-stored-line-manager">
+        <dt class="col-sm-3">@T["Line manager"]</dt>
+        <dd class="col-sm-9">@Model.LineManager.Name</dd>
+    </dl>
+}
+else if (Model.Organisation?.Position is { } held)
+{
+    <div class="card mb-3" id="placement-job">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>
+                <strong id="placement-position-name">@held.PositionName</strong>
+                @if (!string.IsNullOrEmpty(Model.Organisation.GradeName))
+                {
+                    <span class="badge text-bg-light ms-2" id="placement-grade">@Model.Organisation.GradeName</span>
+                }
+                @if (Model.Organisation.Since is { } since)
+                {
+                    <span class="text-muted small ms-2">@T["since {0}", EmployeeDisplay.Date(since)]</span>
+                }
+            </span>
+            @if (Model.CanAssign)
+            {
+                <span class="btn-group btn-group-sm">
+                    @* Two actions rather than one, because they are two different changes: a
+                       promotion or a transfer is a new position, and an increment is a new grade
+                       within the one they hold. Each takes its own date. *@
+                    <a class="btn btn-outline-primary" id="placement-change-position"
+                       asp-action="Place" asp-route-id="@Model.EmployeeId"
+                       asp-route-structureId="@Model.Organisation.StructureId">@T["Change position"]</a>
+                    <a class="btn btn-outline-secondary" id="placement-change-grade"
+                       asp-action="ChangeGrade" asp-route-id="@Model.EmployeeId"
+                       asp-route-structureId="@Model.Organisation.StructureId">@T["Change grade"]</a>
+                </span>
+            }
+        </div>
+        <div class="card-body">
+            @* The chain, and ONE "Reports to" row carrying the post above, its state and whoever
+               answers for it — read-only, from the same partial the forms render. *@
+            <partial name="_JobAndOrganisation"
+                     model="@(JobAndOrganisationViewModel.ReadOnly(
+                         held,
+                         LineManagerViewModel.FromAnswer(Model.LineManager)))" />
+        </div>
+    </div>
+}
+
 @* Placement is always a question about a date, so the date is a control rather than an assumption.
    Reads default to today; writes never default at all. *@
 <form method="get" class="row g-2 align-items-end mb-4" id="placement-asat">
@@ -35,12 +109,23 @@
             @if (Model.CanAssign)
             {
                 <span class="btn-group btn-group-sm">
-                    @* The split screen, which is where a matrix is actually built: the rules are
-                       about the set of placements, so stating the whole set at once is the only
-                       shape in which it is valid at every step. *@
-                    <a class="btn btn-outline-primary"
-                       asp-action="Change" asp-route-id="@Model.EmployeeId"
-                       asp-route-structureId="@axis.StructureId">@T["Change placement"]</a>
+                    @if (axis.IsPositionBased)
+                    {
+                        @* D30: on this axis an employee holds a position, so the action is to
+                           choose one rather than to state a split of units. *@
+                        <a class="btn btn-outline-primary"
+                           asp-action="Place" asp-route-id="@Model.EmployeeId"
+                           asp-route-structureId="@axis.StructureId">@T["Change position"]</a>
+                    }
+                    else
+                    {
+                        @* The split screen, which is where a matrix is actually built: the rules
+                           are about the set of placements, so stating the whole set at once is the
+                           only shape in which it is valid at every step. *@
+                        <a class="btn btn-outline-primary"
+                           asp-action="Change" asp-route-id="@Model.EmployeeId"
+                           asp-route-structureId="@axis.StructureId">@T["Change placement"]</a>
+                    }
                     @if (axis.IsPlaced)
                     {
                         <a class="btn btn-outline-secondary"
@@ -88,6 +173,51 @@
             }
         </div>
     </div>
+}
+
+@* Every dated period, newest first. Each row's organisation path is resolved as at that row's own
+   start date, so a department renamed since reads on an old row as it read then — a history that
+   quietly agreed with the present would be no history at all. *@
+<h2>@T["Job history"]</h2>
+
+@if (Model.JobHistory.Count == 0)
+{
+    <p class="text-muted" id="job-history-none">@T["Nothing on record yet."]</p>
+}
+else
+{
+    <table class="table table-sm" id="job-history">
+        <thead>
+            <tr>
+                <th scope="col">@T["Position"]</th>
+                <th scope="col">@T["Organisation"]</th>
+                <th scope="col">@T["Grade"]</th>
+                <th scope="col">@T["From"]</th>
+                <th scope="col">@T["To"]</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Model.JobHistory)
+            {
+                <tr class="job-history-row" data-record-id="@row.RecordId">
+                    <td>@row.Name</td>
+                    <td class="text-muted">@row.OrganisationPath</td>
+                    <td>
+                        @if (string.IsNullOrEmpty(row.GradeName))
+                        {
+                            <span class="text-muted job-history-no-grade">@T["No grade recorded"]</span>
+                        }
+                        else
+                        {
+                            @row.GradeName
+                        }
+                    </td>
+                    <td>@EmployeeDisplay.Date(row.From)</td>
+                    <td>@(row.To is null ? T["open"] : (object)EmployeeDisplay.Date(row.To))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
 }
 
 <h2>@T["Units this person heads"]</h2>

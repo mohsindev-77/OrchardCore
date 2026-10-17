@@ -98,13 +98,19 @@ public sealed record DimensionNodeRef(
 }
 
 /// <summary>An employee's placement at a node, as the assignment service hands it out.</summary>
+/// <param name="GradeRecordId">
+/// The grade held in this placement, when the node is a position. Null on a placement at a unit and
+/// on every row written before slice F6. ADR-0026 gives the argument for its being here rather than
+/// a row of its own on the grades axis.
+/// </param>
 public sealed record EmployeeAssignment(
     string EmployeeId,
     string StructureId,
     string RecordId,
     EffectiveRange Range,
     decimal AllocationPercent,
-    bool IsPrimary);
+    bool IsPrimary,
+    string? GradeRecordId = null);
 
 /// <summary>
 /// One dated term of one employee leading one unit on one axis.

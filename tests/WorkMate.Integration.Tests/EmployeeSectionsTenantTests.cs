@@ -279,6 +279,73 @@ public sealed class EmployeeSectionsTenantTests
     }
 
     /// <summary>
+    /// Orchard's Publish, Unpublish and Delete buttons are not on this screen. Slice F6b polish C.
+    /// </summary>
+    /// <remarks>
+    /// <b>Where they came from.</b> This screen builds the real content editor through
+    /// <c>IContentItemDisplayManager</c> — that is the whole design, because the drivers are the
+    /// only thing that knows how to edit a field type. What comes with them is
+    /// <c>OrchardCore.Contents</c>'s own action buttons, which are addressed to somebody curating
+    /// content and are wrong here in three separate ways: an <c>Employee</c> is not draftable, so
+    /// Publish and Unpublish have nothing to act on; and <b>Delete would destroy a person's
+    /// record</b>, where ending employment is a dated lifecycle transition (Exit) that closes
+    /// placements and headships and raises an event.
+    ///
+    /// <b>Withheld through placement, which is Orchard's own extension point</b> — a module's
+    /// <c>placement.json</c> with <c>"place": "-"</c>, exactly as this module already withholds
+    /// <c>TitlePart_Edit</c>. Nothing in Orchard is changed, which is CLAUDE.md's hard boundary.
+    ///
+    /// The Save button asserted present is <em>this screen's own</em>, posting to this controller.
+    /// Orchard's is withheld with the rest: two Save buttons doing different things is worse than
+    /// either.
+    /// </remarks>
+    [Fact]
+    public async Task OrchardsPublishUnpublishAndDeleteButtonsAreNotOnTheSectionsScreen()
+    {
+        string employeeId = string.Empty;
+
+        await InTenantAsync(async services =>
+            employeeId = await EmployeeScenario.ActiveEmployeeAsync(services, "sections-buttons"));
+
+        // All three screens an employee record is edited on, because the leak is a property of
+        // building a content editor rather than of this one screen — and the Create and Edit pages
+        // are hand-written forms whose freedom from it should be asserted rather than assumed.
+        var screens = new[]
+        {
+            $"/Admin/Employees/Sections/Edit/{employeeId}",
+            $"/Admin/Employees/Edit/{employeeId}",
+            "/Admin/Employees/Create",
+        };
+
+        foreach (var screen in screens)
+        {
+            var page = new HtmlParser().ParseDocument(
+                await BaseTenantFixture.GetPageAsync(_fixture.Administrator, screen));
+
+            // By what the button would DO rather than by its words, so a relabelling cannot sneak
+            // one back: every one of these posts to a route of Orchard's.
+            foreach (var action in new[] { "Publish", "Unpublish", "Delete" })
+            {
+                page.QuerySelectorAll($"[name='submit.{action}'], button[value*='{action}']")
+                    .Should().BeEmpty("'{0}' has no business on {1}", action, screen);
+            }
+
+            page.QuerySelectorAll("form button[type='submit'], form input[type='submit']")
+                .Select(button => button.GetAttribute("name") ?? string.Empty)
+                .Should().NotContain(
+                    name => name.StartsWith("submit.", StringComparison.Ordinal),
+                    "no Orchard content-editor action survives on {0}", screen);
+        }
+
+        // And the sections screen still works: its own Save is there.
+        new HtmlParser().ParseDocument(
+            await BaseTenantFixture.GetPageAsync(
+                _fixture.Administrator, $"/Admin/Employees/Sections/Edit/{employeeId}"))
+            .QuerySelector("#employee-sections-save")
+            .Should().NotBeNull("the one button this screen owns stays");
+    }
+
+    /// <summary>
     /// Somebody who may not see employees cannot reach their sections either.
     /// </summary>
     /// <remarks>

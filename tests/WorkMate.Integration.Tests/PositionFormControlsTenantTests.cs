@@ -48,6 +48,8 @@ public sealed class PositionFormControlsTenantTests : IAsyncLifetime, IDisposabl
 
     public Task DisposeAsync() => _tenant.DisposeAsync();
 
+    private static readonly DateOnly Today = new(2026, 10, 15);
+
     // ---- the allowed-grades checklist ---------------------------------------------------------
 
     /// <summary>
@@ -339,6 +341,133 @@ public sealed class PositionFormControlsTenantTests : IAsyncLifetime, IDisposabl
             $"/Admin/Dimensions/Records/Create?dimensionTypeId={typeId}&structureId={structureId}",
             culture,
             decoded);
+    }
+
+    // ---- polish B: Reports to is an answer, not a silence (D31) -------------------------------
+
+    /// <summary>
+    /// The control starts unanswered and offers "nobody" as a choice of its own. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect.</b> The empty option read "— reports to nobody —", so a form nobody had
+    /// touched looked like a deliberate claim that the post was the top of the reporting line. It
+    /// was not even that: the save wrote no reporting-line row at all, leaving the post off that
+    /// axis entirely while the screen said otherwise.
+    /// </remarks>
+    [Fact]
+    public async Task TheReportsToControlStartsUnansweredAndOffersNobodyAsAChoice()
+    {
+        var page = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(
+            await AddPositionFormAsync(decoded: false));
+
+        var options = page.QuerySelectorAll("select[data-position-picker] option").ToList();
+
+        options.Should().NotBeEmpty("the position form offers a Reports to control");
+
+        options[0].GetAttribute("value").Should().BeEmpty("the first option is the unanswered one");
+        options[0].TextContent.Trim().Should().Be("Choose…");
+
+        options[1].GetAttribute("value").Should().Be(
+            ReportsToChoice.Nobody,
+            "'nobody' is an answer and therefore has a value of its own");
+
+        options[1].TextContent.Should().Contain("top of the reporting line");
+    }
+
+    /// <summary>
+    /// Saving a position with Reports to unanswered is refused, in the validator. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the validator directly as well as through the screen, because the rule is the
+    /// product's and not the form's: a recipe and any later import go through the same method and
+    /// must refuse in the same words (CLAUDE.md rule 5).
+    /// </remarks>
+    [Fact]
+    public async Task SavingAPositionWithReportsToUnansweredIsRefused() =>
+        await InTenantAsSystemAsync(async services =>
+        {
+            var reporting = (await services.GetRequiredService<IStructureService>()
+                .GetByCodeAsync("zenith-reporting"))!.StructureId;
+
+            var validator = services.GetRequiredService<IDimensionValidator>();
+
+            var refused = await validator.ValidateReportsToAsync(
+                reporting, ReportsToIntent.Unstated, null, Today);
+
+            refused.Should().ContainSingle()
+                .Which.Rule.Should().Be(DimensionRule.ReportsToRequired);
+
+            refused[0].IsAdvisory.Should().BeFalse("silence blocks the save");
+
+            refused[0].Message.Value.Should().Contain(
+                "Reports to nobody", "the message says what the other answer is");
+
+            // And the two real answers are accepted.
+            (await validator.ValidateReportsToAsync(
+                reporting, ReportsToIntent.UnderPosition, "whatever", Today))
+                .Should().BeEmpty("naming a post is the ordinary answer");
+        });
+
+    /// <summary>
+    /// Choosing "nobody" saves, puts the post ON the reporting line, and warns when somebody is
+    /// already at the top. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>The warning never blocks.</b> An organisation mid-handover, or one with joint chief
+    /// executives, is entitled to record what it actually has — the same judgement D26 F makes
+    /// about a full position.
+    /// </remarks>
+    [Fact]
+    public async Task ChoosingNobodySavesAndWarnsWhenSomebodyIsAlreadyAtTheTop() =>
+        await InTenantAsSystemAsync(async services =>
+        {
+            var reporting = (await services.GetRequiredService<IStructureService>()
+                .GetByCodeAsync("zenith-reporting"))!.StructureId;
+
+            // Zenith's CEO is already the top of this line.
+            var warned = await services.GetRequiredService<IDimensionValidator>()
+                .ValidateReportsToAsync(reporting, ReportsToIntent.Top, null, Today);
+
+            warned.Should().ContainSingle()
+                .Which.Rule.Should().Be(DimensionRule.SecondTopOfReportingLine);
+
+            warned[0].IsAdvisory.Should().BeTrue(
+                "a second post at the top is worth saying and not worth refusing");
+
+            warned[0].Message.Value.Should().Contain("zenith-pos-ceo", "the message names the one already there");
+        });
+
+    /// <summary>
+    /// The Edit form shows where a position sits on the reporting line, and does not offer to
+    /// change it there. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Reports to is a parent, on a second axis.</b> Changing a parent is a dated move with its
+    /// own permission and its own dry run — which is exactly why the organisation parent is not on
+    /// this form either, as the view model's own remarks say. So this screen states the fact and
+    /// links to the designer, where that move already lives.
+    /// </remarks>
+    [Fact]
+    public async Task TheEditFormShowsTheReportingLineAndDoesNotOfferToChangeItThere()
+    {
+        // A post under another: the Director reports to the CEO.
+        var directorHtml = await EditPositionFormAsync("zenith-pos-dir-tech");
+        var director = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(directorHtml);
+
+        director.QuerySelector("#record-edit-reports-to-name")!.TextContent
+            .Should().Contain("CEO");
+
+        director.QuerySelector("#record-edit-reporting-line-link").Should().NotBeNull(
+            "changing it is a dated move, and the link goes where that move lives");
+
+        director.QuerySelectorAll("select[data-position-picker]").Should().BeEmpty(
+            "this form does not reparent anything — on either axis");
+
+        // And the top of the line reads as the top rather than as a blank.
+        new AngleSharp.Html.Parser.HtmlParser().ParseDocument(
+            await EditPositionFormAsync("zenith-pos-ceo"))
+            .QuerySelector("#record-edit-reports-to-top")
+            .Should().NotBeNull("the CEO is the top of the line and the form says so");
     }
 
     private async Task<string> EditPositionFormAsync(string code, string culture = "en")

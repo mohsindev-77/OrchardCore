@@ -313,6 +313,198 @@ internal sealed class PositionService : IPositionService
     /// is excluded by <em>code</em> because that is what identifies it — it is shipped by a recipe
     /// and a tenant may have more than one organisation axis, so "the other one" is not a rule.
     /// </remarks>
+    public async Task<Page<PositionHolder>> GetHoldersAsync(
+        string positionRecordId,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default)
+    {
+        var date = asAt ?? await _authorisation.TodayAsync();
+
+        // Every organisation axis, because a position sits on exactly one and which one is the
+        // tenant's business — the same loop GetEstablishmentAsync and GetUnitsAsync make, so the
+        // count and the list below it are drawn from the same rows.
+        var rows = new List<EmployeeAssignment>();
+
+        foreach (var axis in await OrganisationAxesAsync(cancellationToken))
+        {
+            var found = await _assignments.GetEmployeesUnderAsync(
+                axis.StructureId,
+                positionRecordId,
+                date,
+                // At the position itself. A position has nothing under it on an organisation axis
+                // today, but asking for descendants would make this answer change the day somebody
+                // puts a dimension beneath Position on their chart — and "who holds this post" must
+                // not start including who holds the posts below it.
+                includeDescendants: false,
+                skip: 0,
+                take: HolderCap,
+                cancellationToken);
+
+            rows.AddRange(found.Items);
+        }
+
+        // One holder per employee, however many rows they have here. A split allocation is several
+        // rows for one person at one node (D1, architecture §2.5), and the row kept is the one with
+        // the largest allocation — the one that most nearly answers what they do here.
+        var kept = rows
+            .GroupBy(row => row.EmployeeId, StringComparer.Ordinal)
+            .Select(group => group.OrderByDescending(row => row.AllocationPercent).First())
+            .OrderBy(row => row.Range.From)
+            .ThenBy(row => row.EmployeeId, StringComparer.Ordinal)
+            .ToList();
+
+        // Paged before the grades are resolved, so the read below is one query for a page rather
+        // than one for every holder a position has ever had.
+        var page = kept.Skip(skip).Take(take).ToList();
+
+        var gradeIds = page
+            .Select(row => row.GradeRecordId)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var grades = new Dictionary<string, DimensionNodeRef>(StringComparer.Ordinal);
+
+        foreach (var gradeId in gradeIds)
+        {
+            // Undated on purpose: a grade removed from the position, or retired outright, still has
+            // to name itself on a row that already carries it. D26 G — removing a grade "never
+            // breaks that employee's record", and a holder list showing a blank where a grade is
+            // recorded would be exactly that break.
+            if (await _records.GetAsync(gradeId!, DateOnly.MaxValue, cancellationToken) is { } grade)
+            {
+                grades[gradeId!] = grade;
+            }
+        }
+
+        return new Page<PositionHolder>(
+            [
+                .. page.Select(row => new PositionHolder(
+                    row.EmployeeId,
+                    row.GradeRecordId is { } gradeId ? grades.GetValueOrDefault(gradeId) : null,
+                    row.Range.From,
+                    row.AllocationPercent)),
+            ],
+            kept.Count,
+            skip,
+            take);
+    }
+
+    /// <summary>
+    /// How many assignment rows at one position are read before the holder list stops being exact.
+    /// </summary>
+    /// <remarks>
+    /// The paging above is over the <em>deduplicated</em> holders, so the page has to be computed
+    /// from a read that is not itself paged — which is why this cap exists and why it is well above
+    /// any real approved headcount. <em>Labourer</em> is 44 in the brief's own example. A position
+    /// that genuinely exceeded this would need the deduplication pushed into the query, which is a
+    /// change to <c>IEmployeeAssignmentService</c> rather than to this method.
+    /// </remarks>
+    private const int HolderCap = 500;
+
+    public async Task<IReadOnlyList<StructureDocument>> GetReportingAxesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var positionTypes = (await GetTypesInRoleAsync(DimensionTypeRole.Position, cancellationToken))
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (positionTypes.Count == 0)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. (await _structures.ListAsync(cancellationToken))
+                .Where(structure =>
+                    structure.DimensionTypeIds.Count > 0 &&
+                    structure.DimensionTypeIds.All(positionTypes.Contains)),
+        ];
+    }
+
+    public async Task<IReadOnlyList<EmployeeAxis>> GetEmployeeAxesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var positionTypes = (await GetTypesInRoleAsync(DimensionTypeRole.Position, cancellationToken))
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var gradeTypes = (await GetTypesInRoleAsync(DimensionTypeRole.Grade, cancellationToken))
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var axes = new List<EmployeeAxis>();
+
+        foreach (var structure in await _structures.ListAsync(cancellationToken))
+        {
+            var levels = structure.DimensionTypeIds;
+
+            // The one test, shared with PermitsEmployeesAtAsync and with the validator: an axis
+            // with no levels, a reporting line and a grade ladder are not places a person goes.
+            if (!EmployeeAxes.HoldsEmployees(levels, positionTypes, gradeTypes))
+            {
+                continue;
+            }
+
+            axes.Add(new EmployeeAxis(structure, levels.Any(positionTypes.Contains)));
+        }
+
+        return axes;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> PermitsEmployeesAtAsync(
+        StructureDocument axis,
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(axis);
+
+        // The tenant's own attachable rule first. An axis that declares none is unconstrained,
+        // which is the normal state of one being set up.
+        if (!axis.PermitsEmployeesAt(dimensionTypeId))
+        {
+            return false;
+        }
+
+        var positionTypes = (await GetTypesInRoleAsync(DimensionTypeRole.Position, cancellationToken))
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var gradeTypes = (await GetTypesInRoleAsync(DimensionTypeRole.Grade, cancellationToken))
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        // IS THIS A PLACE AT ALL? Asked first, and it was the question missing from here.
+        //
+        // The reporting line is positions all the way down, so the D30 test below — "is the node a
+        // position?" — said YES for every one of its cards, and the designer offered "Place an
+        // employee here…" on a structure that is a post's answer-to chain rather than anywhere
+        // somebody sits. The grade ladder got there by the other door: no Position level at all,
+        // so the old code returned true for an axis D26 C says no employee rolls up to.
+        //
+        // The shape test, shared with GetEmployeeAxesAsync and with DimensionValidator, so the
+        // card, the screen, the recipe step and the import answer this identically.
+        if (!EmployeeAxes.HoldsEmployees(axis.DimensionTypeIds, positionTypes, gradeTypes))
+        {
+            return false;
+        }
+
+        // Asked of the axis's shape and never of a code or a name, the same judgement
+        // GetEmployeeAxesAsync makes: a tenant may rename anything, and the demo's are prefixed.
+        if (!axis.DimensionTypeIds.Any(positionTypes.Contains))
+        {
+            // No Position level, so D30 says nothing about this axis and nothing changes for it.
+            return true;
+        }
+
+        // D30: on an axis that has positions, a person joins by holding one.
+        return positionTypes.Contains(dimensionTypeId);
+    }
+
     private async Task<IReadOnlyList<StructureDocument>> OrganisationAxesAsync(
         CancellationToken cancellationToken)
     {

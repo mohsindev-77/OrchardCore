@@ -91,10 +91,16 @@
 
                 <tr class="change-row" data-row-index="@index">
                     <td>
+                        @* allow-within is off on every employee screen. It narrows a list of
+                           units, which is a useful thing on an admin screen about units and a
+                           control nobody uses on a form about one person — and on a position-based
+                           axis there is no unit list left for it to narrow. Kept on the positions
+                           and units screens, where it earns its place. *@
                         <workmate-unit-picker for="Rows[index].RecordId"
                                               structure-id="@Model.StructureId"
                                               as-at="@Model.EffectiveFrom"
-                                              date-field="change-effective-from" />
+                                              date-field="change-effective-from"
+                                              allow-within="false" />
                         <span asp-validation-for="Rows[index].RecordId" class="text-danger small"></span>
                     </td>
                     <td class="text-end">

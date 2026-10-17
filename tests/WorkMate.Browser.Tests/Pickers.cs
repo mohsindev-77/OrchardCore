@@ -44,4 +44,29 @@ internal static class Pickers
 
         await option.ClickAsync();
     }
+
+    /// <summary>
+    /// Chooses a position on a form that redraws when one is chosen, and waits for the redraw.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why the position picker needs its own helper and the others do not.</b> Since D31 the
+    /// employee forms carry <c>refresh-on-change</c> on this control: the organisation chain, the
+    /// reporting line and the line manager are all rendered by the server from the chosen position,
+    /// so following the choice means a round trip. Choosing therefore navigates, and whatever the
+    /// test does next would otherwise race the redraw it just caused — which is how the same click
+    /// passes alone and fails in a suite.
+    ///
+    /// One place to wait, rather than the wait being remembered at eight call sites.
+    /// </remarks>
+    internal static async Task ChoosePositionAsync(IPage page, string search)
+    {
+        ArgumentNullException.ThrowIfNull(page);
+
+        await ChooseAsync(page, ".workmate-position-picker", search);
+
+        // The redraw is a form post, so the document is replaced. NetworkIdle rather than Load:
+        // the picker's own script re-asks for its options as the new page settles, and a test that
+        // started typing into it mid-flight would be driving a control about to be rebuilt.
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+    }
 }

@@ -226,6 +226,78 @@ internal sealed class EmployeeService : IEmployeeService
         return RecordResult.Success(ToRecord(employeeId, after));
     }
 
+    /// <inheritdoc />
+    public async Task<RecordResult<EmployeeRecord>> SetLineManagerAsync(
+        string employeeId,
+        string? lineManagerEmployeeId,
+        StoredLineManagerKind kind,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await _authorisation.AuthoriseAsync(Permissions.ManageEmployees))
+        {
+            return RecordResult.NotAuthorised<EmployeeRecord>();
+        }
+
+        var item = await LoadAsync(employeeId, cancellationToken);
+
+        if (item is null)
+        {
+            return RecordResult.Failed<EmployeeRecord>(UnknownEmployee(employeeId));
+        }
+
+        var part = item.Get<EmployeePart>(EmployeeFieldNames.PartName)!;
+        var before = EmployeeState.Of(part);
+
+        // The same loop check an ordinary edit makes: a manager who reports to the person they
+        // manage is the same cycle whichever screen wrote it.
+        var errors = await ValidateLineManagerAsync(
+            part.EmployeeCode, employeeId, lineManagerEmployeeId, cancellationToken);
+
+        if (errors.Count > 0)
+        {
+            return RecordResult.Failed<EmployeeRecord>(errors);
+        }
+
+        var chosen = lineManagerEmployeeId?.Trim() ?? string.Empty;
+
+        if (string.Equals(part.LineManagerEmployeeId, chosen, StringComparison.Ordinal) &&
+            part.LineManagerKind == Settled(kind, chosen))
+        {
+            // Nothing to say. A no-op write would publish a version and file an audit entry about
+            // a change nobody made, which is how a history stops being worth reading.
+            return RecordResult.Success(ToRecord(employeeId, part));
+        }
+
+        item.Alter<EmployeePart>(editing =>
+        {
+            editing.LineManagerEmployeeId = chosen;
+
+            // An empty line manager is no kind of answer: there is nothing to be one about.
+            editing.LineManagerKind = Settled(kind, chosen);
+        });
+
+        await _contentManager.UpdateAsync(item);
+        await _contentManager.PublishAsync(item);
+
+        var after = item.Get<EmployeePart>(EmployeeFieldNames.PartName)!;
+
+        await RecordAsync(
+            employeeId, after.EmployeeCode, "Updated", effectiveOn: null, before, after);
+
+        return RecordResult.Success(ToRecord(employeeId, after));
+    }
+
+    /// <summary>
+    /// The kind a stored line manager actually gets. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// Nobody named is no kind of answer, whatever a caller passed — a form that posts an override
+    /// flag with an empty box has said nothing, and storing "an override of nobody" would make the
+    /// record disagree with itself.
+    /// </remarks>
+    private static StoredLineManagerKind Settled(StoredLineManagerKind kind, string chosen) =>
+        chosen.Length == 0 ? StoredLineManagerKind.None : kind;
+
     public async Task<RecordResult<EmployeeRecord>> CorrectJoinDateAsync(
         string employeeId,
         DateOnly joinDate,
@@ -943,6 +1015,12 @@ internal sealed class EmployeeService : IEmployeeService
         part.NationalityCode = details.NationalityCode?.Trim() ?? string.Empty;
         part.Gender = details.Gender;
         part.LineManagerEmployeeId = details.LineManagerEmployeeId?.Trim() ?? string.Empty;
+
+        // D31 addendum 2: the one thing the reporting line cannot tell us — which of three kinds
+        // of answer this is, where all three read as "not a holder" from the outside.
+        part.LineManagerKind = details.LineManagerEmployeeId is { Length: > 0 }
+            ? details.LineManagerKind
+            : StoredLineManagerKind.None;
         part.PhotoPath = details.PhotoPath?.Trim() ?? string.Empty;
     }
 
@@ -1053,7 +1131,8 @@ internal sealed class EmployeeService : IEmployeeService
         part.NationalityCode,
         part.Gender,
         part.LineManagerEmployeeId,
-        part.PhotoPath);
+        part.PhotoPath,
+        part.LineManagerKind);
 
     /// <summary>
     /// An index row back to a record, for the list and the lookups, which must not load a content

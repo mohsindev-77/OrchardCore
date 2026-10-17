@@ -204,6 +204,180 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
         await scope.UsingAsync(async shellScope => await work(shellScope.ServiceProvider));
     }
 
+    /// <summary>
+    /// Creates a throwaway position for one test to fill, under an existing department, with its
+    /// own approved headcount and its own grades.
+    /// </summary>
+    /// <remarks>
+    /// <b>THE RULE FOR THIS SUITE: a test that places people never places them into a position the
+    /// recipe created.</b> Every browser test in a collection shares one tenant, and the recipe's
+    /// positions are what the <em>reading</em> tests document — <c>PositionsClickBrowserTests</c>
+    /// asserts HR Manager is "approved 3, nobody in it yet, 3 vacant", which stops being true the
+    /// moment anybody is hired into it. The two tests then pass or fail depending on which ran
+    /// first, which is the worst kind of red: it moves.
+    ///
+    /// So a placing test makes its own post. It is unique per call, so two tests cannot collide
+    /// and a re-run cannot trip over the last one; it sits under a department that already exists,
+    /// so the derived organisation chain is a real chain and the test can assert on it; and it
+    /// carries its own grades, so the grade picker has something of its own to offer.
+    ///
+    /// <b>No separate tenant.</b> The recipe positions stay pristine because nothing writes to
+    /// them, not because they are somewhere else.
+    /// </remarks>
+    /// <param name="structureCode">The axis to put it on — the organisation chart.</param>
+    /// <param name="departmentCode">An existing department it sits under, which becomes its chain.</param>
+    /// <param name="approvedHeadcount">Its establishment. Generous by default: a full post warns.</param>
+    /// <param name="gradeCodes">Existing grades to allow on it, in the order the picker offers them.</param>
+    /// <param name="reportingStructureCode">
+    /// The reporting-line axis to put it on as well, or null to leave it off that axis. ADR-0028:
+    /// the reporting line is a second axis and nothing is ever assigned on it — a position's place
+    /// on it is what answers <em>Reports to</em>.
+    /// </param>
+    /// <param name="reportsToCode">
+    /// The post it answers to on that axis, or null to make it the top of the line. Pass another
+    /// throwaway position's code to build a two-post line without touching a recipe post.
+    /// </param>
+    /// <returns>What the test needs to drive the screens: the position's name and its grades' names.</returns>
+    public async Task<ThrowawayPosition> CreateThrowawayPositionAsync(
+        string structureCode,
+        string departmentCode,
+        IReadOnlyList<string> gradeCodes,
+        int approvedHeadcount = 9,
+        string? reportingStructureCode = null,
+        string? reportsToCode = null)
+    {
+        ArgumentNullException.ThrowIfNull(gradeCodes);
+
+        var token = Guid.NewGuid().ToString("n")[..8];
+        var code = $"test-pos-{token}";
+
+        // Named with the token too. The position picker searches by name, so two throwaway posts
+        // called the same thing would make ChooseAsync ambiguous — which is the defect that made
+        // "Software Engineer" unusable against "Principal Software Engineer".
+        var name = $"Test Post {token}";
+        var created = new ThrowawayPosition(code, name, []);
+
+        await InTenantAsync(async services =>
+        {
+            var records = services.GetRequiredService<WorkMate.Dimensions.Services.IDimensionService>();
+            var structures = services.GetRequiredService<WorkMate.Dimensions.Services.IStructureService>();
+            var types = services.GetRequiredService<WorkMate.Dimensions.Services.IDimensionTypeService>();
+
+            using (services.GetRequiredService<WorkMate.Platform.Services.ISystemOperation>()
+                .Begin("browser test position"))
+            {
+                var structure = await structures.GetByCodeAsync(structureCode)
+                    ?? throw new InvalidOperationException($"No structure '{structureCode}'.");
+
+                // The axis's own Position type, found by its standard role rather than by a code,
+                // for the reason every other read of it gives: a tenant may rename anything.
+                var positionTypeId = await PositionTypeIdAsync(types, structure);
+
+                var department = await records.GetByCodeAsync(departmentCode)
+                    ?? throw new InvalidOperationException($"No record '{departmentCode}'.");
+
+                var added = await records.AddUnitAsync(
+                    structure.StructureId,
+                    department.RecordId,
+                    positionTypeId,
+                    code,
+                    new WorkMate.Core.BilingualText(name, name),
+                    new DateOnly(2024, 1, 1),
+                    [
+                        new WorkMate.Dimensions.Models.DimensionAttributeValue(
+                            WorkMate.Dimensions.Services.PositionEstablishment.ApprovedHeadcountAttribute,
+                            approvedHeadcount.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                    ]);
+
+                if (!added.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        "Could not create the throwaway position: "
+                        + string.Join("; ", added.Errors.Select(error => error.Message.Value)));
+                }
+
+                var grades = new List<string>();
+                var gradeIds = new List<string>();
+
+                foreach (var gradeCode in gradeCodes)
+                {
+                    var grade = await records.GetByCodeAsync(gradeCode)
+                        ?? throw new InvalidOperationException($"No grade '{gradeCode}'.");
+
+                    gradeIds.Add(grade.RecordId);
+                    grades.Add(WorkMate.Dimensions.ViewModels.BilingualDisplay.Name(grade.NameEn, grade.NameAr));
+                }
+
+                var referenced = await records.SetReferencesAsync(
+                    added.Value!.RecordId,
+                    WorkMate.Dimensions.Models.DimensionReferenceKinds.AllowedGrade,
+                    gradeIds);
+
+                if (!referenced.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        "Could not set the throwaway position's grades: "
+                        + string.Join("; ", referenced.Errors.Select(error => error.Message.Value)));
+                }
+
+                // The reporting line, when the test is about Reports to. A second axis, placed the
+                // same way a recipe's second "placements" row does — and nothing is ever assigned
+                // on it, which is ADR-0028's whole point.
+                if (!string.IsNullOrEmpty(reportingStructureCode))
+                {
+                    var reporting = await structures.GetByCodeAsync(reportingStructureCode)
+                        ?? throw new InvalidOperationException($"No structure '{reportingStructureCode}'.");
+
+                    string? parentId = null;
+
+                    if (!string.IsNullOrEmpty(reportsToCode))
+                    {
+                        parentId = (await records.GetByCodeAsync(reportsToCode)
+                            ?? throw new InvalidOperationException($"No position '{reportsToCode}'."))
+                            .RecordId;
+                    }
+
+                    var onTheLine = await services
+                        .GetRequiredService<WorkMate.Dimensions.Services.IDimensionGraphService>()
+                        .PlaceAsync(
+                            reporting.StructureId,
+                            added.Value!.RecordId,
+                            parentId,
+                            new DateOnly(2024, 1, 1));
+
+                    if (!onTheLine.Succeeded)
+                    {
+                        throw new InvalidOperationException(
+                            "Could not put the throwaway position on the reporting line: "
+                            + string.Join("; ", onTheLine.Errors.Select(error => error.Message.Value)));
+                    }
+                }
+
+                created = created with { GradeNames = grades };
+            }
+        });
+
+        return created;
+    }
+
+    private static async Task<string> PositionTypeIdAsync(
+        WorkMate.Dimensions.Services.IDimensionTypeService types,
+        WorkMate.Dimensions.Models.StructureDocument structure)
+    {
+        foreach (var typeId in structure.DimensionTypeIds)
+        {
+            var type = await types.GetAsync(typeId);
+
+            if (type?.StandardRole == WorkMate.Dimensions.Models.DimensionTypeRole.Position)
+            {
+                return typeId;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"The structure '{structure.Code}' has no Position level, so it places nobody at a post.");
+    }
+
     private const string TenantName = "Default";
     private const string RolePassword = "Workmate!BrowserRole1";
 
@@ -480,3 +654,11 @@ public sealed class UsesTheBrowserTenant : ICollectionFixture<BrowserTenantFixtu
 {
     public const string Name = "browser tenant";
 }
+
+/// <summary>
+/// A position created by one test for that test to fill, so the recipe's posts stay pristine.
+/// </summary>
+/// <param name="GradeNames">
+/// The grades it allows, as the picker labels them — which is what a test selects by.
+/// </param>
+public sealed record ThrowawayPosition(string Code, string Name, IReadOnlyList<string> GradeNames);

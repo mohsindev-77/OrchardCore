@@ -830,6 +830,274 @@ public sealed class DimensionsMigrationUpgradeTenantTests
         });
     }
 
+    /// <summary>
+    /// A tenant stuck before the grade column upgrades, and a placement can then record a grade.
+    /// Slice F6a, ADR-0026.
+    /// </summary>
+    /// <remarks>
+    /// <b>A column rather than a table, so the revert is a <c>DROP COLUMN</c></b> — the shape the
+    /// <c>NameAr</c> and alias tests have, not the shape the unit-head and reference tests have.
+    /// Both shapes live in this file because the module has made both kinds of change, and the
+    /// difference is exactly what <c>ColumnExistsAsync</c> exists to handle.
+    ///
+    /// <b>Nothing is migrated into it, and nothing could be.</b> There is no earlier place an
+    /// employee's grade was stored as a dated fact: <c>JobDetails.GradeCode</c> is an undated field
+    /// on a section bound to a lookup list, and D22 retires it rather than reading it. So every
+    /// existing row keeps an empty grade, which is the truth, and the assertion worth making is
+    /// that the catch-up reaches head and the column is then genuinely usable through the service.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantStuckBeforeTheGradeColumnUpgradesAndAPlacementCanRecordAGrade()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+            var head = migration.Version;
+
+            head.Should().BeGreaterThanOrEqualTo(
+                14, "this test's premise is a schema that already includes the grade column");
+
+            migration.Version = 13;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            // Version 13 means UpdateFrom13Async has never run, so a real tenant at that version
+            // has the assignment table without the grade column.
+            await DropColumnAsync(
+                services,
+                typeof(EmployeeAssignmentIndex),
+                nameof(EmployeeAssignmentIndex.GradeRecordId));
+
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+
+            var after = (await session.Query<DataMigrationRecord>().FirstOrDefaultAsync())!
+                .DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            after.Version.Should().Be(head, "the upgrade runs every step the tenant had not reached");
+        });
+
+        // A second scope, because the migration above committed its schema change in the first one.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var records = services.GetRequiredService<IDimensionService>();
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var structures = services.GetRequiredService<IStructureService>();
+            var assignments = services.GetRequiredService<IEmployeeAssignmentService>();
+            var opened = new DateOnly(2024, 1, 1);
+
+            var positionType = await RoleTypeAsync(
+                types, "upgrade-grade-position", "Position", DimensionTypeRole.Position);
+
+            var gradeType = await RoleTypeAsync(
+                types, "upgrade-grade-grade", "Grade", DimensionTypeRole.Grade);
+
+            // A UNIT LEVEL ABOVE THE POSITION, which is what makes this an organisation axis
+            // rather than a reporting line. It used to be positions alone, and D30's polish-3
+            // addendum made that shape refuse placements: every level a Position IS a reporting
+            // line — ADR-0028's answer-to chain — and GetEmployeeAxesAsync has excluded such an
+            // axis from the placement screens since F6a, so the validator now refuses what the
+            // screens already would not offer. The shape here is corrected rather than the rule,
+            // because an axis of nothing but posts was never a real organisation structure; what
+            // this test is about — the grade column on the assignment row — is untouched.
+            var unitType = await RoleTypeAsync(
+                types, "upgrade-grade-unit", "Unit", DimensionTypeRole.None);
+
+            var axis = await structures.CreateAsync(
+                "upgrade-grade-axis",
+                new BilingualText("Upgrade axis", "محور"),
+                [unitType, positionType],
+                allowSkipLevel: false,
+                isStrict: true,
+                isPrimaryOrganisation: false,
+                new StructureShape(
+                    [unitType],
+                    [new StructureContainment(unitType, positionType)],
+                    [positionType]));
+
+            axis.Succeeded.Should().BeTrue(
+                string.Join("; ", axis.Errors.Select(error => error.Message.Value)));
+
+            var unit = await PlacedValueAsync(
+                records, axis.Value!.StructureId, unitType, "upgrade-grade-unit-1", "Works", opened);
+
+            // Placed on the axis as it is created, because a position nothing has placed is not
+            // somewhere anybody can be assigned.
+            var position = await PlacedUnderAsync(
+                records, axis.Value!.StructureId, unit, positionType,
+                "upgrade-grade-pos", "Engineer", opened);
+
+            var grade = await ValueAsync(records, gradeType, "upgrade-grade-se1", "SE-1", opened);
+
+            (await records.SetReferencesAsync(position, DimensionReferenceKinds.AllowedGrade, [grade]))
+                .Succeeded.Should().BeTrue();
+
+            var placed = await assignments.PlaceAsync(
+                "upgrade-grade-employee",
+                axis.Value!.StructureId,
+                position,
+                opened,
+                gradeRecordId: grade);
+
+            placed.Succeeded.Should().BeTrue(
+                string.Join("; ", placed.Errors.Select(error => error.Message.Value)));
+
+            // Through the index read, which is the half the column actually serves.
+            var back = await assignments.GetEffectiveAsync(
+                "upgrade-grade-employee", axis.Value!.StructureId, opened);
+
+            back!.GradeRecordId.Should().Be(grade, "the column is written, indexed and read back");
+        });
+    }
+
+    /// <summary>
+    /// A tenant stuck before the attachable-types step upgrades, gains Position as somewhere an
+    /// employee may be placed, and <b>nobody is moved</b>. Slice F6a, ADR-0029.
+    /// </summary>
+    /// <remarks>
+    /// <b>The second half is the decision, and it is what this test is really for.</b> ADR-0029
+    /// weighed generating a placeholder position per unit and reallocating every existing employee
+    /// into it, and rejected it. A migration that quietly moved somebody would pass every schema
+    /// check in this file, so the assertion has to be about the rows: the employee placed in a
+    /// department before the upgrade is in the same department, on the same dates, afterwards.
+    /// </remarks>
+    [Fact]
+    public async Task TheAttachableTypesUpgradePermitsPositionsAndMovesNobody()
+    {
+        var axisId = string.Empty;
+        var departmentId = string.Empty;
+        var positionTypeId = string.Empty;
+        var opened = new DateOnly(2024, 1, 1);
+
+        // A tenant as it was before F6: a chart with a position level, a stated attachable set that
+        // does NOT include it, and somebody placed in a department.
+        await InTenantAsSystemAsync(async services =>
+        {
+            var records = services.GetRequiredService<IDimensionService>();
+            var types = services.GetRequiredService<IDimensionTypeService>();
+            var structures = services.GetRequiredService<IStructureService>();
+            var assignments = services.GetRequiredService<IEmployeeAssignmentService>();
+
+            var departmentType = await RoleTypeAsync(
+                types, "upgrade-attach-dept", "Department", DimensionTypeRole.None);
+
+            positionTypeId = await RoleTypeAsync(
+                types, "upgrade-attach-position", "Position", DimensionTypeRole.Position);
+
+            // The axis as it was BEFORE anybody added Position to it — no position level at all,
+            // which is what makes the department placement below legal. D30 refuses a new
+            // placement at a unit of an axis that has positions, so building the axis in its final
+            // shape and then placing somebody would be reproducing a state no tenant was ever in.
+            // This is the real upgrade order: people in departments first, Position added after.
+            var axis = await structures.CreateAsync(
+                "upgrade-attach-axis",
+                new BilingualText("Upgrade attach", "محور"),
+                [departmentType],
+                allowSkipLevel: false,
+                isStrict: true,
+                isPrimaryOrganisation: false,
+                // The pre-F6 state: a stated set with no position in it.
+                new StructureShape([departmentType], [], [departmentType]));
+
+            axis.Succeeded.Should().BeTrue(
+                string.Join("; ", axis.Errors.Select(error => error.Message.Value)));
+
+            axisId = axis.Value!.StructureId;
+
+            departmentId = await PlacedValueAsync(
+                records, axisId, departmentType, "upgrade-attach-civil", "Civil", opened);
+
+            (await assignments.PlaceAsync("upgrade-attach-employee", axisId, departmentId, opened))
+                .Succeeded.Should().BeTrue("this is the placement the migration must not touch");
+
+            // And now Position arrives on the chart, which is the act that brings the axis into
+            // the state UpdateFrom14Async is about.
+            var withPositions = await structures.UpdateAsync(
+                axisId,
+                axis.Value!.Name,
+                [departmentType, positionTypeId],
+                axis.Value!.AllowSkipLevel,
+                axis.Value!.IsStrict,
+                axis.Value!.IsPrimaryOrganisation,
+                new StructureShape(
+                    [departmentType],
+                    [new StructureContainment(departmentType, positionTypeId)],
+                    [departmentType]),
+                axis.Value!.ShortName);
+
+            withPositions.Succeeded.Should().BeTrue(
+                string.Join("; ", withPositions.Errors.Select(error => error.Message.Value)));
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+            var head = migration.Version;
+
+            head.Should().BeGreaterThanOrEqualTo(15, "the premise is a schema that includes the step");
+
+            migration.Version = 14;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync();
+        });
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var structures = services.GetRequiredService<IStructureService>();
+            var assignments = services.GetRequiredService<IEmployeeAssignmentService>();
+
+            var axis = (await structures.GetAsync(axisId))!;
+
+            axis.PermitsEmployeesAt(positionTypeId).Should().BeTrue(
+                "the one line slice F6 turns on: a position is somewhere an employee may be placed");
+
+            axis.EmployeeAttachableDimensionTypeIds.Should().HaveCount(
+                2, "the types that already held employees still do — an additive step takes nothing away");
+
+            // And the half that is the decision: the department placement is untouched.
+            var placement = await assignments.GetEffectiveAsync("upgrade-attach-employee", axisId, opened);
+
+            placement.Should().NotBeNull("ADR-0029: the migration moves nobody");
+            placement!.RecordId.Should().Be(departmentId, "same unit");
+            placement.Range.From.Should().Be(opened, "same date");
+            placement.GradeRecordId.Should().BeNull("and no grade was invented for it");
+        });
+    }
+
+    /// <summary>Drops one column, putting a table back the way a tenant before that step had it.</summary>
+    private static async Task DropColumnAsync(IServiceProvider services, Type indexType, string columnName)
+    {
+        var store = services.GetRequiredService<IStore>();
+        var connection = store.Configuration.ConnectionFactory.CreateConnection();
+
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            var tableName = store.Configuration.TablePrefix
+                + store.Configuration.TableNameConvention.GetIndexTable(indexType, string.Empty);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = $"ALTER TABLE {tableName} DROP COLUMN {columnName}";
+            await command.ExecuteNonQueryAsync();
+        }
+        finally
+        {
+            await connection.CloseAsync();
+            await connection.DisposeAsync();
+        }
+    }
+
     /// <summary>A dimension type with a declared role, created once for one of these tests.</summary>
     private static async Task<string> RoleTypeAsync(
         IDimensionTypeService types,
@@ -849,6 +1117,46 @@ public sealed class DimensionsMigrationUpgradeTenantTests
             string.Join("; ", created.Errors.Select(error => error.Message.Value)));
 
         return created.Value!.DimensionTypeId;
+    }
+
+    /// <summary>
+    /// A value of that type, placed on an axis as it is created — one write, per
+    /// <c>AddUnitAsync</c>'s own argument for existing.
+    /// </summary>
+    private static async Task<string> PlacedValueAsync(
+        IDimensionService records,
+        string structureId,
+        string dimensionTypeId,
+        string code,
+        string name,
+        DateOnly from)
+    {
+        var created = await records.AddUnitAsync(
+            structureId, null, dimensionTypeId, code, new BilingualText(name, name), from);
+
+        created.Succeeded.Should().BeTrue(
+            string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+        return created.Value!.RecordId;
+    }
+
+    /// <summary>The same, under a parent rather than at the root.</summary>
+    private static async Task<string> PlacedUnderAsync(
+        IDimensionService records,
+        string structureId,
+        string parentId,
+        string dimensionTypeId,
+        string code,
+        string name,
+        DateOnly from)
+    {
+        var created = await records.AddUnitAsync(
+            structureId, parentId, dimensionTypeId, code, new BilingualText(name, name), from);
+
+        created.Succeeded.Should().BeTrue(
+            string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+        return created.Value!.RecordId;
     }
 
     /// <summary>A value of that type. Unplaced, because a reference is not a placement.</summary>

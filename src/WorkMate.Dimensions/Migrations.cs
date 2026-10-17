@@ -279,6 +279,10 @@ public sealed class Migrations : DataMigration
             .Column<string>(nameof(EmployeeAssignmentIndex.NodeId), column => column.WithLength(IdentifierLength))
             .Column<decimal>(nameof(EmployeeAssignmentIndex.AllocationPercent))
             .Column<bool>(nameof(EmployeeAssignmentIndex.IsPrimary))
+            // Slice F6a, ADR-0026. Here so a brand-new tenant gets the current schema in one pass;
+            // UpdateFrom13Async carries it to a tenant created before it. CreateAsync is kept
+            // current, never edited to carry an upgrade — ADR-0009.
+            .Column<string>(nameof(EmployeeAssignmentIndex.GradeRecordId), column => column.WithLength(IdentifierLength))
             .Column<DateTime>(nameof(EmployeeAssignmentIndex.EffectiveFrom))
             .Column<DateTime>(nameof(EmployeeAssignmentIndex.EffectiveToInclusive)));
 
@@ -832,6 +836,114 @@ public sealed class Migrations : DataMigration
         });
 
         return 13;
+    }
+
+    /// <summary>
+    /// The employee's grade, as a column on the assignment row. Slice F6a, ADR-0026.
+    /// </summary>
+    /// <remarks>
+    /// <b>One nullable column, and nothing is migrated into it.</b> There is no earlier place an
+    /// employee's grade was stored as a dated fact — <c>JobDetails.GradeCode</c> is an undated
+    /// field on a section, is bound to a lookup list, and is retired rather than read by slice F6c
+    /// (D22) — so every existing row keeps an empty grade, which is the truth. A tenant on today's
+    /// model and a tenant upgrading behave identically afterwards, which is what
+    /// <c>DimensionsMigrationUpgradeTenantTests</c> asserts.
+    ///
+    /// <b>Guarded, for the reason <see cref="UpdateFrom3Async"/> spells out at length.</b> A
+    /// brand-new tenant runs <see cref="CreateAsync"/> — which now builds the column — and then
+    /// every <c>UpdateFromNAsync</c> in turn, so it arrives here with the column already there,
+    /// while a tenant upgrading from version 13 does not. <see cref="CreateAsync"/> has to keep
+    /// producing the current schema and is never edited to carry an upgrade, so one of the two must
+    /// look before it writes, and it has to be this one.
+    ///
+    /// <b>No index on it.</b> See <see cref="EmployeeAssignmentIndex.GradeRecordId"/>: the hot
+    /// queries are by employee and by node, and "who is on SE-2" is a filter rather than the query
+    /// this table is shaped for.
+    /// </remarks>
+    public async Task<int> UpdateFrom13Async()
+    {
+        if (!await ColumnExistsAsync(
+            nameof(EmployeeAssignmentIndex), nameof(EmployeeAssignmentIndex.GradeRecordId)))
+        {
+            await SchemaBuilder.AlterIndexTableAsync<EmployeeAssignmentIndex>(table =>
+                table.AddColumn<string>(
+                    nameof(EmployeeAssignmentIndex.GradeRecordId),
+                    column => column.WithLength(IdentifierLength)));
+        }
+
+        return 14;
+    }
+
+    /// <summary>
+    /// Lets employees be placed at a position. Slice F6a, ADR-0029, decision D26 H.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the whole switch.</b> Every picker, every placement screen and the designer's
+    /// <em>Place an employee here…</em> read <c>StructureDocument.PermitsEmployeesAt</c> through one
+    /// implementation, so adding the Position type to a structure's attachable set turns all three
+    /// on together and none of them is edited.
+    ///
+    /// <b>It moves nobody, and that is the decision rather than a property of the code.</b>
+    /// ADR-0029 weighed generating a placeholder position per unit and reallocating every existing
+    /// employee into it, and rejected it: it writes dated rows about real people that nobody asked
+    /// for, on a date a migration would have to invent; it invents master data a tenant cannot
+    /// delete (ADR-0016); it contradicts D26 D, since a position per <em>unit</em> is neither a job
+    /// nor a post; and it destroys the distinction between "Ahmed is in Civil" and "Ahmed holds a
+    /// post that sits in Civil" while appearing to keep both. So every assignment row is left
+    /// exactly as it is, and a tenant's unit placements stay valid as history and as the present.
+    ///
+    /// <b>Only where the set is stated.</b> <c>PermitsEmployeesAt</c> reads an empty set as
+    /// <em>unconstrained</em>, so a structure that declares none already accepts a position and
+    /// writing one in would turn an absent answer into a stated one — the same distinction between
+    /// absent and empty that ADR-0008's employee-attachment addendum turns on. Only a structure that
+    /// has a non-empty set <b>and</b> has a Position type among its levels is changed.
+    ///
+    /// <b>Idempotent.</b> A structure whose set already names the type is skipped, so a half-finished
+    /// run that is retried writes nothing a second time.
+    /// </remarks>
+    public async Task<int> UpdateFrom14Async()
+    {
+        // The documents rather than the index: the declared role is not an indexed column, and
+        // adding one so a migration can read it would be a schema change in service of a step that
+        // runs once. A tenant has a handful of dimension types, not a table of them —
+        // UpdateFrom4Async avoids loading documents because it reads one boolean per type on a list
+        // that grows with the tenant, and this is the other case.
+        var positionTypeIds = (await _session.Query<DimensionTypeDocument, DimensionTypeIndex>().ListAsync())
+            .Where(type => type.StandardRole == DimensionTypeRole.Position)
+            .Select(type => type.DimensionTypeId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (positionTypeIds.Count == 0)
+        {
+            // No Position dimension on this tenant — a tenant upgrading from before F5+F7 that has
+            // not run the base recipe since. Nothing to permit, and nothing to do.
+            return 15;
+        }
+
+        foreach (var structure in await _session.Query<StructureDocument, StructureIndex>().ListAsync())
+        {
+            if (structure.EmployeeAttachableDimensionTypeIds.Count == 0)
+            {
+                continue;
+            }
+
+            var missing = structure.DimensionTypeIds
+                .Where(positionTypeIds.Contains)
+                .Where(id => !structure.EmployeeAttachableDimensionTypeIds.Contains(id, StringComparer.Ordinal))
+                .ToList();
+
+            if (missing.Count == 0)
+            {
+                continue;
+            }
+
+            structure.EmployeeAttachableDimensionTypeIds =
+                [.. structure.EmployeeAttachableDimensionTypeIds, .. missing];
+
+            await _session.SaveCheckedAsync(structure);
+        }
+
+        return 15;
     }
 
     /// <summary>

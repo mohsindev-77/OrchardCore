@@ -13,7 +13,8 @@
     "ORDER MATTERS. The main Zenith recipe first, this one second. The positions here are placed under zenith-dept-civil, zenith-dept-electrical and zenith-dept-hr, and the dimension-records step resolves a parent by code at import — so without the organisation this fails naming the department it could not find, which is the right failure.",
     "THE ONE THING IT TOUCHES rather than creates is the zenith-org structure, which gains zenith-position as a level and zenith-department > zenith-position as a containment pairing. It says that in the ADDITIVE form — addLevelTypeCodes and addContainment — which states only what to add. ADR-0008's 14 October addendum. It goes through IStructureService.UpdateAsync, so the level change is previewed and refused if a live placement would be invalidated, and it is audited like an administrator's own edit.",
     "IT DELIBERATELY RESTATES NOTHING ELSE: not the four organisation dimension types, not zenith-org's levels, roots, map, names, short name, strictness or employee-attachable types. Every one of those is a field an older tenant legitimately holds differently — a short name it predates, self-pairs derived from an old allowsSelfNesting flag, a menu order the field did not exist for. Restating any of them is what made the first two attempts at this fail.",
-    "NOBODY HOLDS ANY OF THESE POSITIONS YET. employeeAttachableTypeCodes on zenith-org is untouched, so employees still attach at departments and teams and every position reads Filled 0. Repointing them is slice F6."
+    "A POSITION IS SOMEWHERE AN EMPLOYEE CAN BE PLACED, since slice F6a. The zenith-org row ADDS zenith-position to the types that may hold employees — departments and teams still may, because an additive row never takes anything away. Migrations.UpdateFrom14Async does the same thing to a tenant that already exists; this is how a tenant built fresh from these recipes arrives at the same place, which is the property DimensionsMigrationUpgradeTenantTests holds.",
+    "NOBODY HOLDS ANY OF THESE POSITIONS YET, so every position still reads Filled 0 after this file. That is the truth rather than a gap: ADR-0029 says the F6 migration moves nobody, so somebody has to assign them. Employees → a person → Placement → Place is the screen."
   ],
 
   "steps": [
@@ -56,7 +57,8 @@
           "addLevelTypeCodes": ["zenith-position"],
           "addContainment": {
             "zenith-department": ["zenith-position"]
-          }
+          },
+          "addEmployeeAttachableTypeCodes": ["zenith-position"]
         },
         {
           "code": "zenith-reporting",

@@ -238,6 +238,67 @@ public sealed class EmployeeCreateViewModel
     public Gender Gender { get; set; } = Gender.Unspecified;
 
     public string? LineManagerEmployeeId { get; set; }
+
+    // ---- the fixed "Job and organisation" block (D30, design note §2.1 and §9.2) --------------
+
+    /// <summary>
+    /// The axis the position is chosen from. Settled by the screen when the tenant has one.
+    /// </summary>
+    public string? StructureId { get; set; }
+
+    /// <summary>The position this person joins at, or null to create them unplaced.</summary>
+    /// <remarks>
+    /// <b>Offered inline and optional.</b> A new employee with no position is the state this slice
+    /// exists to stop being normal, so the question is on the form rather than on a screen somebody
+    /// has to find — but leaving it blank still creates an unplaced employee exactly as before.
+    /// Making it required would break every tenant that hires before HR has built its position
+    /// list, and would make ADR-0029's mixed state impossible to live with.
+    /// </remarks>
+    public string? PositionRecordId { get; set; }
+
+    /// <summary>The grade held at that position. D26 G: one of the position's own, or none.</summary>
+    public string? GradeRecordId { get; set; }
+
+    /// <summary>Whether this axis places employees at positions. D30, ADR-0030.</summary>
+    /// <remarks>
+    /// False and the form is the one it has always been — which is the whole of D30's scope for a
+    /// tenant that has built no positions.
+    /// </remarks>
+    public bool IsPositionBased { get; set; }
+
+    /// <summary>Where the chosen position sits and who it answers to. Null until one is chosen.</summary>
+    public PositionOrganisation? Organisation { get; set; }
+
+    /// <summary>The axes an employee may be placed on, for the chooser. Never every structure.</summary>
+    public IReadOnlyList<StructureOptionViewModel> Structures { get; set; } = [];
+
+    /// <summary>Whether to ask which axis, which is only worth asking when there are several.</summary>
+    public bool ShowsStructureChooser => Structures.Count > 1;
+
+    /// <summary>
+    /// True when this post is a redraw after the position or the axis changed, not a save.
+    /// </summary>
+    /// <remarks>
+    /// The same flag and the same reason as the Placement screen's: changing the position used to
+    /// run the whole save path and tell somebody off for not having finished a question they had
+    /// only just been asked.
+    /// </remarks>
+    public bool IsRefresh { get; set; }
+
+    /// <summary>
+    /// Whether somebody asked to name a line manager the reporting line does not imply. D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not stored.</b> It selects which control the form renders; what is saved is the same
+    /// <c>LineManagerEmployeeId</c> it always was. Whether the saved value <em>is</em> an exception
+    /// is worked out by comparing it with the post's holders, not by trusting this flag — a form
+    /// value cannot be the record of a fact.
+    /// </remarks>
+    public bool LineManagerOverride { get; set; }
+
+    /// <summary>The line-manager control's state, derived from the chosen position. D31.</summary>
+    public LineManagerViewModel LineManager =>
+        LineManagerViewModel.Of(Organisation, LineManagerEmployeeId, LineManagerOverride);
 }
 
 /// <summary>Changing the editable core of an existing employee.</summary>
@@ -289,6 +350,47 @@ public sealed class EmployeeEditViewModel
 
     /// <summary>The name in the reader's language, falling back rather than to a blank.</summary>
     public string Name => BilingualText.Display(NameEn, NameAr);
+
+    // ---- the fixed core's second block, and the loop below it (design note §9.2) --------------
+
+    /// <summary>
+    /// Where this person sits today, derived from the position they hold. D30.
+    /// </summary>
+    /// <remarks>
+    /// <b>Read-only here, and that is the decision rather than an omission.</b> The design note's
+    /// §2.1: a display driver's <c>UpdateAsync</c> has nowhere to put a required effective date, and
+    /// every write in this slice is dated with nothing defaulted (CLAUDE.md rule 3). So this block
+    /// shows what is true and links to the dated forms — <em>Change position</em>, <em>Change
+    /// grade</em> — which are on <c>EmployeePlacementAdminController</c> and are the one write path.
+    ///
+    /// The Create form is the exception that proves it: it may ask for a position <em>because it
+    /// already asks for a join date</em>, which is the effective date the write needs.
+    ///
+    /// Null on a tenant with no positions, where the whole block is absent and the form is the one
+    /// it has always been.
+    /// </remarks>
+    public EmployeeOrganisation? Organisation { get; set; }
+
+    /// <summary>Whether this employee is on an axis that places people at positions. D30.</summary>
+    public bool IsPositionBased { get; set; }
+
+    /// <summary>Who manages this person, from the one read path. D31 addendum 2.</summary>
+    /// <remarks>
+    /// Derived live where the chart answers and stored only where somebody chose, so a change of
+    /// holder above shows here without anybody editing this record.
+    /// </remarks>
+    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody;
+
+    /// <summary>
+    /// The sections <em>this tenant</em> has, in its own order — never the six as a literal.
+    /// </summary>
+    /// <remarks>
+    /// §9.2 Rule 2. The page renders the fixed core and then loops over this, so a section the form
+    /// designer adds in B3 appears without this view or this model being touched. Read through
+    /// <c>IEmployeeSectionCatalogue</c>, which asks the content definition rather than
+    /// <c>EmployeeSections.All</c>.
+    /// </remarks>
+    public IReadOnlyList<EmployeeSectionRef> Sections { get; set; } = [];
 }
 
 /// <summary>A dated lifecycle transition, as a form posts it.</summary>
@@ -427,6 +529,14 @@ public sealed class VacatedUnitViewModel
 /// </remarks>
 public sealed class EmployeePlacementViewModel
 {
+    /// <summary>Who manages this person, from the one read path. D31 addendum 2.</summary>
+    /// <remarks>
+    /// Carried so this screen's "Reports to" row can name the person on the record rather than the
+    /// one the reporting line implies — the two differ wherever somebody overrode it, and a page
+    /// that showed the implied one would contradict the record it is drawn from.
+    /// </remarks>
+    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody;
+
     public string EmployeeId { get; set; } = string.Empty;
 
     public string? Code { get; set; }
@@ -444,6 +554,19 @@ public sealed class EmployeePlacementViewModel
 
     public bool CanAssign { get; set; }
 
+    /// <summary>
+    /// Where this person sits, derived from the position they hold. Decision D30.
+    /// </summary>
+    /// <remarks>
+    /// Null when they are on no axis at all. <c>HasNoPositionYet</c> is the other state worth
+    /// branching on: somebody placed directly in a unit on an axis that has positions, which is
+    /// what ADR-0029 leaves behind and what the <em>Choose position</em> action acts on.
+    /// </remarks>
+    public EmployeeOrganisation? Organisation { get; set; }
+
+    /// <summary>Every dated period this person has held, newest first.</summary>
+    public IReadOnlyList<JobHistoryRowViewModel> JobHistory { get; set; } = [];
+
     public string Name => BilingualText.Display(NameEn, NameAr);
 }
 
@@ -460,6 +583,14 @@ public sealed class AxisPlacementViewModel
 
     /// <summary>Every placement effective on the date, primary first. Empty when not placed.</summary>
     public IReadOnlyList<PlacementRowViewModel> Rows { get; set; } = [];
+
+    /// <summary>Whether this axis places employees at positions. D30, ADR-0030.</summary>
+    /// <remarks>
+    /// Decides what the row offers: <em>Change position</em> on a position-based axis, the split
+    /// screen on one that still places people at units. The second is not a lesser case — a
+    /// tenant with no positions keeps it exactly as it was.
+    /// </remarks>
+    public bool IsPositionBased { get; set; }
 
     public string StructureName => BilingualText.Display(StructureNameEn, StructureNameAr);
 
@@ -558,7 +689,94 @@ public sealed class PlaceEmployeeViewModel
     /// </remarks>
     public bool IsPrimary { get; set; } = true;
 
+    /// <summary>
+    /// The grade held here, when the unit chosen is a position. Decision D26 G, slice F6a.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null for a placement at a unit</b>, which is what this screen has always made and what
+    /// ADR-0029 keeps valid: a tenant has unit placements and position placements side by side, and
+    /// only the second kind carries a grade.
+    ///
+    /// <b>Posted but not yet picked on this form.</b> F6a makes a position assignable through this
+    /// screen and carries the grade through the write path; F6b gives it the drop-down D26 G
+    /// describes — empty and disabled until a position is chosen, refreshed when it changes. Until
+    /// then the grade can be stated by a recipe and by a test, and the validator refuses one that
+    /// is not among the position's allowed grades wherever it comes from.
+    /// </remarks>
+    public string? GradeRecordId { get; set; }
+
+    /// <summary>
+    /// Whether this axis places employees at positions. Decision D30, ADR-0030.
+    /// </summary>
+    /// <remarks>
+    /// <b>What the form becomes rather than a flag it carries.</b> True and the screen asks for a
+    /// Position, a Grade and a date, and shows where that puts them; false and it is the unit
+    /// picker it has always been. A tenant with no positions sees no change at all, which is D30's
+    /// own scope.
+    /// </remarks>
+    public bool IsPositionBased { get; set; }
+
+    /// <summary>Where the chosen position sits and who it answers to. Null until one is chosen.</summary>
+    public PositionOrganisation? Organisation { get; set; }
+
+    /// <summary>
+    /// Whether this redraw was caused by the AXIS changing, rather than by the position. D31.
+    /// </summary>
+    /// <remarks>
+    /// Only an axis change drops the chosen node: a unit or position belongs to the axis that was
+    /// showing and means nothing on another. A position change redraws so that the derived block
+    /// and the line manager follow it, and must keep the very choice that caused it.
+    /// </remarks>
+    public bool AxisChanged { get; set; }
+
+    /// <summary>Whether somebody asked to name a line manager outside the reporting line. D31.</summary>
+    public bool LineManagerOverride { get; set; }
+
+    /// <summary>The line-manager control's state, derived from the chosen position. D31.</summary>
+    public LineManagerViewModel LineManager =>
+        LineManagerViewModel.Of(Organisation, LineManagerEmployeeId, LineManagerOverride);
+
+    /// <summary>
+    /// The line manager, defaulted from the parent position's sole holder where there is one.
+    /// Decision D28 A.
+    /// </summary>
+    /// <remarks>
+    /// A <em>default</em>, never a derivation: with several holders nothing is chosen for the
+    /// operator, and the field is editable in every case. <c>Reports to</c> is the fact about the
+    /// post; this is the fact about the person, and they are two rows because they are two things.
+    /// </remarks>
+    public string? LineManagerEmployeeId { get; set; }
+
+    /// <summary>
+    /// True when the structure was changed and the form is only being redrawn.
+    /// </summary>
+    /// <remarks>
+    /// <b>The fix for a posted form that validated something nobody had asked to save.</b> Changing
+    /// the structure submitted the form, which ran the save path and answered <em>"Choose a
+    /// structure and a unit"</em> before anybody had chosen either. A refresh is navigation, not a
+    /// write, so it skips validation and simply redraws with the new structure's choices.
+    /// </remarks>
+    public bool IsRefresh { get; set; }
+
+    /// <summary>
+    /// The axes an employee can actually be placed on — never a grade ladder or a reporting line.
+    /// </summary>
+    /// <remarks>
+    /// Filtered by <c>IPositionService.GetEmployeeAxesAsync</c>, which excludes both by shape. They
+    /// were always wrong to offer and became visible the moment the chooser was the only control
+    /// left on the screen. ADR-0030.
+    /// </remarks>
     public IReadOnlyList<StructureOptionViewModel> Structures { get; set; } = [];
+
+    /// <summary>
+    /// Whether to offer the structure chooser at all: only when there is more than one axis.
+    /// </summary>
+    /// <remarks>
+    /// One axis is the ordinary tenant, and a drop-down with one option is a control that asks a
+    /// question with one answer. The same refusal to offer a meaningless choice that the position
+    /// page's own chooser makes.
+    /// </remarks>
+    public bool ShowsStructureChooser => Structures.Count > 1;
 
     /// <summary>
     /// The unit's full path, when the screen was opened from a card and already knows it.
@@ -762,4 +980,425 @@ public sealed class EmployeeSectionsViewModel
 
     /// <summary>The editor shape for the employee's content item.</summary>
     public IShape Editor { get; set; } = default!;
+}
+
+/// <summary>
+/// An increment: a new grade within the position somebody already holds. Decision D26 G.
+/// </summary>
+/// <remarks>
+/// <b>Its own form because it is its own change.</b> A promotion or a transfer is a new position; an
+/// increment is a new grade within the one they hold. One form for both would make somebody
+/// re-choose a position they are not changing, and would produce history that could not tell the
+/// two apart.
+/// </remarks>
+public sealed class ChangeGradeViewModel
+{
+    public string EmployeeId { get; set; } = string.Empty;
+
+    public string? Code { get; set; }
+
+    public string? NameEn { get; set; }
+
+    public string? NameAr { get; set; }
+
+    public string? StructureId { get; set; }
+
+    /// <summary>The position they hold, which this form does not change.</summary>
+    public string? PositionRecordId { get; set; }
+
+    public string? PositionName { get; set; }
+
+    /// <summary>What they are on today, so the form can say what is changing from what.</summary>
+    public string? CurrentGradeName { get; set; }
+
+    /// <summary>The new grade. Limited to the position's allowed set by the control and the validator.</summary>
+    public string? GradeRecordId { get; set; }
+
+    /// <summary>
+    /// The day the position they hold started — the earliest this change may be dated.
+    /// </summary>
+    /// <remarks>
+    /// Back-dating before it would not be a change to that row: it would be a statement about a
+    /// period the row does not cover, and the write would close the row on a day before it started.
+    /// Refused, naming the date it would have to be on or after.
+    /// </remarks>
+    public DateOnly? CurrentFrom { get; set; }
+
+    public string? EffectiveFrom { get; set; }
+
+    public string Name => BilingualText.Display(NameEn, NameAr);
+}
+
+/// <summary>
+/// One dated period of somebody's job: what they held, where it sat, at what grade, and when.
+/// </summary>
+/// <remarks>
+/// <b>The organisation path is as at this row's own start date</b>, never as at today. A department
+/// renamed in June must read on a March row as it read in March; resolving it as at today would
+/// make the history quietly agree with the present, which is the one thing a history must not do.
+/// This is the same reason <c>IDimensionService.GetAsync</c> takes a date at all.
+/// </remarks>
+public sealed class JobHistoryRowViewModel
+{
+    public string RecordId { get; set; } = string.Empty;
+
+    /// <summary>The position, or the unit for a row written before anybody held one (ADR-0029).</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Where it sat on that date, root first. Empty for a node that was not placed then.</summary>
+    public string OrganisationPath { get; set; } = string.Empty;
+
+    /// <summary>Empty where no grade was recorded, which is every row before slice F6a.</summary>
+    public string GradeName { get; set; } = string.Empty;
+
+    public DateOnly From { get; set; }
+
+    /// <summary>Null while the row is open, which is what "and still" means on a history.</summary>
+    public DateOnly? To { get; set; }
+}
+
+/// <summary>
+/// Which of the line-manager cases a screen is in. Decision D31, resting on D28 A and D30.
+/// </summary>
+/// <remarks>
+/// <b>The line manager follows the position</b>, because the reporting line already answers "who
+/// does this post answer to" and asking a second, unrelated question produced an A–Z list of every
+/// employee in the tenant beside a block that had just derived the answer.
+///
+/// <b>D28 A still decides what may be derived.</b> One holder of the post above is a fact and is
+/// shown; several is not, and nothing picks between them — the operator chooses, from those
+/// holders and no one else. What D31 adds is that the choice is <em>constrained</em> to them and
+/// required, where D28 A left the field free and optional, with
+/// <see cref="Override"/> as the deliberate, visible way out for a dotted line.
+/// </remarks>
+public enum LineManagerMode
+{
+    /// <summary>No position chosen yet, so there is nothing to follow.</summary>
+    Hidden,
+
+    /// <summary>
+    /// This post is the top of the reporting line, so there is genuinely nobody above it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Split from <see cref="NobodyAbove"/>, which is the point of the D31 addendum.</b> These
+    /// were one case called <c>None</c> and read <em>"Nobody — this post answers to no one on the
+    /// reporting line"</em>. That is true at the top and false everywhere else: a Software Engineer
+    /// under a vacant Manager Technology answers to the Director above the gap, not to no one, and
+    /// the screen said otherwise.
+    /// </remarks>
+    TopOfLine,
+
+    /// <summary>
+    /// The post above is vacant and nothing above <em>it</em> is held either, all the way up.
+    /// </summary>
+    /// <remarks>
+    /// The honest end of the walk: a chain of empty posts has nobody to act. Distinct from
+    /// <see cref="TopOfLine"/> because the reason differs and so must the sentence — this one says
+    /// the posts exist and are empty, which is something somebody can act on.
+    /// </remarks>
+    NobodyAbove,
+
+    /// <summary>Exactly one holder of the post above. Shown, not chosen.</summary>
+    Derived,
+
+    /// <summary>Several holders. The operator picks one of them, and only them.</summary>
+    Choose,
+
+    /// <summary>Somebody asked for anyone at all — a dotted line, a matrix, a secondment.</summary>
+    Override,
+
+    /// <summary>
+    /// A stored choice whose person has left the post it was made from. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Choose"/>, which is nobody having answered yet. Here somebody did
+    /// answer, and what they answered is no longer true — so the screen names the person, says
+    /// what changed, and asks again. Never silently replaced: picking another holder would be the
+    /// product inventing a line manager, which is what D28 A refuses.
+    /// </remarks>
+    NeedsChoice,
+}
+
+/// <summary>
+/// The line-manager control's whole state, worked out once so three screens cannot differ.
+/// </summary>
+/// <param name="DiffersFromTheReportingLine">
+/// Whether the person named is somebody the reporting line does not imply. Shown on the form and
+/// on the employee's page, because a line manager who is not the holder of the post above is a
+/// deliberate exception and reads as an error when it is not labelled.
+/// </param>
+public sealed record LineManagerViewModel(
+    LineManagerMode Mode,
+    string PositionName,
+    IReadOnlyList<PositionHolderRef> Holders,
+    string? EmployeeId,
+    bool DiffersFromTheReportingLine)
+{
+    /// <summary>The one holder, when there is exactly one. Null in every other mode.</summary>
+    public PositionHolderRef? Sole => Mode == LineManagerMode.Derived && Holders.Count > 0
+        ? Holders[0]
+        : null;
+
+    /// <summary>
+    /// The name of the one person this control is about, or empty where it is about several or
+    /// about nobody.
+    /// </summary>
+    /// <remarks>
+    /// Read by the modes that name somebody the <em>Reports to</em> row does not — an acting
+    /// manager, and an override. The one-holder case deliberately does not use it: the row names
+    /// that person already, and printing them again underneath was the duplicate this property's
+    /// callers were separated out to stop.
+    /// </remarks>
+    public string PersonName => Holders.Count == 1 ? Holders[0].Name : string.Empty;
+
+    /// <summary>
+    /// Whether the person offered holds a post <em>above</em> the vacant one. D31 addendum.
+    /// </summary>
+    /// <remarks>
+    /// Carries the label rather than the rule: the control is the same control either way — one
+    /// holder shown, several offered — and what changes is that it says <em>acting</em> and names
+    /// the post they actually hold. A reader who is not told would see a manager two levels up
+    /// appear with no explanation.
+    /// </remarks>
+    public bool IsActing { get; init; }
+
+    /// <summary>The post an acting manager actually holds. Empty unless <see cref="IsActing"/>.</summary>
+    public string ActingPositionName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The state for a screen that <em>states</em> rather than asks. D31 addendum.
+    /// </summary>
+    /// <remarks>
+    /// <b>The stored person wins over the derived one, and that is the difference from
+    /// <see cref="Of"/>.</b> A form is working out what the answer <em>should</em> be; a page is
+    /// saying what it <em>is</em>. Where somebody overrode the reporting line, the page must name
+    /// the person on the record — labelled as differing — rather than the holder the line implies,
+    /// which would make the page contradict the record it is drawn from.
+    ///
+    /// The post's own state still comes from the chart, because that is a fact about the post and
+    /// not about this employee: a vacant post above reads vacant whoever is acting for it.
+    /// </remarks>
+    public static LineManagerViewModel FromAnswer(LineManagerAnswer answer)
+    {
+        ArgumentNullException.ThrowIfNull(answer);
+
+        IReadOnlyList<PositionHolderRef> named = string.IsNullOrEmpty(answer.EmployeeId)
+            ? []
+            : [new PositionHolderRef(answer.EmployeeId, answer.Name, string.Empty)];
+
+        return answer.How switch
+        {
+            // Nothing derived and nothing stored. The post above's own state decides which
+            // sentence belongs: no post at all is the top of the line; a post that exists and is
+            // empty, with nothing held above it, is something somebody can act on.
+            LineManagerHow.None => new LineManagerViewModel(
+                string.IsNullOrEmpty(answer.PositionName)
+                    ? LineManagerMode.TopOfLine
+                    : LineManagerMode.NobodyAbove,
+                answer.PositionName,
+                [],
+                null,
+                false),
+
+            // Somebody answered, and what they answered is no longer true.
+            LineManagerHow.NeedsChoice when !string.IsNullOrEmpty(answer.EmployeeId) =>
+                new LineManagerViewModel(
+                    LineManagerMode.NeedsChoice,
+                    answer.PositionName,
+                    answer.Candidates,
+                    null,
+                    false)
+                {
+                    StalePersonName = answer.Reason,
+                },
+
+            // Several hold the post and nobody has answered yet. D28 A.
+            LineManagerHow.NeedsChoice => new LineManagerViewModel(
+                LineManagerMode.Choose, answer.PositionName, answer.Candidates, null, false),
+
+            // ITS OWN MODE, NOT Derived WITH A FLAG. It used to borrow Derived so the read-only
+            // partial would print the name, and that conflated two opposite statements: Derived
+            // means "the post above has one holder and this is them", which the Reports to row
+            // already says in full. An override is the person the row does NOT name. The partial
+            // prints one and stays silent about the other, which it cannot do from one mode.
+            LineManagerHow.Override => new LineManagerViewModel(
+                LineManagerMode.Override, answer.PositionName, named, answer.EmployeeId, true),
+
+            // A plain stored manager on somebody with no position: no reporting line for them to
+            // be an exception to, so no label. Every pre-F6 employee and every no-positions tenant.
+            LineManagerHow.Stored => new LineManagerViewModel(
+                LineManagerMode.Derived, string.Empty, named, answer.EmployeeId, false),
+
+            // Derived, acting, chosen or chosen-acting: one person, named. Acting carries the post
+            // they actually hold, so a manager above the gap is never unexplained.
+            _ => new LineManagerViewModel(
+                LineManagerMode.Derived, answer.PositionName, named, answer.EmployeeId, false)
+            {
+                IsActing = answer.How is LineManagerHow.Acting or LineManagerHow.ChosenActing,
+                ActingPositionName = answer.How is LineManagerHow.Acting or LineManagerHow.ChosenActing
+                    ? answer.PositionName
+                    : string.Empty,
+            },
+        };
+    }
+
+    /// <summary>
+    /// The person a stale choice named, for the sentence that asks again. D31 addendum 2.
+    /// </summary>
+    public string StalePersonName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What kind of answer this control is about to save. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>The form knows something the record cannot work out later.</b> Whether the people in the
+    /// picker hold the post above or are standing in for a vacant one is visible here and nowhere
+    /// afterwards: once the post is filled again, a stand-in and a departed holder both read as
+    /// "not a holder". So the form states which it was, and the record keeps it.
+    ///
+    /// Nobody named is no kind of answer, whatever the override flag says — an empty box with a
+    /// flag beside it has said nothing.
+    /// </remarks>
+    /// <param name="storing">
+    /// The id the form is actually about to save, which is not always this model's own — a derived
+    /// answer names somebody here and stores nobody.
+    /// </param>
+    public StoredLineManagerKind KindFor(string? storing) =>
+        string.IsNullOrEmpty(storing) ? StoredLineManagerKind.None
+        : Mode == LineManagerMode.Override ? StoredLineManagerKind.Override
+        : IsActing ? StoredLineManagerKind.ChosenActing
+        : StoredLineManagerKind.Chosen;
+
+    /// <summary>
+    /// Works the state out from what the position implies and what the form was given.
+    /// </summary>
+    /// <remarks>
+    /// <b>One place, because the Create form, the Place form and the employee page must agree.</b>
+    /// Each of them had the makings of its own slightly different answer, and three readings of
+    /// "who manages this person" is how a screen comes to contradict the block above it.
+    /// </remarks>
+    public static LineManagerViewModel Of(
+        PositionOrganisation? position,
+        string? lineManagerEmployeeId,
+        bool overrideRequested)
+    {
+        if (position is null)
+        {
+            // Nothing chosen: the control says what it will do rather than offering a question
+            // whose answer is about to be replaced.
+            return new LineManagerViewModel(
+                LineManagerMode.Hidden, string.Empty, [], lineManagerEmployeeId, false);
+        }
+
+        var reportsTo = position.ReportsTo;
+
+        // WHOSE HOLDERS THE CONTROL IS ABOUT. Normally the post directly above; when that post is
+        // vacant, the nearest held post above the gap, whose holders are acting (D31 addendum).
+        // Everything below is the same four-way decision either way, which is the point of
+        // resolving it here rather than branching the whole method twice.
+        var acting = reportsTo.Kind == ReportsToKind.Vacant ? reportsTo.Acting : null;
+        var holders = acting?.Holders ?? reportsTo.Holders;
+        var postName = acting?.PositionName ?? reportsTo.PositionName;
+
+        var differs = !string.IsNullOrEmpty(lineManagerEmployeeId) &&
+            !holders.Any(holder => string.Equals(
+                holder.EmployeeId, lineManagerEmployeeId, StringComparison.Ordinal));
+
+        if (overrideRequested)
+        {
+            return new LineManagerViewModel(
+                LineManagerMode.Override, postName, holders, lineManagerEmployeeId, differs)
+            {
+                IsActing = acting is not null,
+                ActingPositionName = acting?.PositionName ?? string.Empty,
+            };
+        }
+
+        // The top of the line: genuinely nobody above, which is a fact rather than a gap.
+        if (reportsTo.Kind == ReportsToKind.Top)
+        {
+            return new LineManagerViewModel(
+                LineManagerMode.TopOfLine, reportsTo.PositionName, [], null, false);
+        }
+
+        // Vacant, and nothing above it is held either. The posts exist and are empty, which is a
+        // different sentence from "answers to no one" and is something somebody can act on.
+        if (reportsTo.Kind == ReportsToKind.Vacant && acting is null)
+        {
+            return new LineManagerViewModel(
+                LineManagerMode.NobodyAbove, reportsTo.PositionName, [], null, false);
+        }
+
+        return holders.Count == 1
+            ? new LineManagerViewModel(
+                LineManagerMode.Derived, postName, holders, holders[0].EmployeeId, false)
+            {
+                IsActing = acting is not null,
+                ActingPositionName = acting?.PositionName ?? string.Empty,
+            }
+
+            // D28 A: several hold it and nothing picks between them. D31's difference is that the
+            // list offered is theirs alone — and the addendum's, that "theirs" may be the acting
+            // post's holders rather than the vacant post's.
+            : new LineManagerViewModel(
+                LineManagerMode.Choose,
+                postName,
+                holders,
+                holders.Any(holder => string.Equals(
+                    holder.EmployeeId, lineManagerEmployeeId, StringComparison.Ordinal))
+                    ? lineManagerEmployeeId
+                    : null,
+                false)
+            {
+                IsActing = acting is not null,
+                ActingPositionName = acting?.PositionName ?? string.Empty,
+            };
+    }
+}
+
+/// <summary>
+/// What the derived organisation block renders: where a position sits, and who it answers to.
+/// D31 addendum.
+/// </summary>
+/// <remarks>
+/// <b>One model because it is one row.</b> <em>Reports to</em> and <em>Line manager</em> used to be
+/// two rows rendered from two models, and they read as two independent facts — which invited the
+/// reader to wonder why a post could report to one place and a person to another. They are one
+/// fact: the post above, and whoever answers for it.
+///
+/// <b><see cref="Editable"/> is the only difference between the four screens that render this.</b>
+/// The Create and Place forms let somebody choose where there is a choice; the employee page and
+/// the Placement screen state what is true. Everything else — the wording, the four cases, the
+/// acting label — is identical, which is the whole reason it is one partial.
+/// </remarks>
+public sealed record JobAndOrganisationViewModel(
+    PositionOrganisation? Position,
+    LineManagerViewModel? LineManager,
+    bool Editable)
+{
+    /// <summary>The read-only form, for the employee page and the Placement screen.</summary>
+    public static JobAndOrganisationViewModel ReadOnly(
+        PositionOrganisation? position,
+        LineManagerViewModel? lineManager) => new(position, lineManager, Editable: false);
+
+    /// <summary>
+    /// Whether the <em>Reports to</em> row already names the person the control is about.
+    /// </summary>
+    /// <remarks>
+    /// <b>The duplicate, and why the test is not simply "is it derived".</b> With one holder the
+    /// row reads <em>"Director Technology — Ali Tahir (line manager)"</em>, so the control printing
+    /// "Ali Tahir" underneath made one person look like two. But the control's <em>Derived</em>
+    /// mode covers more than that one case: a person chosen among several holders is shown the same
+    /// way, and there the row reads <em>"Site Supervisor (3 holders)"</em> and names nobody —
+    /// suppressing the control's text would hide the line manager altogether.
+    ///
+    /// So the question is not what mode the control is in. It is whether the row above has already
+    /// said this, which is true only when the post above has exactly one holder and that holder is
+    /// the answer. An acting manager fails it because the row reads <em>"(vacant)"</em>, and an
+    /// override fails it because an override is by definition not the holder.
+    /// </remarks>
+    public bool RowAlreadyNamesThePerson =>
+        Position?.ReportsTo is { Kind: ReportsToKind.OneHolder, Holders.Count: 1 } reportsTo &&
+        LineManager?.EmployeeId is { Length: > 0 } person &&
+        string.Equals(reportsTo.Holders[0].EmployeeId, person, StringComparison.Ordinal);
 }

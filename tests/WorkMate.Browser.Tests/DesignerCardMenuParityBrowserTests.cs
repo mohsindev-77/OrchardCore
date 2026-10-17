@@ -72,11 +72,17 @@ public sealed class DesignerCardMenuParityBrowserTests
             "a fetched card is built by cloning the same template the server renders, so its menu "
             + "must be the same menu in the same order");
 
-        // Depth 3: a team under a project, fetched when the project was opened — two levels of
-        // fetching, so a card cloned from a card that was itself cloned. A Team does hold
-        // employees, so its menu is the container's plus exactly that one entry, in its declared
-        // position. That is the conditional action asserted end to end through the clone.
-        var depthThree = await MenuOf(page, "Site Team A");
+        // Depth 3: a POSITION under a department, fetched when the department was opened — two
+        // levels of fetching, so a card cloned from a card that was itself cloned. Its menu is the
+        // container's plus exactly that one entry, in its declared position. That is the
+        // conditional action asserted end to end through the clone.
+        //
+        // A post rather than the Site Team this used to name, and the change is D30 rather than a
+        // tidy-up: Zenith has positions, so on that axis a team is no longer somewhere an employee
+        // goes and its card correctly stopped offering the action. The post is where they go
+        // instead. DesignerPlaceEmployeeActionTenantTests holds that rule directly; what this test
+        // still holds is that a twice-cloned card offers the same menu as a rendered one.
+        var depthThree = await MenuOf(page, "Site Supervisor");
 
         depthThree.Should().Contain("placeemployee");
 
@@ -214,8 +220,19 @@ public sealed class DesignerCardMenuParityBrowserTests
         await page.FillAsync("#employee-create input[name='JoinDate']", "2024-01-01");
         await page.ClickAsync("#employee-create button[type='submit']");
 
-        // Placed on Mechanical, which the demo recipe leaves empty, by clicking through from the
-        // editor rather than by going to the placement screen directly.
+        // THROUGH A POST INSIDE MECHANICAL, because this axis has positions and D30 says an
+        // employee joins the organisation by holding one. The card's number is a DIRECT count —
+        // CountEmployeesAtAsync, not the subtree — so the person shows on the post's own card and
+        // Mechanical's stays empty, which is exactly the distinction D24 put both numbers on the
+        // value page to keep visible.
+        //
+        // The post is this test's own. The recipe's are left pristine so the reading tests can
+        // document them; see BrowserTenantFixture.CreateThrowawayPositionAsync.
+        var post = await _tenant.CreateThrowawayPositionAsync(
+            DemoCompanyTenantFixture.ZenithStructureCode,
+            "zenith-dept-mechanical",
+            ["zenith-grade-se-1"]);
+
         await page.ClickAsync("#employee-placement-link");
         await page.ClickAsync("a[href*='Placement/Place']");
 
@@ -223,16 +240,18 @@ public sealed class DesignerCardMenuParityBrowserTests
             "#employee-place select[name='StructureId']",
             new SelectOptionValue { Label = "Zenith Engineering & Construction (zenith-org)" });
 
-        // Chosen through the unit picker's own search, which is what replaced the flat <select>
+        // Chosen through the position picker's own search, which is what replaced the flat <select>
         // this used to call SelectOption on.
-        await Pickers.ChooseAsync(page, ".workmate-unit-picker", "Mechanical");
+        await Pickers.ChoosePositionAsync(page, post.Name);
 
         await page.ClickAsync("#employee-place button[type='submit']");
 
         await OpenZenithAsync(page);
         await DesignerTree.Node(page, "Engineering Division").Locator(".designer-toggle").First.ClickAsync();
+        await DesignerTree.Node(page, "Mechanical").Locator(".designer-toggle").First.ClickAsync();
 
-        await Assertions.Expect(DesignerTree.Node(page, "Mechanical").Locator(".designer-card-employees"))
+        // The singular, which is the whole point of this test: "1 employee", never "1 employees".
+        await Assertions.Expect(DesignerTree.Node(page, post.Name).Locator(".designer-card-employees"))
             .ToHaveTextAsync("1 employee");
     }
 

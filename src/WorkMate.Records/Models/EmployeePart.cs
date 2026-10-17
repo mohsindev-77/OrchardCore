@@ -118,6 +118,37 @@ public class EmployeePart : ContentPart
     /// </remarks>
     public string LineManagerEmployeeId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// What kind of answer <see cref="LineManagerEmployeeId"/> is. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one thing that cannot be derived, and why it has to be stored.</b> Once the line
+    /// manager is stored only when somebody actually chose, a stored person who is <em>not</em> a
+    /// current holder of the post above is one of three completely different situations, which the
+    /// product must treat in three different ways:
+    ///
+    /// <list type="bullet">
+    /// <item>a choice among several holders of the post above, whose person has since left it —
+    /// the record needs a new answer, and the screen must ask for one by name;</item>
+    /// <item>a choice among several <em>acting</em> holders, made while the post above was vacant
+    /// and now that it is filled simply over — the real holder answers, and nobody needs
+    /// telling;</item>
+    /// <item>a deliberate override — a dotted line, a matrix, a secondment — which is correct and
+    /// must be left alone whatever the chart does to itself.</item>
+    /// </list>
+    ///
+    /// Comparing the stored person with the holders gives the same answer for all three —
+    /// <em>not a holder</em> — so the comparison cannot separate them. Three stored values do.
+    ///
+    /// <b>It costs no migration.</b> <see cref="EmployeePart"/> is a content part, serialised as
+    /// JSON inside its content item, so an employee written before this property existed simply
+    /// deserialises it as <see cref="StoredLineManagerKind.None"/> — which is the right reading
+    /// for pre-addendum data, and sends it down the holder comparison the one-time migration also
+    /// uses. It is deliberately NOT on <c>EmployeeIndex</c>: nothing queries by it, and a column
+    /// serves a query.
+    /// </remarks>
+    public StoredLineManagerKind LineManagerKind { get; set; }
+
     /// <summary>The media path of the employee's photograph, or empty.</summary>
     public string PhotoPath { get; set; } = string.Empty;
 
@@ -146,4 +177,51 @@ public class EmployeePart : ContentPart
     /// </remarks>
     public DateOnly? ExitedOn =>
         Status == EmploymentStatus.Exited ? StatusEffectiveFrom.AddDays(-1) : null;
+}
+
+/// <summary>
+/// What kind of answer a stored line manager is. D31 addendum 2.
+/// </summary>
+/// <remarks>
+/// <b>Only a human's answer is ever stored.</b> One holder of the post above, and one acting
+/// holder above a vacant one, are facts the chart already states — so they are derived on every
+/// read and appear nowhere here. Writing them down is what made them go stale.
+/// </remarks>
+public enum StoredLineManagerKind
+{
+    /// <summary>
+    /// Nothing was chosen — or the record predates this addendum and says nothing about what its
+    /// stored value is.
+    /// </summary>
+    /// <remarks>
+    /// Pre-addendum data deserialises here, which is why a stored value with this kind is still
+    /// read by comparing the person with the holders. That comparison is right for everything the
+    /// one-time migration keeps and is the best that can be said about data written before the
+    /// question was asked.
+    /// </remarks>
+    None,
+
+    /// <summary>Picked among several holders of the post above. D28 A.</summary>
+    /// <remarks>
+    /// Valid while that person holds the post. Once they do not, the record is shown as needing a
+    /// new line manager, by name — never silently replaced by another holder.
+    /// </remarks>
+    Chosen,
+
+    /// <summary>
+    /// Picked among several <em>acting</em> holders, the post above being vacant. D31 addendum.
+    /// </summary>
+    /// <remarks>
+    /// Valid only while the post above stays vacant. Once it is filled the arrangement is over:
+    /// the live derivation takes over immediately and the value is cleared on the next save.
+    /// Nothing is wrong and nobody needs telling — the real manager is back.
+    /// </remarks>
+    ChosenActing,
+
+    /// <summary>Named deliberately against the reporting line — a dotted line, a matrix.</summary>
+    /// <remarks>
+    /// Survives the post above changing hands, emptying and being filled again, because it is a
+    /// statement about people rather than about the chart.
+    /// </remarks>
+    Override,
 }

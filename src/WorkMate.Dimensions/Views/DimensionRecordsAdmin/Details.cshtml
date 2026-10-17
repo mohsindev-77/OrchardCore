@@ -514,6 +514,16 @@
     }
     else
     {
+        @if (Model.HoldersTotal > Model.Holders.Count)
+        {
+            @* Said rather than silently showing the first page. Labourer is approved for 44 in the
+               brief's own example, and a list that stopped without saying so would disagree with
+               the Filled count above it. *@
+            <p class="text-muted small" id="value-holders-truncated">
+                @T["Showing {0} of {1}.", Model.Holders.Count, Model.HoldersTotal]
+            </p>
+        }
+
         <table class="table table-sm align-middle" id="value-holders">
             <thead>
                 <tr>
@@ -527,7 +537,20 @@
                 {
                     <tr class="value-holder" data-employee-id="@holder.EmployeeId">
                         <td>@holder.Name</td>
-                        <td>@holder.GradeName</td>
+                        <td>
+                            @if (string.IsNullOrEmpty(holder.GradeName))
+                            {
+                                @* A holder whose placement records no grade. Every row written
+                                   before slice F6 is one, and ADR-0029 makes that a permanent
+                                   shape rather than a transitional one — so it is named rather
+                                   than left blank, which would read as a rendering fault. *@
+                                <span class="text-muted value-holder-no-grade">@T["No grade recorded"]</span>
+                            }
+                            else
+                            {
+                                @holder.GradeName
+                            }
+                        </td>
                         <td>@BilingualDisplay.Date(holder.Since)</td>
                     </tr>
                 }

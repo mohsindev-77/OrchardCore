@@ -47,6 +47,9 @@ public sealed class OrganisationDesignerAdminController : Controller
     private readonly IEmployeeAssignmentService _assignmentService;
     private readonly IDimensionService _dimensionService;
 
+    /// <summary>The one rule for "may an employee be placed here" — the attachable set and D30.</summary>
+    private readonly IPositionService _positionService;
+
     /// <summary>How a card resolves its head's name. See <c>HeadNamesAsync</c>.</summary>
     /// <remarks>
     /// A collection, so the designer still draws on a tenant with <c>WorkMate.Records</c> disabled:
@@ -64,6 +67,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         IDimensionGraphService graphService,
         IEmployeeAssignmentService assignmentService,
         IDimensionService dimensionService,
+        IPositionService positionService,
         IEnumerable<IEmployeeLookup> employeeLookups,
         IDimensionAuthorisation authorisation,
         IAuthorizationService authorizationService,
@@ -74,6 +78,7 @@ public sealed class OrganisationDesignerAdminController : Controller
         _graphService = graphService;
         _assignmentService = assignmentService;
         _dimensionService = dimensionService;
+        _positionService = positionService;
         _employeeLookups = employeeLookups;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
@@ -1256,17 +1261,33 @@ public sealed class OrganisationDesignerAdminController : Controller
         var canAssign = await CanAssignEmployeesAsync();
         var canViewEmployees = await CanViewEmployeesAsync();
 
-        // Whether each card's unit may hold employees, read off the structure's own rule — the
-        // same PermitsEmployeesAt the validator reads backwards. One structure read for the whole
-        // row of cards, and the answer travels on the node so a fetched card decides it the same
-        // way a server-rendered one does.
+        // Whether each card's node may hold employees, read through the one rule that owns the
+        // question — IPositionService.PermitsEmployeesAtAsync, which is the attachable set AND D30
+        // together. Not StructureDocument.PermitsEmployeesAt on its own: ADR-0029 deliberately
+        // keeps the department types in the attachable set so existing placements stay valid, so
+        // that half alone still says yes for a department on a position-based axis. This card then
+        // offered "Place an employee here…", the form opened, and the write came back "choose a
+        // position instead" — an action that could not do what it said.
+        //
+        // One structure read and one answer per TYPE for the whole row of cards, and the answer
+        // travels on the node so a fetched card decides it the same way a server-rendered one does.
         var structure = await _structureService.GetAsync(structureId, cancellationToken);
+        var holdsEmployeesByType = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+        foreach (var dimensionTypeId in nodes
+            .Select(node => node.DimensionTypeId)
+            .Distinct(StringComparer.Ordinal))
+        {
+            holdsEmployeesByType[dimensionTypeId] = structure is not null
+                && await _positionService.PermitsEmployeesAtAsync(
+                    structure, dimensionTypeId, cancellationToken);
+        }
 
         var models = nodes.Select(node => DesignerNodeViewModel.Of(
                 node, typesById, employeeCounts, childCounts,
                 structureId, asAt.ToIso(), canEdit, canMove, canMerge,
                 heads.GetValueOrDefault(node.RecordId), canAssign, canViewEmployees,
-                structure?.PermitsEmployeesAt(node.DimensionTypeId) ?? false))
+                holdsEmployeesByType.GetValueOrDefault(node.DimensionTypeId)))
             .ToList();
 
         foreach (var model in models)

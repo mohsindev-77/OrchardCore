@@ -1,5 +1,16 @@
 @model PlaceEmployeeViewModel
+@*
+    Placing one person, in one of two shapes.
 
+    On an axis that has positions (D30, ADR-0030) the form asks for a Position, a Grade and a date,
+    and SHOWS where that puts them — the organisation chain is computed from the position's
+    ancestors and is never chosen, which is the whole of the decision. There is no unit picker, no
+    "Within" and no allocation controls: the answer is always the main placement at 100 per cent,
+    and a second concurrent position is a later slice.
+
+    On an axis with no positions it is the unit picker it has always been. A tenant that has not
+    built positions sees no change at all, which is D30's own scope.
+*@
 <h1 id="place-heading">
     @if (Model.FromUnit && !string.IsNullOrEmpty(Model.UnitPath))
     {
@@ -31,18 +42,41 @@
         <p class="text-muted" id="place-employee">@T["Placing {0} ({1}).", Model.Name, Model.Code ?? string.Empty]</p>
     }
 
-    <div class="mb-3">
-        <label class="form-label" asp-for="StructureId">@T["Structure"]</label>
-        @* A GET round trip when the structure changes, because the units offered depend on it and
-           this screen works with no script at all. *@
-        <select class="form-select" asp-for="StructureId" onchange="this.form.submit()">
-            <option value="">@T["Choose a structure…"]</option>
-            @foreach (var structure in Model.Structures)
-            {
-                <option value="@structure.StructureId">@structure.Name (@structure.Code)</option>
-            }
-        </select>
-    </div>
+    @* The chooser only where there is a choice. One axis is the ordinary tenant and a drop-down
+       with one option asks a question with one answer; the grade ladder and the reporting line are
+       not offered at all, because neither is anywhere a person goes (ADR-0030). *@
+    @if (Model.ShowsStructureChooser)
+    {
+        <div class="mb-3">
+            <label class="form-label" asp-for="StructureId">@T["Structure"]</label>
+            @* A flagged refresh rather than a save. Changing the structure used to run the whole
+               save path and answer "Choose a structure and a unit" before anybody had chosen
+               either — a form telling somebody off for not finishing a question they had only just
+               been asked. *@
+            @* Sets BOTH flags: this redraw is an axis change, so the chosen node is dropped. The
+               position picker sets only the refresh flag, because its redraw exists to carry the
+               choice through rather than to discard it. D31. *@
+            <select class="form-select" asp-for="StructureId"
+                    onchange="document.getElementById('place-refresh').value='true';
+                              document.getElementById('place-axis-changed').value='true';
+                              this.form.submit();">
+                <option value="">@T["Choose a structure…"]</option>
+                @foreach (var structure in Model.Structures)
+                {
+                    <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                        @structure.Name (@structure.Code)
+                    </option>
+                }
+            </select>
+        </div>
+    }
+    else
+    {
+        <input type="hidden" asp-for="StructureId" />
+    }
+
+    <input type="hidden" asp-for="IsRefresh" id="place-refresh" value="false" data-refresh-flag />
+    <input type="hidden" asp-for="AxisChanged" id="place-axis-changed" value="false" />
 
     <div class="mb-3">
         <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
@@ -52,7 +86,49 @@
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(Model.StructureId))
+    @if (!string.IsNullOrEmpty(Model.StructureId) && Model.IsPositionBased)
+    {
+        @* D30: an employee joins the organisation only through a position. *@
+        <h2 class="fs-5 mt-4">@T["Job and organisation"]</h2>
+
+        <workmate-position-picker for="RecordId" label="@T["Position"]"
+                                  structure-id="@Model.StructureId"
+                                  as-at="@Model.EffectiveFrom"
+                                  date-field="place-effective-from"
+                                  refresh-on-change="true"
+                                  allow-none="false" />
+
+        <div class="form-text mb-3" id="place-position-hint">
+            @T["Their department, division and company follow from where this position sits. Nothing else to choose."]
+        </div>
+
+        var gradeHint = T["Only the grades this position carries as its levels."].Value;
+
+        <workmate-grade-picker for="GradeRecordId" label="@T["Grade"]"
+                               position-field="RecordId"
+                               position-id="@Model.RecordId"
+                               as-at="@Model.EffectiveFrom"
+                               date-field="place-effective-from"
+                               hint="@gradeHint" />
+
+        @if (Model.LineManager.Mode == LineManagerMode.Override)
+        {
+            @* The exception — a dotted line, a matrix, a secondment. Bound here rather than in the
+               partial because the picker takes a ModelExpression against this form's own model;
+               see the note in _LineManagerChoice.cshtml. *@
+            <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+        }
+
+        @* The chain, and ONE "Reports to" row carrying the post above, its state and whoever
+           answers for it — the same partial the Add form and the employee page render. This screen
+           used to state three of the cases itself, which is how two screens about one question came
+           to give different answers. *@
+        <partial name="_JobAndOrganisation"
+                 model="@(new JobAndOrganisationViewModel(Model.Organisation, Model.LineManager, Editable: true))" />
+
+        <button type="submit" class="btn btn-primary" id="place-submit">@T["Place"]</button>
+    }
+    else if (!string.IsNullOrEmpty(Model.StructureId))
     {
         @if (Model.FromUnit && !string.IsNullOrEmpty(Model.UnitPath))
         {
@@ -62,10 +138,14 @@
             <p class="text-muted" id="place-unit-prefilled">@T["The unit is already chosen from the chart. Change it below if that is not the one."]</p>
         }
 
+        @* allow-within is off on every employee screen. It narrows a list of units, and this form
+           no longer has one to narrow on a position-based axis — leaving it on the other shape
+           would mean the two screens disagreed about what controls an employee form has. *@
         <workmate-unit-picker for="RecordId" label="@T["Unit"]"
                               structure-id="@Model.StructureId"
                               as-at="@Model.EffectiveFrom"
-                              date-field="place-effective-from" />
+                              date-field="place-effective-from"
+                              allow-within="false" />
 
         <div class="form-text mb-3">
             @* The picker offers what the validator would accept, from the same rule read
@@ -96,7 +176,9 @@
 
         @* A split is several rows at once and the rules are about the set, so it is its own
            screen rather than this one repeated. Offered here because somebody who arrives to place
-           a second unit will look for it here first. *@
+           a second unit will look for it here first. Not offered on a position-based axis, where
+           the ordinary answer is one position at 100 per cent and the second-position screen is a
+           later slice. *@
         @if (!string.IsNullOrEmpty(Model.EmployeeId))
         {
             <a class="btn btn-link" asp-action="Change" asp-route-id="@Model.EmployeeId"
@@ -116,3 +198,5 @@
 
 <script asp-name="workmate-employee-picker" at="Foot"></script>
 <script asp-name="workmate-unit-picker" at="Foot"></script>
+<script asp-name="workmate-position-picker" at="Foot"></script>
+<script asp-name="workmate-grade-picker" at="Foot"></script>

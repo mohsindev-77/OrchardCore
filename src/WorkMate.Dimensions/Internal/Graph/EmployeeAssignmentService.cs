@@ -34,12 +34,13 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
         DateOnly effectiveFrom,
         decimal allocationPercent = 100m,
         bool isPrimary = true,
+        string? gradeRecordId = null,
         CancellationToken cancellationToken = default)
     {
         var result = await ReallocateAsync(
             employeeId,
             structureId,
-            [new AssignmentSplitEntry(recordId, allocationPercent, isPrimary)],
+            [new AssignmentSplitEntry(recordId, allocationPercent, isPrimary, gradeRecordId)],
             effectiveFrom,
             cancellationToken);
 
@@ -145,7 +146,8 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
                 entry.RecordId,
                 new EffectiveRange(effectiveFrom, null),
                 entry.AllocationPercent,
-                entry.IsPrimary))
+                entry.IsPrimary,
+                entry.GradeRecordId))
             .ToList();
 
         document.Rows = [.. kept, .. added];
@@ -770,7 +772,14 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
     }
 
     private static EmployeeAssignment ToAssignment(string employeeId, string structureId, AssignmentRow row) =>
-        new(employeeId, structureId, row.RecordId, row.Range, row.AllocationPercent, row.IsPrimary);
+        new(
+            employeeId,
+            structureId,
+            row.RecordId,
+            row.Range,
+            row.AllocationPercent,
+            row.IsPrimary,
+            row.GradeRecordId);
 
     private static EmployeeAssignment ToAssignment(EmployeeAssignmentIndex row) => new(
         row.EmployeeId,
@@ -780,5 +789,9 @@ internal sealed class EmployeeAssignmentService : IEmployeeAssignmentService
             EffectiveDates.FromColumn(row.EffectiveFrom),
             EffectiveDates.FromInclusiveEndColumn(row.EffectiveToInclusive)),
         row.AllocationPercent,
-        row.IsPrimary);
+        row.IsPrimary,
+        // The index stores the absence as an empty string where the document keeps a nullable —
+        // see EmployeeAssignmentIndex.GradeRecordId. The service surface speaks the document's
+        // language in both directions, so a caller cannot tell which read it came through.
+        string.IsNullOrEmpty(row.GradeRecordId) ? null : row.GradeRecordId);
 }

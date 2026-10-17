@@ -1,7 +1,24 @@
 @model EmployeeEditViewModel
+@*
+    The employee record, in the shape the design note's §9.2 fixes:
+
+        [ fixed core: identity    ]   the form below — rendered FIRST and written in markup
+        [ fixed core: organisation]   the block after it — derived, read-only, added by slice F6
+        [ for each section …      ]   a LOOP over what this tenant has, never a list of six
+
+    RULE 2, AND IT IS THE WHOLE POINT OF THE BOTTOM HALF. The section list is read from the
+    tenant's content definition through IEmployeeSectionCatalogue, not from EmployeeSections.All.
+    A seventh section published by the form designer in B3 appears here without this file being
+    touched — and, just as importantly, without anything reaching into the fixed core above it.
+
+    RULE 1 is enforced somewhere else and is worth naming here so the two are found together:
+    EmployeeFieldNames.ForbiddenOnSections refuses a designed field called Position, Grade or
+    ReportsTo, so a tenant cannot build a shadow copy of the block this page derives.
+*@
 
 <h1>@T["Employee: {0}", Model.Name]</h1>
 
+@* ---- fixed core, part one: identity ---------------------------------------------------- *@
 <form method="post" asp-action="Edit" id="employee-edit">
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
     <input type="hidden" asp-for="EmployeeId" />
@@ -78,7 +95,14 @@
         </select>
     </div>
 
-    <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+    @* D31: on a tenant with positions the line manager follows the position and is shown in the
+       organisation block below, read-only, with the dated forms a link away — the same rule the
+       rest of that block follows. On a tenant with none there is no reporting line to follow, so
+       this is still the only answer there is and is still editable here. *@
+    @if (!Model.IsPositionBased)
+    {
+        <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+    }
 
     <div class="mb-3">
         <label class="form-label" asp-for="PhotoPath">@T["Photograph"]</label>
@@ -90,13 +114,135 @@
     <a class="btn btn-link" asp-action="Index">@T["Back to the list"]</a>
 </form>
 
+@* ---- fixed core, part two: where this person sits (D30) ---------------------------------
+
+    DERIVED, READ-ONLY, AND ABOVE THE SECTIONS. The employee record holds no department and no
+    cost-centre field — architecture section 2 — so none of this is stored: it is computed from
+    the position held on the date, and the chain is labelled with the tenant's OWN names for its
+    levels (Division, Department; Region, Branch) rather than with four hard-coded words.
+
+    THE WRITES ARE NOT HERE, deliberately. Every one of them is dated and nothing is defaulted
+    (CLAUDE.md rule 3), and this form has no date to offer — so it shows what is true and links to
+    the dated forms. Design note §2.1. The Create screen is the exception that proves it: it may
+    ask, because it already asks for a join date.
+
+    ABSENT ON A TENANT WITH NO POSITIONS, which is the whole of D30's scope.
+*@
+@if (Model.IsPositionBased)
+{
+    <hr class="my-4" />
+
+    @* Collapsible and first, which is the shape §9.3 asks F6 to build so B4 does not have to
+       restructure the page once designed sections start arriving beneath it. Open by default:
+       where somebody sits is what most readers came for. *@
+    <section id="employee-organisation">
+        <h2 class="fs-5 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <button class="btn btn-link p-0 text-decoration-none" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#employee-organisation-body"
+                    aria-expanded="true" aria-controls="employee-organisation-body">
+                @T["Job and organisation"]
+            </button>
+            <a class="btn btn-outline-secondary btn-sm" id="employee-placement-actions"
+               asp-controller="EmployeePlacementAdmin" asp-action="Index"
+               asp-route-id="@Model.EmployeeId">@T["Change position or grade"]</a>
+        </h2>
+
+        <div class="collapse show" id="employee-organisation-body">
+            @if (Model.Organisation?.Position is { } held)
+            {
+                <dl class="row mb-2">
+                    <dt class="col-sm-3">@T["Position"]</dt>
+                    <dd class="col-sm-9">
+                        <span id="employee-position">@held.PositionName</span>
+                        @if (!string.IsNullOrEmpty(Model.Organisation.GradeName))
+                        {
+                            <span class="badge text-bg-light ms-2" id="employee-grade">@Model.Organisation.GradeName</span>
+                        }
+                        @if (Model.Organisation.Since is { } since)
+                        {
+                            <span class="text-muted small ms-2">@T["since {0}", EmployeeDisplay.Date(since)]</span>
+                        }
+                    </dd>
+                </dl>
+
+                @* The chain, and ONE "Reports to" row carrying the post above, its state and
+                   whoever answers for it — read-only here, like the rest of the block. Changing it
+                   goes through the dated Change position flow, or the override on that form.
+
+                   The separate "Line manager" row this replaced said "Nobody — this post answers
+                   to no one on the reporting line" whenever nobody was stored, which was false for
+                   every post under a vacant one. D31 addendum. *@
+                <partial name="_JobAndOrganisation"
+                         model="@(JobAndOrganisationViewModel.ReadOnly(
+                             held,
+                             LineManagerViewModel.FromAnswer(Model.LineManager)))" />
+            }
+            else if (Model.Organisation?.HasNoPositionYet == true)
+            {
+                @* ADR-0029's mid-migration state, said in a sentence rather than hidden. D28 C:
+                   the mixed state is made legible, and that is the whole cost of moving nobody. *@
+                <p class="text-muted" id="employee-no-position">
+                    @T["No position assigned. This employee is placed directly in {0}.", Model.Organisation.LegacyUnitPath]
+                </p>
+            }
+            else
+            {
+                <p class="text-muted" id="employee-unplaced">@T["This employee holds no position yet."]</p>
+            }
+
+            @if (Model.Organisation?.Position is null && Model.LineManager.How == LineManagerHow.Stored)
+            {
+                @* D31 ADDENDUM 2, THE CASE THAT IS NOT AN EXCEPTION. No position means no reporting
+                   line, so there is nothing to derive and nothing for this person to be an
+                   exception to. The stored value is the only answer there is — every pre-F6 record
+                   is here (ADR-0029) — and it is shown plainly, with no "differs from the
+                   reporting line" label, because that label would name a rule they are breaking
+                   and there is no rule. *@
+                <dl class="row mb-2" id="employee-stored-line-manager">
+                    <dt class="col-sm-3">@T["Line manager"]</dt>
+                    <dd class="col-sm-9">@Model.LineManager.Name</dd>
+                </dl>
+            }
+        </div>
+    </section>
+}
+
 <hr class="my-4" />
 
+@* ---- everything else: a LOOP over this tenant's sections, never a list of six -------------
+
+    §9.2 Rule 2. The six below are what WorkMate ships; what renders is what the tenant HAS, read
+    from its content definition. B3 publishes a seventh and it appears here with nothing edited —
+    and, because the loop is below the fixed core and knows nothing about it, with no way for a
+    designed section to disturb the block above.
+*@
 <h2>@T["Sections"]</h2>
-<p class="text-muted">
-    @T["Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of rows kept over time."]
-</p>
-@* A WorkMate screen since this slice. It used to link to ~/Admin/Contents/ContentItems/{id}/Edit,
+
+@if (Model.Sections.Count == 0)
+{
+    <p class="text-muted" id="employee-no-sections">@T["This employee record has no sections."]</p>
+}
+else
+{
+    <p class="text-muted">
+        @T["Each section is a list of rows kept over time, so earlier rows stay readable: add a new row when something changes rather than editing the one that was true before."]
+    </p>
+
+    <ul class="list-group mb-3" id="employee-sections">
+        @* Named "block" rather than "section": @section is a Razor directive, so @section.Name in
+           a markup body is read as one and fails the build. *@
+        @foreach (var block in Model.Sections)
+        {
+            @* The display name is the tenant's own words where it has given any, so it is rendered
+               as DATA and not passed through the localiser — there would be nothing to look up. *@
+            <li class="list-group-item employee-section" data-section="@block.Name">
+                @block.DisplayName
+            </li>
+        }
+    </ul>
+}
+
+@* A WorkMate screen since slice B2. It used to link to ~/Admin/Contents/ContentItems/{id}/Edit,
    Orchard's generic content editor, which works and is addressed to somebody building a CMS: it
    headed the job details section with the BagPart's own description, put a disabled auto-generated
    Title box above it, and lit up Content > Content Items in the menu while the reader was in the

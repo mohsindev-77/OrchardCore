@@ -230,6 +230,236 @@ public sealed class DesignerPlaceEmployeeActionTenantTests
         CardFor(chart, division).Should().Contain("data-designer-action=\"placeemployee\"");
     }
 
+    /// <summary>
+    /// On an axis that has positions, a department's card stops offering it and a position's card
+    /// offers it. Decision D30, slice F6b.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this was written for.</b> The card asked
+    /// <c>StructureDocument.PermitsEmployeesAt</c>, which knows the tenant's attachable set and
+    /// nothing about what a Position is. ADR-0029 deliberately <em>keeps</em> the department types
+    /// in that set so existing placements stay valid — so the department's card went on offering
+    /// <em>Place an employee here…</em>, the form opened, and the write came back <em>"choose a
+    /// position instead"</em>. An action that cannot do what it says is worse than no action, which
+    /// is the same judgement <see cref="TheActionIsOfferedOnAUnitThatHoldsEmployeesAndNotOnAContainer"/>
+    /// already makes about a container.
+    ///
+    /// Both halves in one test, for that test's own reason: "never drawn" and "always drawn" each
+    /// pass one assertion, and what is being tested is the difference between the two cards.
+    ///
+    /// The rule is read once, through <c>IPositionService.PermitsEmployeesAtAsync</c> — the same
+    /// answer the picker and the validator use, so the three cannot disagree.
+    /// </remarks>
+    [Fact]
+    public async Task OnAnAxisWithPositionsOnlyAPositionsCardOffersIt()
+    {
+        string structureId = null!, division = null!, department = null!;
+
+        await _fixture.InTenantAsSystemAsync(async services =>
+        {
+            var types = await DimensionGraphScenario.TypesAsync(services);
+
+            // A Position level alongside the department one, which is what makes the axis
+            // position-based — asked of its shape, never of a code (ADR-0030).
+            var typeService = services.GetRequiredService<IDimensionTypeService>();
+
+            var positionType = (await typeService.GetByCodeAsync("place-action-d30-pos"))?.DimensionTypeId;
+
+            if (positionType is null)
+            {
+                var madeType = await typeService.CreateAsync(
+                    "place-action-d30-pos",
+                    new BilingualText("Post", "منصب"),
+                    [],
+                    allowsSelfNesting: false,
+                    standardRole: DimensionTypeRole.Position);
+
+                madeType.Succeeded.Should().BeTrue(
+                    string.Join("; ", madeType.Errors.Select(error => error.Message.Value)));
+
+                positionType = madeType.Value!.DimensionTypeId;
+            }
+
+            var created = await services.GetRequiredService<IStructureService>().CreateAsync(
+                "place-action-d30",
+                new BilingualText("place-action-d30", "place-action-d30-ar"),
+                [types.Division, types.Department, positionType],
+                allowSkipLevel: false,
+                isStrict: true,
+                isPrimaryOrganisation: false,
+                new StructureShape(
+                    [types.Division],
+                    [
+                        new StructureContainment(types.Division, types.Department),
+                        new StructureContainment(types.Department, positionType),
+                    ],
+                    // BOTH are attachable, which is exactly the state ADR-0029 leaves a tenant in
+                    // after the F6 migration. D30 is what narrows it, not this set.
+                    [types.Department, positionType]));
+
+            created.Succeeded.Should().BeTrue(
+                string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+            structureId = created.Value!.StructureId;
+
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            division = await DimensionGraphScenario.RecordAsync(
+                services, types.Division, "place-action-d30-div", Opened);
+
+            (await graph.PlaceAsync(structureId, division, null, Opened))
+                .Succeeded.Should().BeTrue();
+
+            department = await DimensionGraphScenario.RecordAsync(
+                services, types.Department, "place-action-d30-dept", Opened);
+
+            (await graph.PlaceAsync(structureId, department, division, Opened))
+                .Succeeded.Should().BeTrue();
+
+            var position = await DimensionGraphScenario.RecordAsync(
+                services, positionType, "place-action-d30-post", Opened);
+
+            (await graph.PlaceAsync(structureId, position, department, Opened))
+                .Succeeded.Should().BeTrue();
+        });
+
+        // Both cards are fetched rather than server-rendered — they sit below the root — so the
+        // assertion is on the node's own answer, which is what the script builds the menu from.
+        // The same property TheActionIsOfferedOnAUnitThatHoldsEmployeesAndNotOnAContainer reads.
+        var underTheDivision = await _fixture.Administrator.GetStringAsync(
+            $"/Admin/Dimensions/Designer/Children?structureId={structureId}&recordId={division}");
+
+        using var departments = JsonDocument.Parse(underTheDivision);
+
+        departments.RootElement.EnumerateArray().Single()
+            .GetProperty("holdsEmployees").GetBoolean().Should().BeFalse(
+                "D30: on an axis that has positions a department is not somewhere an employee goes, "
+                + "even though ADR-0029 keeps it in the attachable set");
+
+        var underTheDepartment = await _fixture.Administrator.GetStringAsync(
+            $"/Admin/Dimensions/Designer/Children?structureId={structureId}&recordId={department}");
+
+        using var positions = JsonDocument.Parse(underTheDepartment);
+
+        positions.RootElement.EnumerateArray().Single()
+            .GetProperty("holdsEmployees").GetBoolean().Should().BeTrue(
+                "and the post is where they go instead");
+    }
+
+    // ---- D30, where the rule is applied: a structure that is not a place at all ----------------
+
+    /// <summary>
+    /// No card on a reporting line offers <em>Place an employee here…</em>, and no card on a grade
+    /// ladder does either. Decision D30, "where the rule is applied".
+    /// </summary>
+    /// <remarks>
+    /// <b>The reporting line is the one that got through, and it got through by being right about
+    /// everything else.</b> Every node on it IS a position, so D30's own test — "on an axis with
+    /// positions, is this node a position?" — answered yes for every card, and the menu offered the
+    /// action on the Zenith reporting chart. The old Place screen then opened, headed <em>"Place an
+    /// employee in CEO › Director Technology › Manager Technology"</em>, with an allocation
+    /// percentage and a <em>main placement</em> checkbox, for an axis ADR-0028 makes a post's
+    /// answer-to chain rather than anywhere somebody sits.
+    ///
+    /// <b>The grade ladder got there by the opposite door</b>: no Position level at all, so the
+    /// rule said nothing about it and the attachable set — unconstrained, as a structure written
+    /// before any of this is — said yes.
+    ///
+    /// Both are now one question asked of the axis's shape, never of its code: a tenant may rename
+    /// anything, and a rule written against the word "reporting" would hold on the demo data and
+    /// nowhere else.
+    /// </remarks>
+    [Theory]
+    [InlineData(DimensionTypeRole.Position, "place-action-reporting")]
+    [InlineData(DimensionTypeRole.Grade, "place-action-ladder")]
+    public async Task NoCardOnAReportingLineOrAGradeLadderOffersIt(
+        DimensionTypeRole role,
+        string code)
+    {
+        string structureId = null!, root = null!, child = null!;
+
+        await _fixture.InTenantAsSystemAsync(async services =>
+        {
+            var typeService = services.GetRequiredService<IDimensionTypeService>();
+            var typeCode = $"{code}-type";
+
+            var typeId = (await typeService.GetByCodeAsync(typeCode))?.DimensionTypeId;
+
+            if (typeId is null)
+            {
+                // Self-nesting, because that is the shape both really have: a reporting line is
+                // positions under positions, and a grade ladder is grades under grades.
+                var madeType = await typeService.CreateAsync(
+                    typeCode,
+                    new BilingualText(typeCode, typeCode),
+                    [],
+                    allowsSelfNesting: true,
+                    standardRole: role);
+
+                madeType.Succeeded.Should().BeTrue(
+                    string.Join("; ", madeType.Errors.Select(error => error.Message.Value)));
+
+                typeId = madeType.Value!.DimensionTypeId;
+            }
+
+            var created = await services.GetRequiredService<IStructureService>().CreateAsync(
+                code,
+                new BilingualText(code, $"{code}-ar"),
+                [typeId],
+                allowSkipLevel: false,
+                isStrict: true,
+                isPrimaryOrganisation: false,
+                new StructureShape(
+                    [typeId],
+                    [new StructureContainment(typeId, typeId)],
+
+                    // ATTACHABLE, deliberately. This is the state an unconstrained structure is in
+                    // and the reason the attachable set could never answer this on its own: it is
+                    // a statement about which LEVEL holds staff, and it presumes the axis is a
+                    // place. Both structures here say yes to that question and are still not one.
+                    [typeId]));
+
+            created.Succeeded.Should().BeTrue(
+                string.Join("; ", created.Errors.Select(error => error.Message.Value)));
+
+            structureId = created.Value!.StructureId;
+
+            var graph = services.GetRequiredService<IDimensionGraphService>();
+
+            root = await DimensionGraphScenario.RecordAsync(services, typeId, $"{code}-top", Opened);
+
+            (await graph.PlaceAsync(structureId, root, null, Opened)).Succeeded.Should().BeTrue();
+
+            child = await DimensionGraphScenario.RecordAsync(services, typeId, $"{code}-under", Opened);
+
+            (await graph.PlaceAsync(structureId, child, root, Opened)).Succeeded.Should().BeTrue();
+        });
+
+        // The root's card is server-rendered, so the entry is absent from the markup itself.
+        var chart = await BaseTenantFixture.GetPageAsync(
+            _fixture.Administrator, $"/Admin/Dimensions/Designer/Index?structureId={structureId}");
+
+        CardFor(chart, root).Should().NotContain(
+            "data-designer-action=\"placeemployee\"",
+            "'{0}' is not somewhere an employee goes, so the menu does not offer to put one there",
+            code);
+
+        CardFor(chart, root).Should().Contain(
+            "data-designer-action=\"sethead\"",
+            "the rest of the card menu is untouched — the designer's layout does not change");
+
+        // And the card below it is fetched, so what the browser is told must agree.
+        var children = await _fixture.Administrator.GetStringAsync(
+            $"/Admin/Dimensions/Designer/Children?structureId={structureId}&recordId={root}");
+
+        using var document = JsonDocument.Parse(children);
+
+        document.RootElement.EnumerateArray().Single()
+            .GetProperty("holdsEmployees").GetBoolean().Should().BeFalse(
+                "a fetched card decides it the same way a server-rendered one does, or the two "
+                + "drawings of one menu diverge");
+    }
+
     // ---- harness ---------------------------------------------------------------------------
 
     /// <summary>One card's markup, so an assertion about a unit is about that unit.</summary>

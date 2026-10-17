@@ -51,6 +51,9 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
     private readonly IDimensionService _dimensionService;
     private readonly IDimensionGraphService _graph;
     private readonly IDimensionValidator _validator;
+
+    /// <summary>How the step finds the reporting-line axes. D31.</summary>
+    private readonly IPositionService _positions;
     private readonly ISystemOperation _systemOperation;
     private readonly IStringLocalizer S;
 
@@ -60,6 +63,7 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
         IDimensionService dimensionService,
         IDimensionGraphService graph,
         IDimensionValidator validator,
+        IPositionService positions,
         ISystemOperation systemOperation,
         IStringLocalizer<DimensionRecordsRecipeStep> stringLocalizer)
     {
@@ -68,6 +72,7 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
         _dimensionService = dimensionService;
         _graph = graph;
         _validator = validator;
+        _positions = positions;
         _systemOperation = systemOperation;
         S = stringLocalizer;
     }
@@ -116,6 +121,28 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
                     }
 
                     structureIdByCode[placement.StructureCode] = structure.StructureId;
+                }
+
+                // D31, through the same rule the screen asks. A position must SAY what it reports
+                // to, and a recipe says it the way the Zenith file already does: a placement row on
+                // the reporting-line axis, whose parentCode is null for the top of the line. A
+                // position with no such row has stated nothing, and silence was the thing being
+                // read as "top of the line" while in fact leaving the post off that axis.
+                //
+                // Every position in the shipped positions recipe states it, so nothing existing
+                // changes — which is the test of whether this is a rule about positions or merely
+                // a rule about the form.
+                if (type.StandardRole == DimensionTypeRole.Position)
+                {
+                    // BLOCKING ONLY. The advisory this rule can return — "somebody is already at
+                    // the top of this line" — is a remark for a person looking at a form, and a
+                    // recipe has nobody to remark to. Worse, it would fire on every re-run of a
+                    // file whose top-of-line post already exists: the CEO would be reported as
+                    // clashing with itself and the step would fail on a no-op.
+                    errors.AddRange(
+                        (await ReportsToErrorsAsync(record, structureIdByCode))
+                            .Where(error => !error.IsAdvisory)
+                            .Select(error => error.Message.Value));
                 }
 
                 var range = new EffectiveRange(record.EffectiveFrom, record.EffectiveTo);
@@ -307,6 +334,57 @@ internal sealed class DimensionRecordsRecipeStep : IRecipeStepHandler
     /// Named individually rather than as "the attributes differ", because the whole point of the
     /// ADR-0008 message is that an operator can see what to change.
     /// </remarks>
+    /// <summary>
+    /// What a recipe's position says it reports to, asked of the validator. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// The recipe states it as a placement on a reporting-line axis: <c>parentCode</c> null is the
+    /// top of the line, a code is the post above. No such row at all is the third state — silence —
+    /// and that is what the rule refuses, so that a recipe, the screen and a later import all
+    /// behave the same (CLAUDE.md rule 5).
+    ///
+    /// <b>Silent where the tenant has no reporting line</b>, which is the validator's own rule and
+    /// not restated here: a tenant without the axis cannot be asked the question.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ReportsToErrorsAsync(
+        DimensionRecordStepEntry record,
+        Dictionary<string, string> structureIdByCode)
+    {
+        var reportingAxes = await _positions.GetReportingAxesAsync();
+
+        if (reportingAxes.Count == 0)
+        {
+            return [];
+        }
+
+        var reportingIds = reportingAxes
+            .Select(axis => axis.StructureId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var onTheLine = record.Placements.FirstOrDefault(placement =>
+            structureIdByCode.TryGetValue(placement.StructureCode, out var id) &&
+            reportingIds.Contains(id));
+
+        if (onTheLine is not null && onTheLine.ParentCode is not null)
+        {
+            // It names a post above it. Whether that post exists, is of a permitted level and does
+            // not close a loop is the placement's own validation, which runs on the write a few
+            // lines later — asking twice is how two copies of a cycle check come to disagree.
+            return [];
+        }
+
+        // The axis this position names, so the message is about the line it is actually on.
+        var reportingStructureId = onTheLine is null
+            ? reportingAxes[0].StructureId
+            : structureIdByCode[onTheLine.StructureCode];
+
+        return await _validator.ValidateReportsToAsync(
+            reportingStructureId,
+            onTheLine is null ? ReportsToIntent.Unstated : ReportsToIntent.Top,
+            reportsToRecordId: null,
+            record.EffectiveFrom);
+    }
+
     private async Task<List<string>> AttributeDifferencesAsync(
         DimensionNodeRef existing, DimensionRecordStepEntry record)
     {

@@ -1,0 +1,129 @@
+@model JobAndOrganisationViewModel
+@*
+    Where a position puts somebody, and who it answers to. D28 A, D28 D, D30, D31 and its addendum.
+
+    THE CHAIN IS READ-ONLY AND THAT IS THE POINT. It is computed from the position's ancestors as
+    at the date and stored on the employee nowhere — D30. Rendering it as a field would invite
+    somebody to disagree with it, and there is nothing to disagree with: it is what the chart says.
+
+    REPORTS TO AND LINE MANAGER ARE ONE ROW, not two. They were two, rendered from two models, and
+    read as two independent facts — which invited a reader to wonder how a post could report to one
+    place and a person answer to another. They are one fact: the post above, and whoever answers
+    for it. The row names the post and its state, then the person.
+
+    One partial because four screens show it — Create, the employee page, the Placement screen and
+    Change position — and four copies would come to disagree about what "who does this person
+    answer to" means. Editable decides whether it offers a choice or states what is true; nothing
+    else differs between them.
+
+    IN Shared RATHER THAN BESIDE THE PLACEMENT SCREENS, because two controllers render it: a
+    partial in one controller's folder is invisible to the other.
+*@
+@if (Model?.Position is null)
+{
+    <div class="mb-3" id="job-organisation-none">
+        <span class="text-muted">@T["Choose a position to see where it sits."]</span>
+
+        @if (Model?.LineManager is not null)
+        {
+            @* The line manager says what it will do rather than going silent. It lives inside the
+               "Reports to" row below once there is a position — but there is no row yet, and a
+               control that simply vanished would read as a form that forgot to ask. *@
+            <div class="form-text" id="line-manager-waiting">@T["Follows the position."]</div>
+        }
+    </div>
+
+    return;
+}
+
+@{ var position = Model.Position; var lineManager = Model.LineManager; }
+
+<dl class="row mb-3" id="job-organisation">
+    <dt class="col-sm-3">@T["Organisation"]</dt>
+    <dd class="col-sm-9" id="job-organisation-chain">
+        @if (position.Chain.Count == 0)
+        {
+            @* Real, and shown. A position the customer has not placed in the business yet is what
+               the Add form's "Positions can't be placed yet" warning leaves behind. *@
+            <span class="text-warning" id="job-organisation-unplaced">
+                @T["This position is not placed in the organisation yet, so nothing is derived from it."]
+            </span>
+        }
+        else
+        {
+            @* One row per ancestor, each labelled with the tenant's OWN name for that kind of unit
+               — Division, Department, Region. Never four hard-coded words: decision D28 D, because
+               a chart with Regions and Branches is as ordinary as one with Divisions, and FRS
+               Rule 6 lets a customer rename either. *@
+            @foreach (var step in position.Chain)
+            {
+                <div class="job-organisation-step" data-record-id="@step.RecordId">
+                    <span class="text-muted small job-organisation-label">@step.DimensionName:</span>
+                    <span class="job-organisation-name">@step.Name</span>
+                </div>
+            }
+        }
+    </dd>
+
+    @* ---- ONE ROW: the post above, its state, and who answers for it ----------------------
+
+        An if-chain rather than a switch. Razor compiles either, but a `case` label sitting in a
+        markup body is read as text by anything scanning this file — including the localisation
+        gate, which is right to be suspicious of a bare word on its own line.
+    *@
+    <dt class="col-sm-3">@T["Reports to"]</dt>
+    <dd class="col-sm-9" id="job-organisation-reports-to">
+        @if (position.ReportsTo.Kind == ReportsToKind.Top)
+        {
+            <span class="text-muted" id="job-reports-to-top">@T["Nobody — top of the reporting line"]</span>
+        }
+        else if (position.ReportsTo.Kind == ReportsToKind.Vacant)
+        {
+            @* VACANT IS NOT "ANSWERS TO NOBODY", and saying so was the defect this row was rebuilt
+               for. The post is named and marked empty — somebody reading this is the person who
+               would fill it — and whoever is above the gap is named below as acting. *@
+            <span id="job-reports-to-vacant">@T["{0} (vacant)", position.ReportsTo.PositionName]</span>
+        }
+        else if (position.ReportsTo.Kind == ReportsToKind.OneHolder)
+        {
+            @* The post first, then the person: the post is the fact, the person answers for it. *@
+            <span id="job-reports-to-one">
+                @T["{0} — {1} (line manager)",
+                    position.ReportsTo.PositionName, position.ReportsTo.Holders[0].Name]
+            </span>
+        }
+        else
+        {
+            @* D28 A: the post and its count, never one of the holders. Any rule that chose would
+               invent a line manager the customer never stated, silently. *@
+            <span id="job-reports-to-several">
+                @T["{0} ({1} holders)", position.ReportsTo.PositionName, position.ReportsTo.Holders.Count]
+            </span>
+        }
+
+        @if (lineManager is not null)
+        {
+            <partial name="_LineManagerChoice" model="Model" />
+        }
+    </dd>
+
+    @if (position.Establishment is { } establishment)
+    {
+        <dt class="col-sm-3">@T["Headcount"]</dt>
+        <dd class="col-sm-9" id="job-organisation-headcount">
+            <span>@T["{0} approved", establishment.Approved]</span>
+            <span class="text-muted mx-1" aria-hidden="true">·</span>
+            <span>@T["{0} filled", establishment.Filled]</span>
+
+            @if (position.IsFull)
+            {
+                @* D26 F: a full position is OFFERED with a warning and never withheld. Refusing it
+                   would stop the product recording what an organisation has actually done, which is
+                   not the engine's call to make. The warning is the point: somebody should know. *@
+                <span class="badge text-bg-warning ms-2" id="job-organisation-full">
+                    @T["Already full — this would over-fill it"]
+                </span>
+            }
+        </dd>
+    }
+</dl>

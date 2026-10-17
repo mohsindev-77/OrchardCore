@@ -318,7 +318,14 @@ because there are several routes in, all reading one policy —
 | Orchard's content-type editor attaching or detaching the part | `EmployeePart` is declared **not attachable** in `Migrations`, so it is not offered in "Add parts" | **Yes** |
 | A section this module defines colliding with a core name | Every section field goes through `EnsureMayDefine` as the migration declares it, so it fails at tenant setup | **Yes** |
 | A section reintroducing placement as a field (`DepartmentCode`, `CostCentre`, …) | The same guard, `PlacementBelongsInTheDimensionEngine` | **Yes** |
+| A section reintroducing what slice F6 **derives** (`Position`, `Grade`, `ReportsTo`, …) | The same guard. Added in F6b: an employee's position, grade and reporting line are read from the dated assignment and from where that position sits (D30) and are on the record nowhere, so a designed field of that name would be an undated shadow of all three | **Yes** |
 | A form definition naming the `Employee` type | Session B's compiler, which is a write path of ours and can refuse | **Not yet** |
+
+**`JobTitle` and `GradeCode` are deliberately *not* in that set yet.** The shipped
+`JobDetails` section defines both, so forbidding them would make `CreateAsync`
+throw on a brand-new tenant. D22 retires the two — keeping the data and the stored
+field, removing them from the editor — and adding them here belongs with that, in
+slice F6c.
 
 `EmployeeFieldNames.Reserved` is **declared** and then checked against the type by
 reflection, rather than generated from it. Generating it would make any field
@@ -355,6 +362,37 @@ seventh.
 
 Restricting each bag matters: without it a bag offers every creatable type in the
 tenant, so a "Bank details" section would invite somebody to add a blog post to it.
+
+### The employee page's shape: fixed core first, then a loop — F6b
+
+The employee page renders in three bands, and the order is the decision:
+
+```
+[ fixed core: identity     ]   markup, written out, first
+[ fixed core: organisation ]   derived from the position held (D30) — read-only
+[ for each section …       ]   a LOOP over what this tenant has
+```
+
+**The section list is never hard-coded.** `IEmployeeSectionCatalogue` reads the
+tenant's own content definition — every `BagPart` on `Employee` whose contained
+item type carries the `EmployeeSection` stereotype — rather than
+`EmployeeSections.All`, which is only what the product ships. A seventh section
+published by the form designer in B3 appears on the page with no view edited, and
+a bag of something that is *not* an employee section is left alone, because the
+stereotype is the test and never the name.
+
+**The organisation block is part of the fixed core and is not a section.** It is
+rendered above the loop by the page's own markup and holds nothing: Position,
+Grade, the organisation chain and *Reports to* are all computed from the dated
+assignment and from where that position sits. Writing it as a seventh section
+would be the mistake B3 then has to undo. It is collapsible and first so that B4's
+screen work does not have to restructure the page once designed sections start
+arriving beneath it.
+
+**The chain is one row per ancestor, labelled with the tenant's own dimension
+name** — *Division*, *Department*, *Region*, *Branch* — never four hard-coded
+words. A tenant whose chart has no Department level simply has no Department row,
+which is correct rather than a gap.
 
 ## Admin UI
 
@@ -446,7 +484,31 @@ eroding, in both languages.
   screen is the easiest place in a product to grow an N+1, and this one would
   have grown it on the column that matters most.
 
-- **`EmployeeSectionsAdminController`** — the six sections of one employee, at
+  **Add-employee asks for a position; the editor shows one and does not ask —
+  F6b.** The Create form carries the fixed *Job and organisation* block: a
+  position drop-down of the posts active on the join date (each naming the post,
+  the unit it sits in and filled/approved), a grade limited to that position's own
+  and disabled until one is chosen, the derived organisation chain, *Reports to*
+  in all four of D28 A's cases, and the access-roles notice (D26 I). It writes
+  through `IEmployeeAssignmentService.PlaceAsync` — the same write path the
+  Placement screen uses, not a second one.
+
+  **Why that form may ask and the editor may not.** Every write in this slice is
+  dated and nothing is defaulted (CLAUDE.md rule 3). The Create form already asks
+  for a join date, and that is the effective date the placement needs; the editor
+  has none to offer, so it renders the block read-only and links to the dated
+  forms — *Change position* and *Change grade* — which stay on
+  `EmployeePlacementAdminController`. A display driver's `UpdateAsync` has nowhere
+  to put a required effective date, which is the same reason placement has been a
+  screen rather than a driver since prompt 4.
+
+  **The position is optional, deliberately.** Leaving it blank creates an unplaced
+  employee exactly as before. Required would break every tenant that hires before
+  HR has built its position list, and would make ADR-0029's mixed state
+  unliveable. A tenant with no positions at all sees none of the block and keeps
+  today's Add and Edit forms unchanged, which is the whole of D30's scope.
+
+- **`EmployeeSectionsAdminController`** — the sections of one employee, at
   `/Admin/Employees/Sections/Edit/{id}`, reached from the employee page and from
   nowhere in the menu.
 
@@ -856,6 +918,62 @@ because the join between them is a code resolved at import.
   Read it before writing session B's form designer, which creates content types at
   runtime the same way this module's migration does.
 - **ADR-0009** — migrations are append-only.
+- **ADR-0030 (D30)** — an employee joins the organisation only through a position.
+  On an axis that has a Position level a unit is no longer somewhere a person
+  goes, and their department, division and company are *derived* from where their
+  position sits rather than chosen. This module reads that one way, through
+  `IEmployeeOrganisationService`, so the Create form, the employee page, the
+  Placement screen and the Change-position form cannot compose it four slightly
+  different ways. An axis with no positions is untouched.
+- **ADR-0029** — the F6 migration moves nobody. Every placement already written at
+  a unit stays valid and keeps counting; the rule is on the write. A tenant
+  therefore holds both shapes of row at once, on purpose, and the employee page
+  says in a sentence which state a person is in rather than showing a blank block.
+- **D31** — the line manager follows the position. It lives inside the organisation block, after
+  Position, Grade and *Reports to*, and is derived from the holders of the post above: one holder
+  is shown, several are offered and only they are, a vacant or top post has none. It narrows D28 A,
+  which left the field free and optional, and keeps D28 A's refusal to pick between several
+  holders. A labelled override — *"Differs from the position's reporting line"* — covers a dotted
+  line or a matrix. Storage is unchanged: `LineManagerEmployeeId`, which is **undated**, so an
+  override has no history. Dating it is a model change and an ADR, not something this slice
+  invented.
+- **D31 addendum** — a vacant post above is not "answers to nobody". *Reports to* and *Line
+  manager* are ONE row carrying the post, its state and whoever answers for it; a vacant post falls
+  back to the nearest held post up the line, labelled **acting**, and only a chain of empty posts
+  all the way to the top leaves nobody ("No one above holds a post yet"). Derived on every render,
+  stored nowhere new.
+- **D31 addendum 2** — a derived line manager is never written down. The two addenda above derived
+  the answer and then saved it, so when the post above changed hands, or a vacant post above was
+  filled, the record kept the old person for ever. Now only a human's answer is stored — a pick
+  among several holders, a pick among several *acting* holders, or an override — and one holder or
+  one acting holder stores nothing at all. Every screen reads
+  `IEmployeeOrganisationService.GetLineManagerAsync`, which returns who, on what footing
+  (`Derived`, `Acting`, `Chosen`, `ChosenActing`, `Override`, `NeedsChoice`, `Stored`, `None`) and
+  why. A choice whose person has left the post reads **"Needs a new line manager — &lt;name&gt; no
+  longer holds &lt;position&gt;"** and asks again rather than falling back silently; an acting choice
+  is dropped once the post above is filled; an override stands through all of it. The one new
+  stored value is `EmployeePart.LineManagerKind` — `None`, `Chosen`, `ChosenActing` or `Override` —
+  which costs no migration because the part is JSON inside the content item, and is deliberately
+  not on `EmployeeIndex`. It exists because all three stored kinds read as *not a holder of the
+  post above* once the chart moves, and the product must treat them three different ways. An
+  employee who holds
+  no position is untouched and carries no label. `Migrations.UpdateFrom5Async`, over
+  `ILineManagerBackfill`, clears what the old code wrote — see **Migrations** below.
+- **D31 addendum 2, polish 3** — the *Reports to* row names the person **once**. With one holder of
+  the post above the row already reads *"Director Technology — Ali Tahir (line manager)"*: the post,
+  and the person who answers for it, which is the whole fact. `_LineManagerChoice` printed the name
+  again underneath, so one person looked like two and the screen read as though it had derived the
+  same answer twice. The one-holder case now renders no visible text — only the hidden field, which
+  was always the actual control. The cases that name somebody the row does **not** name still speak:
+  an **acting** manager ("— acting (Director Technology)") and an **override**, which gained its own
+  `LineManagerMode` instead of borrowing `Derived` so the partial can print one and stay silent
+  about the other. `WithOneHolderThePersonIsNamedExactlyOnceInTheReportsToRow` counts the name on
+  all four screens.
+- **ADR-0026** — the employee's grade is a column on the assignment row, not a
+  second assignment on a `grades` axis, because an assignment there would roll
+  employees up under grades in the closure index — which D26 C says must not
+  happen. The cost it accepts is that an increment closes and reopens the position
+  row, which is why *Change grade* is its own dated screen.
 - **ADR-0019** — a cache invalidation is signalled again after the write commits.
   This module's lookup list cache is what found it: `ISignal.SignalTokenAsync` on
   its own fires while the write is still staged on the session, so a read that
@@ -896,7 +1014,62 @@ filling only what is absent so a hand-typed title survives. The pattern is kept:
 the two cannot disagree — both are "the English name" — and a path where Liquid
 does work gives the same answer rather than a different one.
 
+## Migrations
+
+Append-only, per CLAUDE.md rule 6 and ADR-0009. The body of a shipped step is never edited.
+
+| Step | What it does |
+| --- | --- |
+| `CreateAsync` | `EmployeeIndex`, `EmployeePart`, the six section types, the `Employee` type, the standard lookup bindings |
+| `UpdateFrom1Async` | fills `DisplayText` on employees created before `EmployeeHandler` set it |
+| `UpdateFrom2Async` | takes `Employee` off Orchard's generic "new content item" list |
+| `UpdateFrom3Async` | creates `LookupListIndex` for a tenant from before B1 |
+| `UpdateFrom4Async` | binds the standard section fields to the lookup lists |
+| `UpdateFrom5Async` | **the line manager backfill** — D31 addendum 2 |
+
+### The line manager backfill — D31 addendum 2
+
+`UpdateFrom5Async` resolves `ILineManagerBackfill` and logs what it did. **It moves nobody**
+(ADR-0029) and touches exactly one field, `LineManagerEmployeeId`: no placement, no assignment, no
+date, no other property.
+
+For each employee who has a stored line manager at all — the index answers that without loading a
+content item, so a tenant where nobody has one does no work:
+
+| Outcome | Rule |
+| --- | --- |
+| **cleared** | holds a position, and the stored person is the **sole** holder of the post above (or of the acting post above a vacant one). A written-down derivation. The answer shown does not change; it starts being recomputed |
+| **kept as chosen** | holds a position, and the stored person is **one of several** holders |
+| **kept as override** | holds a position, and the stored person is **not among** the holders — including a post at the top of the line, where there is no list — or whose `LineManagerKind` already says `Override` |
+| **untouched** | holds **no position**. Every pre-F6 record and every no-positions tenant |
+
+The four counts go to the log at `EventId` 3100. The step is safe to re-enter: it writes nothing
+where the comparison does not match.
+
+**It deliberately does not use `GetLineManagerAsync` to decide what to clear.** That read looks at
+the stored value first, so the sole holder of the post above comes back as `Chosen` rather than
+`Derived` — from the outside a frozen derivation and a deliberate pick of the only candidate are
+the same two bytes. Asking it what to clear would clear nothing, which is exactly the population
+the step exists for. `LineManagerBackfill` reads the holders straight off the position instead.
+
+**Ordering is safe**: it reads the dimension graph, and `WorkMate.Records` declares
+`WorkMate.Dimensions` in its manifest dependencies, so that feature's migrations have run and its
+tables exist before this step is entered.
+
 ## Known limitations
+
+### A pre-addendum override reads as "needs a new line manager"
+
+Data written before D31 addendum 2 carries no `LineManagerKind`, because the property did not
+exist, so it deserialises as `None`. The backfill **keeps** such a value — it is never cleared —
+but the screen afterwards reads
+*"Needs a new line manager — &lt;name&gt; no longer holds &lt;position&gt;"* rather than *"Differs from
+the position's reporting line."*
+
+The migration does not set the bit, because it cannot know: from off-the-line data alone a dotted
+line and a stale pick are indistinguishable. Asking a human is the only answer that is not a guess,
+and is the same answer D28 A gives everywhere else. Confirming the person through *Change…* records
+the override properly and the message goes.
 
 ### Which edition each capability belongs to is not decided
 

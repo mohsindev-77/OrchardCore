@@ -209,11 +209,29 @@ internal sealed class EmployeeAssignmentDocument
 /// Whether this is the placement that answers "where does this person work". Exactly one of an
 /// employee's concurrent placements on a structure is primary, so matrix cases stay unambiguous.
 /// </param>
+/// <param name="GradeRecordId">
+/// The grade the employee holds in this placement, when the node is a position. Null otherwise.
+/// </param>
+/// <remarks>
+/// <b>Why the grade is here and not a row on the grades axis.</b> ADR-0026, and the short form is
+/// D26 C: an assignment names a structure and a node, and <c>CountEmployeesAtAsync</c> counts
+/// employees at or below a node — so writing assignments on the <c>grades</c> axis would make
+/// "how many people are under SE-2" a question the engine answers, which is exactly the roll-up
+/// D26 C forbids. ADR-0012 made the same call about unit heads for the same reason.
+///
+/// It also keeps a split allocation unambiguous: somebody with two positions may have two grades,
+/// and on the row there is no question which grade goes with which position.
+///
+/// <b>Null is the ordinary state and always will be.</b> Every row written before slice F6 has
+/// none, and so does every placement at a <em>unit</em> rather than a position — which ADR-0029
+/// makes a permanent shape rather than a transitional one.
+/// </remarks>
 internal sealed record AssignmentRow(
     string RecordId,
     EffectiveRange Range,
     decimal AllocationPercent,
-    bool IsPrimary);
+    bool IsPrimary,
+    string? GradeRecordId = null);
 
 /// <summary>
 /// Who has led one unit on one axis, over time.

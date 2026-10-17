@@ -1,0 +1,183 @@
+@model JobAndOrganisationViewModel
+@*
+    Who answers for the post above — the second half of the single "Reports to" row. D31 and its
+    addendum.
+
+    IT IS NOT ITS OWN ROW ANY MORE. "Reports to" and "Line manager" were two rows rendered from two
+    models and read as two independent facts. They are one: the post above, and whoever answers for
+    it. _JobAndOrganisation renders the post and its state; this renders the person.
+
+    FOUR CASES, AND THE SPLIT THAT MATTERS. TopOfLine and NobodyAbove used to be one case called
+    None, reading "Nobody — this post answers to no one on the reporting line". True at the top and
+    false everywhere else: a Software Engineer under a vacant Manager Technology answers to the
+    Director above the gap, and the screen said they answered to no one.
+
+    D28 A STILL DECIDES WHAT MAY BE DERIVED: one holder is a fact and is shown; several is not, and
+    nothing picks between them. D31 constrains the list to those holders and requires an answer;
+    the addendum adds that when the post above is vacant, "those holders" are the nearest held
+    post's — labelled acting, so a manager two levels up never appears unexplained.
+
+    THE FIELD IS STILL LineManagerEmployeeId. No new storage: an acting manager is a person on the
+    record, not a second kind of fact.
+*@
+@{
+    var lineManager = Model.LineManager!;
+    var editable = Model.Editable;
+
+    // The vacant post's own name, for the acting sentence. A local of the parent partial is not in
+    // scope here, so it is read from the model again rather than passed through ViewData.
+    var vacantPostName = Model.Position?.ReportsTo.PositionName ?? string.Empty;
+}
+
+<div class="mt-1" id="line-manager">
+    @if (lineManager.Mode == LineManagerMode.TopOfLine)
+    {
+        @* Genuinely nobody above. The row above already says so; nothing more to add here, and a
+           second sentence repeating it would be noise. *@
+    }
+    else if (lineManager.Mode == LineManagerMode.NobodyAbove)
+    {
+        @* The post above is empty AND so is everything above it, all the way up. The posts exist
+           and are unfilled, which is a different statement from "answers to no one" and is one
+           somebody can act on. *@
+        <span class="text-warning" id="line-manager-nobody-above">
+            @T["No one above holds a post yet"]
+        </span>
+    }
+    else if (lineManager.Mode == LineManagerMode.Derived && lineManager.Sole is { } sole)
+    {
+        @* SAYS NOTHING WHEN THE ROW ABOVE HAS ALREADY SAID IT, and that is the fix rather than an
+           omission. With one holder the row reads "Director Technology — Ali Tahir (line manager)":
+           the post, and the person who answers for it, which is the whole fact. Printing "Ali
+           Tahir" again underneath made one person look like two, and read as though the screen had
+           derived the same answer twice from two different places.
+
+           NOT "unless it is acting", WHICH WAS THE FIRST ATTEMPT AND WAS WRONG. This mode also
+           covers a person chosen among several holders, and there the row reads "Site Supervisor
+           (3 holders)" and names nobody — so going quiet would have hidden the line manager
+           altogether. The question is whether the ROW has named them. See
+           JobAndOrganisationViewModel.RowAlreadyNamesThePerson. *@
+        @if (!Model.RowAlreadyNamesThePerson)
+        {
+            <span id="line-manager-derived">
+                @if (lineManager.IsActing)
+                {
+                    @* The row says "(vacant)", so this is the only place the acting manager
+                       appears — and somebody two levels up appearing unexplained is the defect the
+                       first addendum was written for. Named once, with the post they hold. *@
+                    @T["{0} — acting ({1})", sole.Name, lineManager.ActingPositionName]
+                }
+                else
+                {
+                    @sole.Name
+                }
+            </span>
+        }
+
+        @if (editable)
+        {
+            @* Carried whether or not anything was printed: the control still has to post what the
+               form would save. The hidden field is the control; the sentence was only its label. *@
+            <input type="hidden" name="LineManagerEmployeeId" value="@sole.EmployeeId" />
+        }
+    }
+    else if (lineManager.Mode == LineManagerMode.NeedsChoice)
+    {
+        @* A CHOICE THAT HAS STOPPED BEING TRUE. Somebody picked this person from the holders of
+           the post above, and they no longer hold it. Never silently replaced: picking another
+           holder would be the product inventing a line manager, which is what D28 A refuses — so
+           the person is named, what changed is said, and the question is asked again. *@
+        <span class="text-warning" id="line-manager-needs-choice">
+            @T["Needs a new line manager — {0} no longer holds {1}",
+                lineManager.StalePersonName, lineManager.PositionName]
+        </span>
+
+        @if (editable && lineManager.Holders.Count > 0)
+        {
+            <select class="form-select form-select-sm mt-1" id="LineManagerEmployeeId"
+                    name="LineManagerEmployeeId" data-line-manager-choice required>
+                <option value="">@T["Choose…"]</option>
+                @foreach (var holder in lineManager.Holders)
+                {
+                    <option value="@holder.EmployeeId">@holder.Name</option>
+                }
+            </select>
+        }
+    }
+    else if (lineManager.Mode == LineManagerMode.Choose)
+    {
+        @if (editable)
+        {
+            @* D28 A: several hold the post and nothing picks between them. The list is theirs
+               alone — offering the whole tenant here is what D31 replaced. *@
+            <select class="form-select form-select-sm mt-1" id="LineManagerEmployeeId"
+                    name="LineManagerEmployeeId" data-line-manager-choice required>
+                <option value="">@T["Choose…"]</option>
+                @foreach (var holder in lineManager.Holders)
+                {
+                    <option value="@holder.EmployeeId" selected="@(holder.EmployeeId == lineManager.EmployeeId)">
+                        @holder.Name
+                    </option>
+                }
+            </select>
+
+            <div class="form-text">
+                @if (lineManager.IsActing)
+                {
+                    @T["{0} is vacant. Choose which holder of {1} is acting.",
+                        vacantPostName, lineManager.ActingPositionName]
+                }
+                else
+                {
+                    @T["Choose which of them this person answers to."]
+                }
+            </div>
+        }
+        else
+        {
+            @* Read-only and nobody chosen yet: the count is already on the row above, so this says
+               only that the answer is outstanding. *@
+            <span class="text-muted" id="line-manager-unchosen">@T["No line manager chosen"]</span>
+        }
+    }
+    else if (lineManager.Mode == LineManagerMode.Override && !editable)
+    {
+        @* THE ONE MODE THAT MUST NAME SOMEBODY HERE. The row above names the post above and
+           whoever holds it; an override is by definition not that person, so this is the only
+           place they appear. The "Differs from the position's reporting line" label below says
+           why, so the two together never read as a contradiction. *@
+        <span id="line-manager-override-name">@lineManager.PersonName</span>
+    }
+
+    @if (lineManager.DiffersFromTheReportingLine)
+    {
+        <div class="form-text text-warning" id="line-manager-differs">
+            @T["Differs from the position's reporting line."]
+        </div>
+    }
+
+    @if (editable)
+    {
+        @* Carried on every mode so a save always says which control produced the value. *@
+        <input type="hidden" name="LineManagerOverride" id="line-manager-override"
+               value="@(lineManager.Mode == LineManagerMode.Override ? "true" : "false")" />
+
+        @if (lineManager.Mode != LineManagerMode.Override)
+        {
+            @* type="button", NOT submit, and that is load-bearing rather than tidiness. This sits
+               above the form's real submit, so a second submit button here is the one
+               button[type='submit'] finds first — and every caller that pressed "Add employee" or
+               "Place" that way silently pressed this instead. It submits through form.submit()
+               after setting its flags, which is the same navigation and matches nothing looking
+               for a submit control.
+
+               The refresh flag is found by its data attribute rather than by id, because this
+               partial is rendered on two forms whose own flags are named differently. *@
+            <button type="button" class="btn btn-link btn-sm p-0" id="line-manager-change"
+                    onclick="document.getElementById('line-manager-override').value='true';
+                             var flag = document.querySelector('[data-refresh-flag]');
+                             if (flag) { flag.value = 'true'; }
+                             this.form.submit();">@T["Change…"]</button>
+        }
+    }
+</div>

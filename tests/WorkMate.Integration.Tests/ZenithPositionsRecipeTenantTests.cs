@@ -346,6 +346,28 @@ public sealed class ZenithPositionsRecipeTenantTests : IAsyncLifetime, IDisposab
         await bare.DisposeAsync();
     }
 
+    /// <summary>
+    /// An additive row naming an employee-attachable type that does not exist is still refused.
+    /// </summary>
+    /// <remarks>
+    /// <b>The line between two things that once shared a branch.</b> A type that is <em>already
+    /// permitted</em> — because the structure's attachable set is empty and therefore
+    /// unconstrained — is already satisfied and is skipped; that is the 15 October fix. A type that
+    /// <em>does not exist</em> is a row naming something that is not there, and the step must go on
+    /// saying so. Without this test the fix could drift into swallowing a typo, which is the
+    /// failure that looks like success.
+    /// </remarks>
+    [Fact]
+    public async Task AnAdditiveRowNamingAnAttachableTypeThatDoesNotExistIsRefused()
+    {
+        var failure = await Record.ExceptionAsync(
+            () => ApplyAsync("additive-unknown-attachable.recipe.json", fromTestFixtures: true));
+
+        failure.Should().NotBeNull("a row naming nothing is not a row asking for something true");
+        failure!.ToString().Should().Contain("zenith-no-such-type", "the message names the type code");
+        failure.ToString().Should().Contain("does not exist");
+    }
+
     /// <summary>Applying it twice changes nothing and refuses nothing.</summary>
     [Fact]
     public async Task TheNewRecipeReRunsCleanOnThatTenant()

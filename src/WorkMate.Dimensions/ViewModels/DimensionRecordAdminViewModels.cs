@@ -522,6 +522,32 @@ public sealed class DimensionRecordEditViewModel
     [BindNever]
     public IReadOnlyList<string> CurrentAllowedGradeRecordIds { get; set; } = [];
 
+    /// <summary>
+    /// Where this position sits on the reporting line today, shown and not edited. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Read-only here for the same reason the parent is.</b> Reports to <em>is</em> a parent,
+    /// on a second axis — so changing it is a reparenting, which is a dated move under
+    /// <c>MoveDimensionRecords</c> with its own dry run (ADR-0005), and this form has neither a
+    /// date for it nor that permission. The link beside it goes to the organisation designer opened
+    /// on the reporting line, where that move already exists.
+    ///
+    /// Three states, and the third is why this is worth showing at all: under a named post, at the
+    /// top of the line, or <b>on the reporting line nowhere</b> — which is what every position
+    /// created through the old screen with <em>Reports to</em> left blank actually got, and what
+    /// D31 stops happening again.
+    /// </remarks>
+    [BindNever]
+    public string? ReportsToName { get; set; }
+
+    /// <summary>Whether this position is on the reporting line at all. See <see cref="ReportsToName"/>.</summary>
+    [BindNever]
+    public bool IsOnTheReportingLine { get; set; }
+
+    /// <summary>The reporting-line axis, so the form can link to it. Null when the tenant has none.</summary>
+    [BindNever]
+    public string? ReportingStructureId { get; set; }
+
     public BilingualText Name => new(NameEn?.Trim() ?? string.Empty, NameAr?.Trim() ?? string.Empty);
 
     public BilingualText Alias => new(AliasEn?.Trim() ?? string.Empty, AliasAr?.Trim() ?? string.Empty);

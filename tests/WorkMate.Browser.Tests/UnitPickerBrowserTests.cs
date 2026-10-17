@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -70,6 +71,14 @@ public sealed class UnitPickerBrowserTests
     /// Asserted from both sides. "Within Head Office" must drop the branch departments <em>and</em>
     /// keep Head Office's own, because a filter that returned nothing would pass the first
     /// assertion on its own.
+    ///
+    /// <b>On the record-create screen since slice F6b, not on an employee one.</b> Item 8 of that
+    /// slice took the nested Within off every employee form: it narrows a <em>list of units</em>,
+    /// which earns its place on a screen about units and is a control nobody uses on a form about
+    /// one person — and on a position-based axis there is no unit list left for it to narrow.
+    /// "Place under" is the question it was always for: which unit may contain the record being
+    /// created. <see cref="TheWithinFilterIsOffOnEmployeeScreensAndOnOnTheUnitsAdminScreen"/> holds
+    /// both ends of that decision.
     /// </remarks>
     [Fact]
     public async Task TheWithinFilterNarrowsTheSearchToTheChosenDivision()
@@ -77,7 +86,7 @@ public sealed class UnitPickerBrowserTests
         await using var context = await _tenant.SignedInContextAsync();
         var page = await context.NewPageAsync();
 
-        await OpenPlaceScreenFromACardAsync(page);
+        await OpenCreateRecordScreenAsync(page, "crescent-department");
 
         var picker = page.Locator(".workmate-unit-picker");
         var within = picker.Locator("[data-unit-picker-within]");
@@ -86,21 +95,32 @@ public sealed class UnitPickerBrowserTests
         // would be a control that visibly does nothing.
         await Assertions.Expect(within).ToBeVisibleAsync();
 
+        // Unnarrowed, the control offers every unit that may CONTAIN a department — Crescent's
+        // divisions, which are Head Office and the two main branches.
+        var everywhere = await OptionsForAsync(page, "Office");
+
+        everywhere.Should().Contain(
+            text => text.Contains("Head Office", StringComparison.Ordinal),
+            "a department may be created under Head Office");
+
         await within.SelectOptionAsync(new SelectOptionValue
         {
             Label = await LabelContainingAsync(page, "Head Office"),
         });
 
-        var narrowed = await OptionsForAsync(page, "Credit");
+        // Narrowed to Head Office's subtree, the branches drop out and Head Office itself stays.
+        // Both halves, because a filter that returned nothing would pass the first on its own.
+        var narrowed = await OptionsForAsync(page, "Branch");
 
         narrowed.Should().NotContain(
             text => text.Contains("Lahore Main Branch", StringComparison.Ordinal),
-            "a branch department is not inside Head Office");
+            "a branch is not inside Head Office");
+
+        narrowed = await OptionsForAsync(page, "Office");
 
         narrowed.Should().Contain(
-            text => text.Contains("Credit Risk", StringComparison.Ordinal),
-            "and Head Office's own Credit Risk department still is — the filter narrows rather "
-            + "than empties");
+            text => text.Contains("Head Office", StringComparison.Ordinal),
+            "and Head Office itself still is — the filter narrows rather than empties");
 
         // Choosing one of them puts its whole path in the box and leaves the control resolved.
         var option = page.Locator(".workmate-unit-picker .workmate-picker-list [role='option']").First;
@@ -203,6 +223,76 @@ public sealed class UnitPickerBrowserTests
             }
             """,
             name);
+
+    /// <summary>
+    /// Opens the Add-record form for a dimension type, which is where "Place under" lives.
+    /// </summary>
+    /// <remarks>
+    /// Reached through the records list rather than by hand-building the query string, because the
+    /// list is how a person gets there and the form needs the type and the structure the list
+    /// settled. Crescent's departments are the right subject: it has two Credits and two
+    /// Operations under different branches, which is the whole reason a Within filter exists.
+    /// </remarks>
+    private async Task OpenCreateRecordScreenAsync(IPage page, string dimensionTypeCode)
+    {
+        var typeId = string.Empty;
+
+        await _tenant.InTenantAsync(async services =>
+            typeId = (await services
+                .GetRequiredService<WorkMate.Dimensions.Services.IDimensionTypeService>()
+                .GetByCodeAsync(dimensionTypeCode))!.DimensionTypeId);
+
+        await page.GotoAsync($"/Admin/Dimensions/Records/Index?dimensionTypeId={typeId}");
+        await page.ClickAsync("a[href*='Records/Create']");
+
+        await Assertions.Expect(page.Locator(".workmate-unit-picker")).ToBeVisibleAsync();
+    }
+
+    /// <summary>
+    /// Slice F6b item 8, both ends: Within is gone from the employee screens and still on the
+    /// screens about units.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two different controls share the word, and the test has to know which is which.</b> The
+    /// records list's filter <em>is</em> a unit picker bound to <c>Within</c> — the whole control,
+    /// which is why it carries <c>allow-within="false"</c>: you do not narrow the narrower. The
+    /// marker <c>data-unit-picker-within</c> is the <em>nested</em> scope select a picker renders
+    /// inside itself, and that is the one the employee forms dropped.
+    ///
+    /// Without this, "removed from employee screens" and "removed" are indistinguishable the next
+    /// time somebody tidies up — which is exactly how the control nearly disappeared entirely.
+    /// </remarks>
+    [Fact]
+    public async Task TheWithinFilterIsOffOnEmployeeScreensAndOnOnTheUnitsAdminScreen()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        // The employee screen: a unit picker, and no nested Within inside it.
+        await OpenPlaceScreenFromACardAsync(page);
+
+        await Assertions.Expect(page.Locator(".workmate-unit-picker")).ToBeVisibleAsync();
+
+        await Assertions.Expect(page.Locator("[data-unit-picker-within]")).ToHaveCountAsync(0);
+
+        // The units admin screen: its Within filter is a picker of its own, and it is still there.
+        var typeId = string.Empty;
+
+        await _tenant.InTenantAsync(async services =>
+            typeId = (await services
+                .GetRequiredService<WorkMate.Dimensions.Services.IDimensionTypeService>()
+                .GetByCodeAsync("crescent-department"))!.DimensionTypeId);
+
+        await page.GotoAsync($"/Admin/Dimensions/Records/Index?dimensionTypeId={typeId}");
+
+        await Assertions.Expect(page.Locator("select[data-unit-picker]#Within")).ToBeAttachedAsync();
+
+        // And the Add form keeps the nested one, which is what narrows a list of possible parents.
+        await OpenCreateRecordScreenAsync(page, "crescent-department");
+
+        await Assertions.Expect(
+            page.Locator(".workmate-unit-picker [data-unit-picker-within]")).ToBeVisibleAsync();
+    }
 
     private static async Task<string> StructureIdAsync(IPage page, string code) =>
         await page.EvaluateAsync<string>(

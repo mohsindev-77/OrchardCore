@@ -56,6 +56,49 @@
        "Where it sits" table below with its own Move button rather than being a box here. *@
     @if (Model.IsPosition)
     {
+        @* ---- Reports to: shown, not edited. Decision D31. ---------------------------------
+
+            REPORTS TO IS A PARENT, on the reporting-line axis. Changing a parent rewrites what
+            every report resolves to, which is why it is a dated move with its own permission and
+            its own dry run — the same reason the organisation parent is not on this form either.
+            So this says what is true and links to where that move lives.
+
+            The third state is the one worth having: a position that is on the reporting line
+            NOWHERE. Every post created through the old screen with Reports to left blank got
+            exactly that, silently, and D31 is what stops it happening again.
+        *@
+        <h2 class="fs-5 mt-4">@T["Reporting line"]</h2>
+
+        <dl class="row mb-3" id="record-edit-reports-to">
+            <dt class="col-sm-3">@T["Reports to"]</dt>
+            <dd class="col-sm-9">
+                @if (!Model.IsOnTheReportingLine)
+                {
+                    <span class="text-warning" id="record-edit-not-on-reporting-line">
+                        @T["This position is not on the reporting line at all, so nothing below it answers to it. Put it on the line to fix that."]
+                    </span>
+                }
+                else if (string.IsNullOrEmpty(Model.ReportsToName))
+                {
+                    <span id="record-edit-reports-to-top">@T["Nobody — this is the top of the reporting line."]</span>
+                }
+                else
+                {
+                    <span id="record-edit-reports-to-name">@Model.ReportsToName</span>
+                }
+
+                @if (!string.IsNullOrEmpty(Model.ReportingStructureId))
+                {
+                    <div class="form-text">
+                        @T["Changing this moves the post to another part of the reporting line, which is a dated change with its own permission."]
+                        <a id="record-edit-reporting-line-link"
+                           asp-controller="OrganisationDesignerAdmin" asp-action="Index"
+                           asp-route-structureId="@Model.ReportingStructureId">@T["Open the reporting line"]</a>
+                    </div>
+                }
+            </dd>
+        </dl>
+
         <h2 class="fs-5 mt-4">@T["Grades"]</h2>
 
         @* A checklist with nothing ticked posts nothing at all, so without this "clear every grade"

@@ -50,6 +50,11 @@ public static class EmployeeFieldNames
             nameof(EmployeePart.Status),
             nameof(EmployeePart.StatusEffectiveFrom),
             nameof(EmployeePart.LineManagerEmployeeId),
+
+            // D31 addendum 2. Reserved for the same reason as the id beside it: a section field
+            // called LineManagerKind would read as the core's answer on every screen and in every
+            // Liquid template while holding something else.
+            nameof(EmployeePart.LineManagerKind),
             nameof(EmployeePart.PhotoPath),
         };
 
@@ -85,6 +90,23 @@ public static class EmployeeFieldNames
             "Unit",
             "StructureId",
             "ParentId",
+
+            // The vocabulary slice F6 DERIVES. An employee's position, their grade and who they
+            // report to are read from the dated assignment and from where that position sits — D30
+            // — and are on the record nowhere. A tenant that added a "Position" field through the
+            // form designer would have built an undated shadow of all three, which would disagree
+            // with the organisation block on the same page the first time somebody transferred.
+            //
+            // NOT "JobTitle" AND NOT "GradeCode", deliberately: the shipped JobDetails section
+            // defines both, so forbidding them here would make CreateAsync throw on a brand-new
+            // tenant. D22 retires those two — keeping the data and the field, removing them from
+            // the editor — and that is slice F6c's to do, together with adding them to this set.
+            "Position",
+            "PositionId",
+            "PositionCode",
+            "Grade",
+            "GradeId",
+            "ReportsTo",
         ]);
 
         return names;

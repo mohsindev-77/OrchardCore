@@ -60,10 +60,135 @@
         </div>
     </div>
 
-    <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
-    <div class="form-text mb-3">
-        @T["Who they report to, which is a different fact from which unit they sit in — customers routinely have the two differ. Placement is set separately."]
-    </div>
+    @* THE FREE LINE-MANAGER PICKER USED TO BE HERE. D31 moved it inside the block below, after
+       Position, Grade and Reports to, because that is where the answer comes from: an A–Z list of
+       every employee in the tenant, sitting above a block that had just derived who the post
+       answers to, asked the same question twice and got two different answers.
+
+       On a tenant with no positions it is still exactly this control, rendered at the foot of the
+       form — see the else branch below. D30's scope: a tenant that has built no positions sees no
+       change at all. *@
+
+    @* ---- the fixed "Job and organisation" block (D30, design note §2.1) --------------------
+
+        OFFERED INLINE AND OPTIONAL. A new employee with no position is the state this slice exists
+        to stop being normal, so the question is asked here rather than on a screen somebody has to
+        find afterwards — and leaving it blank still creates an unplaced employee exactly as before.
+        Required would break every tenant that hires before HR has built its position list.
+
+        THIS FORM MAY ASK WHEN THE EDITOR MAY NOT, and the reason is one field above: the join date.
+        Every write in this slice is dated and nothing is defaulted (CLAUDE.md rule 3); the editor
+        has no date to offer and so links to the dated forms instead, while this one already asked.
+
+        A TENANT WITH NO POSITIONS SEES NONE OF IT. IsPositionBased is false, the block is absent,
+        and the form is the one it has always been — which is the whole of D30's scope.
+    *@
+    @if (Model.IsPositionBased || Model.ShowsStructureChooser)
+    {
+        <h2 class="fs-5 mt-4" id="create-job-heading">@T["Job and organisation"]</h2>
+
+        <input type="hidden" asp-for="IsRefresh" id="create-refresh" value="false" data-refresh-flag />
+
+        @if (Model.ShowsStructureChooser)
+        {
+            <div class="mb-3">
+                <label class="form-label" asp-for="StructureId">@T["Structure"]</label>
+                @* A flagged refresh rather than a save, the same as the Placement screen's: without
+                   it, choosing a structure ran the whole save path and asked for an employee code
+                   nobody had been given the chance to type yet. *@
+                <select class="form-select" asp-for="StructureId" id="create-structure"
+                        onchange="document.getElementById('create-refresh').value='true'; this.form.submit();">
+                    <option value="">@T["Choose a structure…"]</option>
+                    @foreach (var structure in Model.Structures)
+                    {
+                        <option value="@structure.StructureId" selected="@(structure.StructureId == Model.StructureId)">
+                            @structure.Name (@structure.Code)
+                        </option>
+                    }
+                </select>
+            </div>
+        }
+        else
+        {
+            <input type="hidden" asp-for="StructureId" />
+        }
+
+        @if (Model.IsPositionBased)
+        {
+            @* Active as at the join date, retired hidden, each option naming the post, the unit it
+               sits in and filled/approved. The control already does all three — F5+F7 built it for
+               the position's own "Reports to" — and re-asks when the date beside it changes.
+
+               THE EMPTY OPTION IS RELABELLED, and it has to be. The control's default wording for
+               it is "— reports to nobody —", which is the right sentence on the screen it was
+               built for and nonsense on this one: the question here is which post somebody holds,
+               not who they answer to. *@
+            var noPosition = T["— no position yet —"];
+
+            <workmate-position-picker for="PositionRecordId" label="@T["Position"]"
+                                      structure-id="@Model.StructureId"
+                                      as-at="@Model.JoinDate"
+                                      date-field="JoinDate"
+                                      refresh-on-change="true"
+                                      allow-none="true"
+                                      none-label="@noPosition" />
+
+            <div class="form-text mb-3" id="create-position-hint">
+                @T["Optional. Their department, division and company follow from where the position sits — nothing else to choose. Leave it blank and add one later from their record."]
+            </div>
+
+            @* D26 G, mode two: only this position's allowed grades, empty and disabled until a
+               position is chosen, refreshed on every change of it. *@
+            var gradeHint = T["Only the grades this position carries as its levels."].Value;
+
+            <workmate-grade-picker for="GradeRecordId" label="@T["Grade"]"
+                                   position-field="PositionRecordId"
+                                   position-id="@Model.PositionRecordId"
+                                   as-at="@Model.JoinDate"
+                                   date-field="JoinDate"
+                                   hint="@gradeHint" />
+
+            @* Beside the control that caused it. The summary above is ModelOnly — a deliberate
+               choice on this form, so that a message about the employee code appears under the
+               employee code — and a field error with no span to render it is an error nobody ever
+               sees. The pickers are tag helpers and bring no validation span of their own. *@
+            <span asp-validation-for="PositionRecordId" class="text-danger d-block mb-2"></span>
+            <span asp-validation-for="GradeRecordId" class="text-danger d-block mb-2"></span>
+
+            @if (Model.LineManager.Mode == LineManagerMode.Override)
+            {
+                @* The exception — a dotted line, a matrix, a secondment. Rendered here rather than
+                   in the partial because the picker binds to this form's own model; see the note
+                   in _LineManagerChoice.cshtml. *@
+                <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+            }
+
+            @* The chain, and ONE "Reports to" row carrying the post above, its state and whoever
+               answers for it. The same partial the Placement screen and the employee page render,
+               so four screens cannot come to disagree about who somebody answers to. *@
+            <partial name="_JobAndOrganisation"
+                     model="@(new JobAndOrganisationViewModel(Model.Organisation, Model.LineManager, Editable: true))" />
+
+            @if (!string.IsNullOrEmpty(Model.PositionRecordId))
+            {
+                @* D26 I. Said before the save as well as after it: somebody filling this form is
+                   the person who would act on it. *@
+                <div class="alert alert-info py-2" id="create-access-roles">
+                    @T["A position carries no permissions by itself. Review this person's access roles after adding them."]
+                </div>
+            }
+        }
+    }
+    else
+    {
+        @* A TENANT WITH NO POSITIONS KEEPS TODAY'S FIELD, exactly as it was — D30's scope and
+           D31's. There is no reporting line to follow, so the free picker is not a second answer
+           to a question already asked; it is the only answer there is. *@
+        <workmate-employee-picker for="LineManagerEmployeeId" label="@T["Line manager"]" />
+        <div class="form-text mb-3">
+            @T["Who they report to, which is a different fact from which unit they sit in — customers routinely have the two differ. Placement is set separately."]
+        </div>
+    }
 
     <button type="submit" class="btn btn-primary">@T["Add employee"]</button>
     <a class="btn btn-link" asp-action="Index">@T["Cancel"]</a>
@@ -72,3 +197,7 @@
 @* The picker's search. Without it the control is still a working <select> of the first
    page; with it, everybody in the tenant is reachable by typing. *@
 <script asp-name="workmate-employee-picker" at="Foot"></script>
+@* And the two this slice added. The grade picker is the one that needs its script: it is empty
+   and disabled until a position is chosen, and it is the script that re-asks when one is. *@
+<script asp-name="workmate-position-picker" at="Foot"></script>
+<script asp-name="workmate-grade-picker" at="Foot"></script>

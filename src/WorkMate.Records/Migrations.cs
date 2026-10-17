@@ -1,4 +1,6 @@
 using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Metadata;
 using OrchardCore.ContentManagement.Metadata.Settings;
@@ -29,8 +31,32 @@ namespace WorkMate.Records;
 /// <c>WorkMate.Dimensions</c>, is the one place that conversion happens, and this module reuses it
 /// rather than keeping a second copy with a second open-ended sentinel.
 /// </remarks>
-public sealed class Migrations : DataMigration
+public sealed partial class Migrations : DataMigration
 {
+    // Log messages are for operators, not users, so they are not localised. A source-generated
+    // LoggerMessage keeps the analyzers happy and the message template in one place.
+    [LoggerMessage(
+        EventId = 3100,
+        Level = LogLevel.Information,
+        Message = "Line manager backfill (D31 addendum 2): examined {Examined}, cleared {Cleared}, "
+            + "kept as chosen {KeptAsChosen}, kept as override {KeptAsOverride}, "
+            + "untouched because they hold no position {Untouched}. No placement, assignment or "
+            + "date was changed.")]
+    private partial void LogLineManagerBackfill(
+        int examined,
+        int cleared,
+        int keptAsChosen,
+        int keptAsOverride,
+        int untouched);
+
+    [LoggerMessage(
+        EventId = 3101,
+        Level = LogLevel.Warning,
+        Message = "Line manager backfill skipped: ILineManagerBackfill is not registered. "
+            + "Employees created before D31 addendum 2 keep a stored line manager that the "
+            + "reporting line would otherwise derive.")]
+    private partial void LogLineManagerBackfillSkipped();
+
     /// <summary>Column length for a generated identifier, matching Orchard's own content item ids.</summary>
     private const int IdentifierLength = 26;
 
@@ -52,14 +78,31 @@ public sealed class Migrations : DataMigration
     /// </summary>
     private readonly ISession _session;
 
+    /// <summary>
+    /// Resolved lazily for the one step that needs this module's own services. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// Taken as the provider rather than as the services themselves so that constructing Migrations
+    /// — which Orchard does on every shell start — does not build the whole employee read stack for
+    /// the tenants that are already past this step.
+    /// </remarks>
+    private readonly IServiceProvider _serviceProvider;
+
+    /// <summary>For the counts the repair step reports. D31 addendum 2.</summary>
+    private readonly ILogger<Migrations> _logger;
+
     public Migrations(
         IContentDefinitionManager contentDefinitionManager,
         IContentManager contentManager,
-        ISession session)
+        ISession session,
+        IServiceProvider serviceProvider,
+        ILogger<Migrations> logger)
     {
         _contentDefinitionManager = contentDefinitionManager;
         _contentManager = contentManager;
         _session = session;
+        _serviceProvider = serviceProvider;
+        _logger = logger;
     }
 
     public async Task<int> CreateAsync()
@@ -443,6 +486,74 @@ public sealed class Migrations : DataMigration
         await BindStandardLookupFieldsAsync();
 
         return 5;
+    }
+
+    /// <summary>
+    /// Frees every line manager that the reporting line already answers. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>What went wrong and what this repairs.</b> Slices F6b and its first polish wrote
+    /// <c>LineManagerEmployeeId</c> on every save, including the cases the chart already answered —
+    /// the sole holder of the post above, and the sole holder of the acting post above a vacant
+    /// one. A written-down derivation is a frozen one: when that post changed hands, or a vacant
+    /// post above was filled, the employee kept the old person for ever and every screen showed it.
+    /// The code now stores only what somebody chose; this clears what the old code wrote.
+    ///
+    /// <b>It moves nobody and touches one field.</b> No placement, no assignment, no date, no
+    /// other property. An employee whose stored manager equals what the live derivation gives
+    /// today has that value cleared — the answer does not change, it simply starts being
+    /// recomputed. Anything else is kept, and reads afterwards as a choice or an override by the
+    /// rules in <c>GetLineManagerAsync</c>.
+    ///
+    /// <b>Employees who hold no position are not touched at all.</b> Every pre-F6 employee and
+    /// every tenant with no positions is in that state: there is no reporting line to derive from,
+    /// so the stored value is the only answer there is and clearing it would destroy information.
+    ///
+    /// <b>Append-only, and safe to re-enter.</b> It writes nothing where the comparison does not
+    /// match, so running it twice clears the same rows and changes nothing the second time.
+    ///
+    /// <b>Ordering is safe.</b> This reads the dimension graph through
+    /// <c>IEmployeeOrganisationService</c>, and <c>WorkMate.Records</c> declares
+    /// <c>WorkMate.Dimensions</c> in its manifest dependencies — so that feature's migrations have
+    /// run and its tables exist before this step is entered.
+    /// </remarks>
+    public async Task<int> UpdateFrom5Async()
+    {
+        await FreeDerivedLineManagersAsync();
+
+        return 6;
+    }
+
+    /// <summary>
+    /// Runs <see cref="ILineManagerBackfill"/> and records what it did. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>The counts are logged rather than returned</b>, because a migration step's return value is
+    /// the schema version and nothing else reads it. An operator upgrading a tenant needs to see
+    /// that this moved nobody — four numbers that add up to the employees who had a stored line
+    /// manager — and the log is where the rest of a tenant upgrade is already reported.
+    /// </remarks>
+    private async Task FreeDerivedLineManagersAsync()
+    {
+        var backfill = _serviceProvider.GetService<ILineManagerBackfill>();
+
+        if (backfill is null)
+        {
+            // The feature is being migrated without its own services available, which should not
+            // happen and must not take the whole migration down with it if it does.
+            LogLineManagerBackfillSkipped();
+
+            return;
+        }
+
+        var counts = await backfill.RunAsync();
+
+        LogLineManagerBackfill(
+            counts.Examined,
+            counts.Cleared,
+            counts.KeptAsChosen,
+            counts.KeptAsOverride,
+            counts.Untouched);
     }
 
     /// <summary>

@@ -44,6 +44,9 @@ public sealed class EmployeePlacementAdminController : Controller
     private readonly IDimensionService _dimensions;
     private readonly IDimensionGraphService _graph;
     private readonly PlacementSplitMessages _splitMessages;
+    private readonly IPositionService _positions;
+    private readonly IEmployeeOrganisationService _organisation;
+    private readonly AccessRoleReminder _accessRoles;
     private readonly IRecordsAuthorisation _authorisation;
     private readonly INotifier _notifier;
     private readonly IStringLocalizer S;
@@ -56,6 +59,9 @@ public sealed class EmployeePlacementAdminController : Controller
         IDimensionService dimensions,
         IDimensionGraphService graph,
         PlacementSplitMessages splitMessages,
+        IPositionService positions,
+        IEmployeeOrganisationService organisation,
+        AccessRoleReminder accessRoles,
         IRecordsAuthorisation authorisation,
         INotifier notifier,
         IStringLocalizer<EmployeePlacementAdminController> stringLocalizer,
@@ -67,6 +73,9 @@ public sealed class EmployeePlacementAdminController : Controller
         _dimensions = dimensions;
         _graph = graph;
         _splitMessages = splitMessages;
+        _positions = positions;
+        _organisation = organisation;
+        _accessRoles = accessRoles;
         _authorisation = authorisation;
         _notifier = notifier;
         S = stringLocalizer;
@@ -103,8 +112,13 @@ public sealed class EmployeePlacementAdminController : Controller
 
         var axes = new List<AxisPlacementViewModel>();
 
-        foreach (var structure in await _structures.ListAsync(cancellationToken))
+        // The axes an employee can be placed on, which is not every structure: a grade ladder and a
+        // reporting line are axes the Position type is a level of and neither is anywhere a person
+        // goes. ADR-0030.
+        foreach (var axis in await _positions.GetEmployeeAxesAsync(cancellationToken))
         {
+            var structure = axis.Structure;
+
             var rows = await _assignments.GetAllEffectiveAsync(
                 employee.EmployeeId, structure.StructureId, date, cancellationToken);
 
@@ -133,6 +147,7 @@ public sealed class EmployeePlacementAdminController : Controller
                 StructureCode = structure.Code,
                 StructureNameEn = structure.Name.En,
                 StructureNameAr = structure.Name.Ar,
+                IsPositionBased = axis.IsPositionBased,
 
                 // Main first, which is what "where does this person work" means.
                 Rows = [.. placements.OrderByDescending(row => row.IsPrimary).ThenBy(row => row.UnitName)],
@@ -140,9 +155,82 @@ public sealed class EmployeePlacementAdminController : Controller
         }
 
         model.Axes = axes;
+
+        // What the position they hold means — the chain, the grade, who they report to — or the
+        // "No position yet" state ADR-0029 leaves behind and D28 C requires be made legible.
+        model.Organisation = await _organisation.GetAsync(employee.EmployeeId, date, cancellationToken);
+
+        // Who manages them, from the ONE read path. D31 addendum 2: derived live where the chart
+        // answers, stored only where somebody chose — so a change of holder above shows up here
+        // without anybody editing this record.
+        model.LineManager = await _organisation.GetLineManagerAsync(
+            employee.EmployeeId, date, cancellationToken);
+
+        model.JobHistory = await JobHistoryAsync(employee.EmployeeId, cancellationToken);
         model.Headships = await HeadshipsAsync(employee.EmployeeId, date, cancellationToken);
 
         return View(model);
+    }
+
+    /// <summary>
+    /// Every dated row this person has held, newest first: position, where it sat, grade, from, to.
+    /// </summary>
+    /// <remarks>
+    /// <b>The organisation path is resolved as at each row's own start date</b>, not as at today.
+    /// That is the whole reason this is worth a screen: a department renamed in June, or a position
+    /// moved from one division to another, must read on a March row as it read in March. Resolving
+    /// it as at today would make the history quietly agree with the present, which is the one thing
+    /// a history must not do.
+    ///
+    /// <b>Only rows on axes an employee can be placed on</b>, and only the ones at a position or a
+    /// unit — never a grade ladder or a reporting line, which nothing writes to anyway (ADR-0028).
+    /// </remarks>
+    private async Task<IReadOnlyList<JobHistoryRowViewModel>> JobHistoryAsync(
+        string employeeId,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<JobHistoryRowViewModel>();
+
+        foreach (var axis in await _positions.GetEmployeeAxesAsync(cancellationToken))
+        {
+            foreach (var row in await _assignments.GetHistoryAsync(
+                employeeId, axis.StructureId, cancellationToken))
+            {
+                var node = await _dimensions.GetAsync(row.RecordId, row.Range.From, cancellationToken);
+
+                if (node is null)
+                {
+                    continue;
+                }
+
+                // As at the row's own start, so a rename or a move after the fact does not rewrite
+                // what this period says.
+                var paths = await _graph.GetAncestorPathsAsync(
+                    axis.StructureId, [row.RecordId], row.Range.From, cancellationToken);
+
+                var grade = row.GradeRecordId is null
+                    ? null
+                    : await _dimensions.GetAsync(row.GradeRecordId, DateOnly.MaxValue, cancellationToken);
+
+                rows.Add(new JobHistoryRowViewModel
+                {
+                    RecordId = row.RecordId,
+                    Name = BilingualDisplay.Name(node.NameEn, node.NameAr),
+                    OrganisationPath = string.Join(
+                        BilingualDisplay.PathSeparator,
+                        (paths.GetValueOrDefault(row.RecordId) ?? [])
+                            .Select(step => BilingualDisplay.Name(step.NameEn, step.NameAr))),
+                    GradeName = grade is null
+                        ? string.Empty
+                        : BilingualDisplay.Name(grade.NameEn, grade.NameAr),
+                    From = row.Range.From,
+                    To = row.Range.To,
+                });
+            }
+        }
+
+        // Newest first: a history is read backwards from now.
+        return [.. rows.OrderByDescending(row => row.From).ThenBy(row => row.Name, StringComparer.Ordinal)];
     }
 
     private async Task<IReadOnlyList<HeadshipViewModel>> HeadshipsAsync(
@@ -249,6 +337,46 @@ public sealed class EmployeePlacementAdminController : Controller
             model.NameAr = employee.NameAr;
         }
 
+        // FIRST, AND ON EVERY PATH THROUGH THIS ACTION. Whether this axis places employees at
+        // positions is a property of the tenant's chart, so it is read from the chart and never
+        // from the post — the form does not carry it, and a form that did could be told the wrong
+        // answer.
+        //
+        // It has to be settled before anything below reads it. Without this, IsPositionBased
+        // arrived false from a post that never sent it, and every position-shaped branch of the
+        // write quietly took the other road: the D26 I access-roles reminder was never raised, and
+        // the "always 100 per cent, always the main placement" rule fell back to whatever the
+        // hidden allocation fields happened to hold.
+        await FillChoicesAsync(model, cancellationToken);
+
+        // Changing the structure is navigation, not a save. It used to run the whole save path and
+        // answer "Choose a structure and a unit" before anybody had chosen either — a form telling
+        // somebody off for not finishing a question they had only just been asked. A refresh
+        // redraws with the new axis's choices and validates nothing.
+        if (model.IsRefresh)
+        {
+            // ONLY WHEN THE AXIS CHANGED. The unit or position belonged to the axis that was
+            // showing, so it is dropped rather than carried onto one where it means nothing.
+            //
+            // The two refreshes have to be told apart since D31: the position picker now redraws
+            // the form too, so that the derived block and the line manager follow the choice. A
+            // redraw that cleared the position would clear it the instant it was chosen, and the
+            // control would be unusable.
+            if (model.AxisChanged)
+            {
+                model.RecordId = null;
+                model.GradeRecordId = null;
+            }
+
+            model.IsRefresh = false;
+            model.AxisChanged = false;
+
+            // Again, so the redraw does not describe a choice that has just been dropped.
+            await FillChoicesAsync(model, cancellationToken);
+
+            return View(model);
+        }
+
         if (employee is null)
         {
             // Not a 404. Arriving from a unit's card there is no employee yet, so "choose one" is
@@ -261,7 +389,11 @@ public sealed class EmployeePlacementAdminController : Controller
         }
         else if (string.IsNullOrEmpty(model.StructureId) || string.IsNullOrEmpty(model.RecordId))
         {
-            ModelState.AddModelError(nameof(model.RecordId), S["Choose a structure and a unit."].Value);
+            ModelState.AddModelError(
+                nameof(model.RecordId),
+                model.IsPositionBased
+                    ? S["Choose a position."].Value
+                    : S["Choose a structure and a unit."].Value);
         }
         else
         {
@@ -270,8 +402,15 @@ public sealed class EmployeePlacementAdminController : Controller
                 model.StructureId,
                 model.RecordId,
                 effectiveFrom,
-                model.AllocationPercent,
-                model.IsPrimary,
+                // A position-based screen does not ask: the answer is always the main placement at
+                // 100 per cent. The model keeps both so a later slice can build the second
+                // concurrent position — acting, secondment — which ReallocateAsync already
+                // expresses. D30: hiding a control is not removing a capability.
+                model.IsPositionBased ? 100m : model.AllocationPercent,
+                model.IsPositionBased || model.IsPrimary,
+                // The grade, when the node chosen is a position (D26 G). Null for a unit, which is
+                // what this screen has always placed into and what ADR-0029 keeps valid.
+                model.GradeRecordId,
                 cancellationToken);
 
             if (!placed.IsAuthorised)
@@ -283,6 +422,36 @@ public sealed class EmployeePlacementAdminController : Controller
             {
                 await _notifier.SuccessAsync(H["{0} was placed from {1}.",
                     employee.NameEn, EmployeeDisplay.Date(effectiveFrom)]);
+
+                // D31 ADDENDUM 2: SETTLE THE LINE MANAGER WITH THE PLACEMENT.
+                //
+                // This screen rendered the control and never saved it, so a choice made here was
+                // silently discarded. It writes only what cannot be derived — a pick among several
+                // holders, or an override — and CLEARS otherwise, which is the ordinary outcome:
+                // moving somebody into a post whose line already answers removes whatever a
+                // previous choice left behind.
+                if (model.IsPositionBased)
+                {
+                    var settled = await _employees.SetLineManagerAsync(
+                        model.EmployeeId,
+                        model.LineManagerEmployeeId,
+                        model.LineManager.KindFor(model.LineManagerEmployeeId),
+                        cancellationToken);
+
+                    foreach (var error in settled.Errors)
+                    {
+                        await _notifier.WarningAsync(new LocalizedHtmlString(
+                            error.Message.Name, error.Message.Value));
+                    }
+                }
+
+                // D26 I. A position carries no permissions, so nothing is changed here — somebody
+                // is told to look. One class raises it everywhere, so the security slice has one
+                // thing to replace.
+                if (model.IsPositionBased)
+                {
+                    await _accessRoles.RaiseAsync(employee.NameEn ?? employee.EmployeeId);
+                }
 
                 // Advisories ride along with a success and are surfaced rather than swallowed. The
                 // one that matters here says the unit has units under it, so this person is counted
@@ -305,6 +474,142 @@ public sealed class EmployeePlacementAdminController : Controller
         await FillChoicesAsync(model, cancellationToken);
 
         return View(model);
+    }
+
+    // ---- change the grade inside the position somebody already holds --------------------
+
+    /// <summary>
+    /// An increment: a new grade within the position they hold, from a date. Decision D26 G.
+    /// </summary>
+    /// <remarks>
+    /// <b>Its own action because it is its own change.</b> A promotion or a transfer is a new
+    /// <em>position</em>; an increment is a new <em>grade</em> within the one they hold, and the
+    /// two produce different history and different questions. Putting both on one form would make
+    /// somebody re-choose a position they are not changing.
+    ///
+    /// <b>It still writes a dated row</b>, because ADR-0026 put the grade on the assignment row:
+    /// the current row closes the day before and a new one opens with the same position and the new
+    /// grade. That is a cost ADR-0026 states rather than designs around, and it reads correctly —
+    /// <em>"held HR Manager at HRM-1 from January, at HRM-2 from June"</em> is two rows and is what
+    /// happened.
+    /// </remarks>
+    public async Task<IActionResult> ChangeGrade(
+        string id,
+        string? structureId,
+        CancellationToken cancellationToken)
+    {
+        if (!await _authorisation.AuthoriseAsync(WorkMate.Dimensions.Permissions.AssignEmployees))
+        {
+            return Forbid();
+        }
+
+        var employee = await _employees.GetAsync(id, cancellationToken);
+
+        if (employee is null)
+        {
+            return NotFound();
+        }
+
+        var today = await _authorisation.TodayAsync();
+        var held = await _organisation.GetAsync(employee.EmployeeId, today, cancellationToken);
+
+        if (held?.Position is null)
+        {
+            // Nothing to change the grade of. Said rather than rendered as an empty form.
+            await _notifier.WarningAsync(H["{0} holds no position, so there is no grade to change.",
+                employee.NameEn ?? employee.EmployeeId]);
+
+            return RedirectToAction(nameof(Index), new { id = employee.EmployeeId });
+        }
+
+        return View(new ChangeGradeViewModel
+        {
+            EmployeeId = employee.EmployeeId,
+            Code = employee.Code,
+            NameEn = employee.NameEn,
+            NameAr = employee.NameAr,
+            StructureId = structureId ?? held.StructureId,
+            PositionRecordId = held.Position.PositionRecordId,
+            PositionName = held.Position.PositionName,
+            CurrentGradeName = held.GradeName,
+            GradeRecordId = held.GradeRecordId,
+            CurrentFrom = held.Since,
+            EffectiveFrom = today.ToIso(),
+        });
+    }
+
+    [HttpPost]
+    [ActionName(nameof(ChangeGrade))]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangeGradePost(
+        ChangeGradeViewModel model,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        if (!await _authorisation.AuthoriseAsync(WorkMate.Dimensions.Permissions.AssignEmployees))
+        {
+            return Forbid();
+        }
+
+        var employee = await _employees.GetAsync(model.EmployeeId, cancellationToken);
+
+        if (employee is null)
+        {
+            return NotFound();
+        }
+
+        model.Code = employee.Code;
+        model.NameEn = employee.NameEn;
+        model.NameAr = employee.NameAr;
+
+        if (!IsoDate.TryParse(model.EffectiveFrom, out var effectiveFrom))
+        {
+            ModelState.AddModelError(nameof(model.EffectiveFrom), S["A date is needed."].Value);
+
+            return View(model);
+        }
+
+        // Back-dating before the row that is open would not be a change to it — it would be a
+        // statement about a period the row does not cover, and ReallocateAsync would close the row
+        // on a day before it started. Refused with the date it would have to be on or after.
+        if (model.CurrentFrom is { } from && effectiveFrom < from)
+        {
+            ModelState.AddModelError(
+                nameof(model.EffectiveFrom),
+                S["This grade would start before the position they hold did, on {0}. Choose that date or later.",
+                    EmployeeDisplay.Date(from)].Value);
+
+            return View(model);
+        }
+
+        var placed = await _assignments.PlaceAsync(
+            model.EmployeeId,
+            model.StructureId!,
+            model.PositionRecordId!,
+            effectiveFrom,
+            gradeRecordId: model.GradeRecordId,
+            cancellationToken: cancellationToken);
+
+        if (!placed.IsAuthorised)
+        {
+            return Forbid();
+        }
+
+        if (!placed.Succeeded)
+        {
+            foreach (var error in placed.Errors)
+            {
+                ModelState.AddModelError(string.Empty, error.Message.Value);
+            }
+
+            return View(model);
+        }
+
+        await _notifier.SuccessAsync(H["{0}'s grade was changed from {1}.",
+            employee.NameEn, EmployeeDisplay.Date(effectiveFrom)]);
+
+        return RedirectToAction(nameof(Index), new { id = model.EmployeeId });
     }
 
     // ---- change the whole split on one structure ---------------------------------------
@@ -773,16 +1078,40 @@ public sealed class EmployeePlacementAdminController : Controller
     /// </remarks>
     private async Task FillChoicesAsync(PlaceEmployeeViewModel model, CancellationToken cancellationToken)
     {
-        model.Structures = [.. (await _structures.ListAsync(cancellationToken)).Select(ToOption)];
+        // The axes an employee can actually be placed on. Never every structure: that offered the
+        // grade ladder and the reporting line, which are axes the Position type is a level of and
+        // neither of which is anywhere a person goes. ADR-0030.
+        var axes = await _positions.GetEmployeeAxesAsync(cancellationToken);
+
+        model.Structures = [.. axes.Select(axis => ToOption(axis.Structure))];
+
+        // One axis is the ordinary tenant, so the screen chooses it rather than asking a question
+        // with one answer.
+        if (string.IsNullOrEmpty(model.StructureId) && axes.Count == 1)
+        {
+            model.StructureId = axes[0].StructureId;
+        }
+
+        var chosen = axes.FirstOrDefault(axis =>
+            string.Equals(axis.StructureId, model.StructureId, StringComparison.Ordinal));
+
+        model.IsPositionBased = chosen?.IsPositionBased == true;
+
+        var date = IsoDate.TryParse(model.EffectiveFrom, out var parsed)
+            ? parsed
+            : await _authorisation.TodayAsync();
+
+        if (model.IsPositionBased)
+        {
+            await FillPositionChoicesAsync(model, date, cancellationToken);
+
+            return;
+        }
 
         if (string.IsNullOrEmpty(model.StructureId) || string.IsNullOrEmpty(model.RecordId))
         {
             return;
         }
-
-        var date = IsoDate.TryParse(model.EffectiveFrom, out var parsed)
-            ? parsed
-            : await _authorisation.TodayAsync();
 
         var unit = await _dimensions.GetAsync(model.RecordId, date, cancellationToken);
 
@@ -795,6 +1124,60 @@ public sealed class EmployeePlacementAdminController : Controller
             model.StructureId, [model.RecordId], date, cancellationToken);
 
         model.UnitPath = BilingualDisplay.Path(paths.GetValueOrDefault(model.RecordId), unit);
+    }
+
+    /// <summary>
+    /// The derived half of a position-based form: where the chosen position sits, and who it
+    /// answers to. Decisions D28 A and D30.
+    /// </summary>
+    /// <remarks>
+    /// <b>Computed, never stored.</b> D30: the organisation chain comes from the position's
+    /// ancestors as at the date and is on the employee's record nowhere. Recomputed on every render,
+    /// which is what makes it correct when the date or the position changes.
+    ///
+    /// <b>The line manager is defaulted, not derived.</b> With exactly one holder of the parent
+    /// post that holder is offered (D28 A); with several, nothing is chosen for the operator. Only
+    /// filled in where the form has not already been given one, so a redraw does not overwrite
+    /// somebody's answer.
+    /// </remarks>
+    private async Task FillPositionChoicesAsync(
+        PlaceEmployeeViewModel model,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(model.RecordId))
+        {
+            return;
+        }
+
+        model.Organisation = await _organisation.PreviewAsync(model.RecordId, date, cancellationToken);
+
+        model.UnitPath = string.Join(
+            BilingualDisplay.PathSeparator,
+            model.Organisation.Chain.Select(step => step.Name));
+
+        // D31: THE LINE MANAGER FOLLOWS THE POSITION. With one holder of the post above it is set
+        // every time rather than only into an empty field — otherwise choosing a different position
+        // keeps the previous one's manager, which is the stale answer this decision exists to stop.
+        // An override is left alone, because that is the whole point of one.
+        if (model.LineManagerOverride)
+        {
+            return;
+        }
+
+        // D31 ADDENDUM 2: ONLY A CHOICE IS CARRIED, because only a choice is stored.
+        //
+        // A sole holder — of the post above, or of the acting post above a vacant one — is what the
+        // chart says, so the form shows it and saves nothing. Writing it down was the defect: the
+        // moment that post changed hands the employee kept the old person for ever. Derived
+        // answers are read live by IEmployeeOrganisationService.GetLineManagerAsync.
+        var lineManager = model.LineManager;
+
+        model.LineManagerEmployeeId = lineManager.Mode == LineManagerMode.Choose &&
+            lineManager.Holders.Any(holder => string.Equals(
+                holder.EmployeeId, model.LineManagerEmployeeId, StringComparison.Ordinal))
+            ? model.LineManagerEmployeeId
+            : null;
     }
 
     private static StructureOptionViewModel ToOption(StructureDocument structure) => new()

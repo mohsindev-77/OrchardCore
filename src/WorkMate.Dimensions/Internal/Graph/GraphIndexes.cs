@@ -131,6 +131,23 @@ internal sealed class EmployeeAssignmentIndex : MapIndex
 
     public bool IsPrimary { get; set; }
 
+    /// <summary>
+    /// The grade held in this placement, when the node is a position. Empty otherwise. ADR-0026.
+    /// </summary>
+    /// <remarks>
+    /// <b>Empty rather than null in the column</b>, because every other identifier column on these
+    /// indexes is a non-nullable string and a mixed convention is how a query comes to miss rows.
+    /// The <em>document</em> keeps the nullable, where "no grade recorded" is a real answer; the
+    /// index is a query surface and stores the absence as the empty string, exactly as
+    /// <c>DimensionLinkIndex</c> does for a parentless record.
+    ///
+    /// <b>Not indexed on its own.</b> "Who is on SE-2 today" is a filter on this column and is not
+    /// a hot query; the hot ones are by employee and by node, which the table is already ordered
+    /// for. If Reporting ever needs it, that is a new index on an existing column rather than a
+    /// model change — the property that made ADR-0026 cheap to reverse.
+    /// </remarks>
+    public string GradeRecordId { get; set; } = string.Empty;
+
     public DateTime EffectiveFrom { get; set; }
 
     public DateTime EffectiveToInclusive { get; set; }
@@ -150,6 +167,7 @@ internal sealed class EmployeeAssignmentIndexProvider : IndexProvider<EmployeeAs
                 NodeId = row.RecordId,
                 AllocationPercent = row.AllocationPercent,
                 IsPrimary = row.IsPrimary,
+                GradeRecordId = row.GradeRecordId ?? string.Empty,
                 EffectiveFrom = EffectiveDates.ToColumn(row.Range.From),
                 EffectiveToInclusive = EffectiveDates.ToInclusiveEndColumn(row.Range.To),
             }));

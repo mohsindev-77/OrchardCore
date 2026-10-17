@@ -677,6 +677,196 @@ internal sealed class DimensionValidator : IDimensionValidator
         }
 
         errors.AddRange(await ValidateAttachmentAsync(structureId, split, effectiveFrom, cancellationToken));
+        errors.AddRange(await ValidateAssignedGradesAsync(split, cancellationToken));
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Whether this axis places employees at positions — D30: at least one of its levels is one.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the axis's shape, never of a code or a name, for the reason
+    /// <c>IsReportingLineAsync</c> gives: the demo's are prefixed and a tenant may rename anything.
+    /// </remarks>
+    /// <summary>
+    /// Why this structure is not somewhere a person goes, or null when it is. Decision D30.
+    /// </summary>
+    /// <remarks>
+    /// <b>Three sentences rather than one, because the three are three different mistakes</b> and
+    /// a reader can act on each differently: a reporting line was almost certainly reached by
+    /// clicking a card on the wrong chart; a grade ladder means somebody is looking for the grade
+    /// field on the placement row; an axis with no levels is a structure nobody has built yet.
+    ///
+    /// Only the structure's own levels are classified — <see cref="EmployeeAxes.HoldsEmployees"/>
+    /// asks nothing about types that are not on it — so this costs one type lookup per level and
+    /// nothing per employee.
+    /// </remarks>
+    private async Task<DimensionError?> StructureCannotHoldEmployeesAsync(
+        StructureDocument structure,
+        CancellationToken cancellationToken)
+    {
+        var levels = structure.DimensionTypeIds;
+        var positions = new HashSet<string>(StringComparer.Ordinal);
+        var grades = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var levelTypeId in levels)
+        {
+            var type = await _typeLookup.GetAsync(levelTypeId, cancellationToken);
+
+            if (type is { StandardRole: DimensionTypeRole.Position })
+            {
+                positions.Add(levelTypeId);
+            }
+            else if (type is { StandardRole: DimensionTypeRole.Grade })
+            {
+                grades.Add(levelTypeId);
+            }
+        }
+
+        if (EmployeeAxes.HoldsEmployees(levels, positions, grades))
+        {
+            return null;
+        }
+
+        if (levels.Count == 0)
+        {
+            return new DimensionError(
+                DimensionRule.StructureDoesNotHoldEmployees,
+                structure.Code,
+                S["'{0}' has no levels yet, so there is nowhere on it to place anybody. Build its levels first.",
+                    structure.Name.En]);
+        }
+
+        return levels.All(positions.Contains)
+            ? new DimensionError(
+                DimensionRule.StructureDoesNotHoldEmployees,
+                structure.Code,
+                S["'{0}' is a reporting line: it records what each position answers to, not where anybody sits. Place this employee on an organisation structure instead.",
+                    structure.Name.En])
+            : new DimensionError(
+                DimensionRule.StructureDoesNotHoldEmployees,
+                structure.Code,
+                S["'{0}' is a grade ladder. A grade is recorded on the placement itself, not somewhere an employee is put — place them on an organisation structure and set the grade there.",
+                    structure.Name.En]);
+    }
+
+    private async Task<bool> PlacesEmployeesAtPositionsAsync(
+        StructureDocument structure,
+        CancellationToken cancellationToken)
+    {
+        foreach (var levelTypeId in structure.DimensionTypeIds)
+        {
+            if (await IsAPositionAsync(levelTypeId, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> IsAPositionAsync(string dimensionTypeId, CancellationToken cancellationToken) =>
+        await _typeLookup.GetAsync(dimensionTypeId, cancellationToken) is
+            { StandardRole: DimensionTypeRole.Position };
+
+    /// <summary>
+    /// The grade on a placement, when it states one: it must be a grade, the node must be a
+    /// position, and the grade must be one that position allows. Decision D26 G.
+    /// </summary>
+    /// <remarks>
+    /// <b>Here rather than only on the form.</b> CLAUDE.md rule 5 and the reason
+    /// <see cref="DimensionRule.ReferenceNotPermitted"/> gives for existing at all: the employee
+    /// screen, the <c>employee-assignments</c> recipe step and any later import all go through
+    /// <c>ReallocateAsync</c>, so stating the rule once here is what makes all three refuse it in
+    /// the same words. A control that populates itself from the position's set is a control, not a
+    /// rule.
+    ///
+    /// <b>Blocking, where a full position only warns.</b> D26 F is explicit that a full position is
+    /// offered with a warning because refusing it would stop the product recording what an
+    /// organisation has actually done. A grade outside the set is not that: it is a level the post
+    /// does not have, and there is nothing real for it to be recording.
+    ///
+    /// <b>What it deliberately does not check:</b> that a grade an employee <em>already holds</em>
+    /// is still allowed. D26 G says removing a grade from a position "warns and never breaks that
+    /// employee's record" — the stored grade keeps resolving, and only what is offered next time
+    /// changes. This runs on the write, so it only ever sees a grade somebody is choosing now.
+    /// </remarks>
+    private async Task<IReadOnlyList<DimensionError>> ValidateAssignedGradesAsync(
+        IReadOnlyList<AssignmentSplitEntry> split,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<DimensionError>();
+
+        foreach (var entry in split.Where(entry => !string.IsNullOrEmpty(entry.GradeRecordId)))
+        {
+            var grade = await _recordLookup.GetAsync(entry.GradeRecordId!, cancellationToken);
+
+            if (grade is null)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.UnknownReference,
+                    entry.GradeRecordId!,
+                    S["There is no dimension record with the id '{0}' in this tenant.", entry.GradeRecordId!]));
+
+                continue;
+            }
+
+            var gradeType = await _typeLookup.GetAsync(grade.DimensionTypeId, cancellationToken);
+
+            if (gradeType?.StandardRole != DimensionTypeRole.Grade)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.ReferenceNotPermitted,
+                    grade.Code,
+                    S["'{0}' is not a grade, so an employee cannot hold a position at it.", grade.NameEn]));
+
+                continue;
+            }
+
+            var node = await _recordLookup.GetAsync(entry.RecordId, cancellationToken);
+
+            if (node is null)
+            {
+                // Already reported by ValidateAttachmentAsync, which says it better: a second
+                // "that record does not exist" about the same row is noise on top of the answer.
+                continue;
+            }
+
+            var nodeType = await _typeLookup.GetAsync(node.DimensionTypeId, cancellationToken);
+
+            if (nodeType?.StandardRole != DimensionTypeRole.Position)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.ReferenceNotPermitted,
+                    node.Code,
+                    S["A grade belongs to a position. '{0}' is a {1}, so a placement there carries no grade.",
+                        node.NameEn,
+                        nodeType?.Name.En ?? node.DimensionTypeId]));
+
+                continue;
+            }
+
+            // The position's allowed set, read from the same index the Position page and both
+            // pickers read. One query per distinct position in the split — a split is one or two
+            // rows, so this is not the shape that needs batching.
+            var allowed = await _session
+                .QueryIndex<DimensionReferenceIndex>(index =>
+                    index.RecordId == entry.RecordId &&
+                    index.Kind == DimensionReferenceKinds.AllowedGrade &&
+                    index.TargetRecordId == entry.GradeRecordId)
+                .CountAsync(cancellationToken);
+
+            if (allowed == 0)
+            {
+                errors.Add(new DimensionError(
+                    DimensionRule.ReferenceNotPermitted,
+                    node.Code,
+                    S["'{0}' is not one of the grades '{1}' allows. A position's grades are its levels, so somebody holding it takes one of those.",
+                        grade.NameEn,
+                        node.NameEn]));
+            }
+        }
 
         return errors;
     }
@@ -706,6 +896,18 @@ internal sealed class DimensionValidator : IDimensionValidator
             return [];
         }
 
+        // IS THIS STRUCTURE A PLACE AT ALL? Asked of the axis, once, before anything is asked of
+        // the nodes — because on a reporting line every node is a position, so every node-level
+        // rule below says yes and the write goes through onto an axis no headcount reads.
+        //
+        // D30, "where the rule is applied": the designer's card menu, this validator, the Place
+        // screen, the employee-assignments recipe step and any later import all go through one
+        // shape test, so none of them can offer what another refuses. CLAUDE.md rule 5.
+        if (await StructureCannotHoldEmployeesAsync(structure, cancellationToken) is { } refusal)
+        {
+            return [refusal];
+        }
+
         var errors = new List<DimensionError>();
         var on = EffectiveDates.ToColumn(effectiveFrom);
 
@@ -719,6 +921,27 @@ internal sealed class DimensionValidator : IDimensionValidator
                     DimensionRule.UnknownReference,
                     entry.RecordId,
                     S["There is no dimension record with the id '{0}' in this tenant.", entry.RecordId]));
+
+                continue;
+            }
+
+            // D30 / ADR-0030: on an axis that has positions, an employee is placed at a position
+            // and nowhere else. Asked before PermitsEmployeesAt because the attachable set may
+            // still name the departments a tenant placed people at before F6, and this is the
+            // rule that supersedes it for a NEW placement. Nothing already written is touched —
+            // ADR-0029 — because this runs on the write.
+            if (await PlacesEmployeesAtPositionsAsync(structure, cancellationToken) &&
+                await IsAPositionAsync(record.DimensionTypeId, cancellationToken) == false)
+            {
+                var type = await _typeLookup.GetAsync(record.DimensionTypeId, cancellationToken);
+
+                errors.Add(new DimensionError(
+                    DimensionRule.UnitDoesNotHoldEmployees,
+                    record.Code,
+                    S["'{0}' is a {1}. On '{2}' an employee joins the organisation by holding a position, and their {1} is derived from where that position sits — so choose a position instead.",
+                        record.NameEn,
+                        type?.Name.En ?? record.DimensionTypeId,
+                        structure.Name.En]));
 
                 continue;
             }
@@ -1066,6 +1289,104 @@ internal sealed class DimensionValidator : IDimensionValidator
                 S["'{0}' is not one of the grades '{1}' allows.", grade?.Code ?? gradeRecordId, positionCode],
                 Field: "GradeRecordId"),
         ];
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<DimensionError>> ValidateReportsToAsync(
+        string? reportingStructureId,
+        ReportsToIntent intent,
+        string? reportsToRecordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(reportingStructureId))
+        {
+            // No reporting line in this tenant, so there is no question to answer. Demanding one
+            // would make positions uncreatable on a tenant that has not run the base recipe or has
+            // renamed the axis away.
+            return [];
+        }
+
+        if (intent == ReportsToIntent.Unstated)
+        {
+            return
+            [
+                new DimensionError(
+                    DimensionRule.ReportsToRequired,
+                    string.Empty,
+                    S["Choose who this position reports to, or choose 'Reports to nobody' for the top of the reporting line."],
+                    Field: "ReportsToRecordId"),
+            ];
+        }
+
+        if (intent == ReportsToIntent.UnderPosition)
+        {
+            // Naming a parent is ValidatePlacementAsync's business — permitted level, cycles,
+            // self-reporting, a parent not yet effective. It runs on the write that follows and is
+            // not restated here, because two copies of a cycle check is how they come to disagree.
+            return string.IsNullOrEmpty(reportsToRecordId)
+                ?
+                [
+                    new DimensionError(
+                        DimensionRule.ReportsToRequired,
+                        string.Empty,
+                        S["Choose who this position reports to, or choose 'Reports to nobody' for the top of the reporting line."],
+                        Field: "ReportsToRecordId"),
+                ]
+                : [];
+        }
+
+        // Top of the line, which is legitimate and is what the CEO has. Whether somebody is
+        // ALREADY there is worth saying and is not worth refusing: an organisation that has two
+        // chief executives, or is mid-handover, is entitled to record that it does. D31.
+        var existing = await TopOfTheReportingLineAsync(reportingStructureId, asAt, cancellationToken);
+
+        return existing is null
+            ? []
+            :
+            [
+                new DimensionError(
+                    DimensionRule.SecondTopOfReportingLine,
+                    existing.Code,
+                    S["'{0}' is already at the top of this reporting line.", existing.Code],
+                    Field: "ReportsToRecordId"),
+            ];
+    }
+
+    /// <summary>
+    /// A position already sitting at the top of the reporting line on the date, or null.
+    /// </summary>
+    /// <remarks>
+    /// A root of the axis is a link row whose parent is <c>DimensionLinkIndexProvider.NoParent</c>
+    /// — the empty string, which no record id ever is — so this is the same read the graph makes
+    /// for "the roots of this structure", narrowed to the date and stopped at the first hit. One is
+    /// all the message needs, and a tenant with three would be told about one of them and still
+    /// know to go and look.
+    /// </remarks>
+    private async Task<DimensionNodeRef?> TopOfTheReportingLineAsync(
+        string reportingStructureId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var date = EffectiveDates.ToColumn(asAt);
+
+        var rows = await _session
+            .QueryIndex<DimensionLinkIndex>(index =>
+                index.StructureId == reportingStructureId &&
+                index.ParentId == DimensionLinkIndexProvider.NoParent &&
+                index.EffectiveFrom <= date &&
+                date <= index.EffectiveToInclusive)
+            .ListAsync(cancellationToken);
+
+        foreach (var row in rows)
+        {
+            if (await _recordLookup.GetAsync(row.ChildId, cancellationToken) is { } record)
+            {
+                return record;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

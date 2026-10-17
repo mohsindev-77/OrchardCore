@@ -154,14 +154,21 @@
         }
         else
         {
-            var reportsToNobody = T["— reports to nobody —"];
+            @* D31: "nobody" is an ANSWER and has to be chosen, so it gets a value of its own and
+               the blank option goes back to meaning "unanswered". A post saved with this untouched
+               used to be read as top-of-the-line — a claim nobody had made — and in fact wrote no
+               reporting-line row at all, leaving the post off that axis entirely. *@
+            var reportsToNobody = T["— Reports to nobody (top of the reporting line) —"];
 
             <workmate-position-picker for="ReportsToRecordId" label="@T["Reports to"]"
                                       structure-id="@Model.ReportingStructureId"
                                       as-at="@Model.EffectiveFrom"
                                       date-field="record-create-effective-from"
                                       allow-none="true"
+                                      none-value="@ReportsToChoice.Nobody"
                                       none-label="@reportsToNobody" />
+
+            <span asp-validation-for="ReportsToRecordId" class="text-danger d-block mb-2"></span>
 
             <div class="form-text mb-3">
                 @T["Who this post answers to. A separate tree from the one above: the CEO reports to nobody and still sits in a unit."]

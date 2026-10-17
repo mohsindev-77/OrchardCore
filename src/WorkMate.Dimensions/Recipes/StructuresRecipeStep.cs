@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using OrchardCore.Recipes.Models;
 using OrchardCore.Recipes.Services;
 using WorkMate.Core;
@@ -25,14 +26,34 @@ namespace WorkMate.Dimensions.Recipes;
 /// name, levels in order, and the three flags — or fails the step, naming the code and what
 /// differs, if it does not.
 /// </remarks>
-internal sealed class StructuresRecipeStep : IRecipeStepHandler
+internal sealed partial class StructuresRecipeStep : IRecipeStepHandler
 {
     private const string StepName = "structures";
+
+    /// <summary>
+    /// Reported when an additive row asks for something the structure already permits.
+    /// </summary>
+    /// <remarks>
+    /// <b>Operator-facing, not user-facing, so not localised</b> — the same judgement
+    /// <c>LookupListsRecipeStep</c> and <c>SystemOperation</c> take. A log line is read by somebody
+    /// reviewing a run, in whatever language the host logs in.
+    ///
+    /// <b>Information rather than Warning</b>, because nothing is wrong: the row asked for a state
+    /// the structure is already in. It is logged at all because "the recipe did less than it says"
+    /// is worth being able to find afterwards.
+    /// </remarks>
+    [LoggerMessage(
+        EventId = 1300,
+        Level = LogLevel.Information,
+        Message = "Structure '{Code}' already places employees anywhere, so adding '{TypeCode}' to "
+            + "the types that may hold them is already satisfied and was skipped.")]
+    private partial void LogEmployeeAttachmentAlreadySatisfied(string code, string typeCode);
 
     private readonly IDimensionTypeService _dimensionTypeService;
     private readonly IStructureService _structureService;
     private readonly IDimensionValidator _validator;
     private readonly ISystemOperation _systemOperation;
+    private readonly ILogger<StructuresRecipeStep> _logger;
     private readonly IStringLocalizer S;
 
     public StructuresRecipeStep(
@@ -40,12 +61,14 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
         IStructureService structureService,
         IDimensionValidator validator,
         ISystemOperation systemOperation,
+        ILogger<StructuresRecipeStep> logger,
         IStringLocalizer<StructuresRecipeStep> stringLocalizer)
     {
         _dimensionTypeService = dimensionTypeService;
         _structureService = structureService;
         _validator = validator;
         _systemOperation = systemOperation;
+        _logger = logger;
         S = stringLocalizer;
     }
 
@@ -80,7 +103,11 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
                     // the same reason, as stating both allowSkipLevel and an explicit containment.
                     if (structure.LevelTypeCodes.Count > 0 || structure.StatesContainment ||
                         structure.EmployeeAttachableTypeCodes is not null ||
-                        structure.AllowSkipLevel is not null)
+                        structure.AllowSkipLevel is not null ||
+                        // Stating both the whole attachable set and an addition to it is the same
+                        // contradiction one key down: two answers to one question.
+                        (structure.AddEmployeeAttachableTypeCodes.Count > 0 &&
+                            structure.EmployeeAttachableTypeCodes is not null))
                     {
                         errors.Add(S["Structure '{0}' states both what to add and what the structure is. An additive row says only what to add; use one form or the other.", structure.Code].Value);
 
@@ -579,6 +606,50 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             }
         }
 
+        var attachable = existing.EmployeeAttachableDimensionTypeIds.ToList();
+
+        foreach (var typeCode in structure.AddEmployeeAttachableTypeCodes)
+        {
+            var type = await _dimensionTypeService.GetByCodeAsync(typeCode);
+
+            if (type is null)
+            {
+                errors.Add(S["Structure '{0}' adds '{1}' as holding employees, which does not exist.", structure.Code, typeCode].Value);
+
+                continue;
+            }
+
+            if (attachable.Count == 0)
+            {
+                // ALREADY SATISFIED, so there is nothing to do and nothing to complain about.
+                //
+                // An empty set means UNCONSTRAINED — StructureDocument.PermitsEmployeesAt returns
+                // true for every type against one — so this structure already permits what the row
+                // is asking for. Writing a one-item list would be the only way to "add" it, and
+                // that would NARROW the axis from "anything may hold employees" to "only this may":
+                // an additive row taking everything else away.
+                //
+                // So it is skipped. This refused the row until a tenant whose zenith-org placed
+                // employees anywhere met it, and refusing was the wrong call twice over: the goal
+                // was already met, and the recipe stopped over a difference that did not exist.
+                // Migrations.UpdateFrom14Async leaves an empty set alone for the same reason, and
+                // the two must agree or a tenant reaches a different place by upgrading than by
+                // being built.
+                //
+                // Logged rather than silent, because "the recipe did less than it says" is worth
+                // being able to find afterwards; Information rather than Warning, because nothing
+                // is wrong.
+                LogEmployeeAttachmentAlreadySatisfied(structure.Code, typeCode);
+
+                continue;
+            }
+
+            if (!attachable.Contains(type.DimensionTypeId, StringComparer.Ordinal))
+            {
+                attachable.Add(type.DimensionTypeId);
+            }
+        }
+
         if (errors.Count > 0)
         {
             return;
@@ -587,7 +658,8 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
         // Nothing to do. Asked before the write rather than left to the service, so a re-run is a
         // no-op in the audit trail as well as in the data.
         if (levels.Count == existing.DimensionTypeIds.Count &&
-            containment.Count == existing.Containment.Count)
+            containment.Count == existing.Containment.Count &&
+            attachable.Count == existing.EmployeeAttachableDimensionTypeIds.Count)
         {
             return;
         }
@@ -606,7 +678,7 @@ internal sealed class StructuresRecipeStep : IRecipeStepHandler
             new StructureShape(
                 existing.RootDimensionTypeIds,
                 containment,
-                existing.EmployeeAttachableDimensionTypeIds),
+                attachable),
             existing.ShortName);
 
         if (!added.Succeeded)
@@ -745,6 +817,42 @@ internal sealed class StructureStepEntry
     /// <inheritdoc cref="AddLevelTypeCodes" path="/remarks"/>
     public Dictionary<string, List<string>> AddContainment { get; set; } = [];
 
+    /// <summary>
+    /// Types to ADD to the set that may hold employees, leaving whatever is already there.
+    /// </summary>
+    /// <remarks>
+    /// <b>The one line slice F6 turns on</b> (ADR-0029, D26 H): a position becomes somewhere an
+    /// employee can be placed, which makes the pickers, the placement screens and the designer's
+    /// <em>Place an employee here…</em> offer it, because all three read
+    /// <c>StructureDocument.PermitsEmployeesAt</c> through one implementation.
+    ///
+    /// <b>Additive, like the two keys above it, and for a reason this key makes sharper.</b> The
+    /// describing form states the whole set, so a recipe that wanted to add Position would have to
+    /// restate the units a tenant has chosen — and get them wrong for any tenant that has changed
+    /// them. <c>Migrations.UpdateFrom14Async</c> does exactly this for a tenant that already exists;
+    /// this is how a tenant built fresh from the recipes arrives at the same place, which is the
+    /// property <c>DimensionsMigrationUpgradeTenantTests</c> exists to hold.
+    ///
+    /// <b>An empty set is already satisfied, and is skipped.</b> Empty means <em>unconstrained</em>
+    /// (<c>PermitsEmployeesAt</c> returns true for every type against one), so such a structure
+    /// already permits what the row asks for and there is nothing to add. Writing a one-item list
+    /// would be the only way to "add" it and would narrow the axis from "anything" to "only this" —
+    /// an additive row taking everything else away, which is the one thing this form promises never
+    /// to do. So the type is skipped, the set is left empty, and the step carries on.
+    ///
+    /// <b>It refused this case until a real tenant met it</b>, and refusing was wrong twice over:
+    /// the goal was already met, and the recipe stopped over a difference that did not exist.
+    /// <c>Migrations.UpdateFrom14Async</c> leaves an empty set alone for the same reason, and the
+    /// two have to agree or a tenant reaches a different place by upgrading than by being built.
+    ///
+    /// <b>An unknown type code is still refused</b>, because that is a row naming something that
+    /// does not exist rather than asking for something already true.
+    /// </remarks>
+    public List<string> AddEmployeeAttachableTypeCodes { get; set; } = [];
+
     /// <summary>Whether this row is the additive form rather than the describing one.</summary>
-    public bool IsAdditive => AddLevelTypeCodes.Count > 0 || AddContainment.Count > 0;
+    public bool IsAdditive =>
+        AddLevelTypeCodes.Count > 0 ||
+        AddContainment.Count > 0 ||
+        AddEmployeeAttachableTypeCodes.Count > 0;
 }

@@ -1,0 +1,27 @@
+{
+  "name": "WorkMate.Test.AdditiveUnknownAttachable",
+  "displayName": "TEST FIXTURE: an additive row naming a type that does not exist",
+  "$fixtureNotes": [
+    "NOT A SHIPPED RECIPE. One row, one mistake: addEmployeeAttachableTypeCodes names a dimension type code no tenant has.",
+    "It exists to hold the line between the two things an additive row can meet. A type that is ALREADY permitted — because the structure's attachable set is empty and therefore unconstrained — is already satisfied and is skipped. A type that DOES NOT EXIST is a row naming something that is not there, and is refused by name.",
+    "Those two were once the same branch, and the wrong half won: a real tenant whose zenith-org placed employees anywhere had the positions recipe refused on 15 October. Keeping the refusal tested is what stops the fix going too far the other way and swallowing a typo."
+  ],
+  "description": "TEST DATA — applies to a tenant that already has zenith-org, and must fail naming the type code.",
+  "author": "Aramis Enterprise Solutions",
+  "version": "0.1.0",
+  "issetuprecipe": false,
+  "categories": ["workmate", "test"],
+  "tags": ["workmate", "test-data"],
+
+  "steps": [
+    {
+      "name": "structures",
+      "structures": [
+        {
+          "code": "zenith-org",
+          "addEmployeeAttachableTypeCodes": ["zenith-no-such-type"]
+        }
+      ]
+    }
+  ]
+}

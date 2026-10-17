@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -153,9 +154,15 @@ public sealed class EmployeePickerSelectionBrowserTests
         await page.ClickAsync("#employee-placement-link");
         await page.ClickAsync("a[href*='Placement/Place']");
 
-        await page.SelectOptionAsync(
-            "#employee-place select[name='StructureId']",
-            new SelectOptionValue { Label = "Zenith Engineering & Construction (zenith-org)" });
+        // NO STRUCTURE TO CHOOSE. This tenant loads Zenith and its people and nothing else, so
+        // zenith-org is the only axis an employee can join on — and since F6b the screen settles a
+        // single axis itself instead of rendering a drop-down with one option in it. The chooser
+        // appears again the moment a tenant has two, which
+        // PlacementThroughPositionsBrowserTests.ChangingTheStructureRedrawsWithoutAValidationError
+        // holds on a tenant that does.
+        //
+        // This tenant has no positions either, so D30 does not apply to it and the unit picker
+        // below is still the right question.
 
         // Finance, which sits under Corporate. Deliberately not a unit under Engineering Division:
         // another test asserts that division's exact headcount with sub-units included, and placing
@@ -247,6 +254,67 @@ public sealed class EmployeePickerSelectionBrowserTests
 
         await Assertions.Expect(Picker(page).Locator("label.form-label"))
             .ToHaveTextAsync("Head of this unit");
+    }
+
+    /// <summary>
+    /// The Place screen's employee picker offers everyone A–Z, and its search reaches people the
+    /// first page never shows.
+    /// </summary>
+    /// <remarks>
+    /// <b>The first page is a page, not the list.</b> The control renders twenty options so the
+    /// form works with no script at all, and on this tenant — 158 people — that is an eighth of
+    /// them. A reader who could only ever choose from those twenty would find most of their
+    /// colleagues simply absent, with nothing on the screen to say they existed; the same defect
+    /// the unit picker had when it was a flat <c>&lt;select&gt;</c>.
+    ///
+    /// <b>A–Z matters because of what the twenty are.</b> Unordered, "the first twenty" is whatever
+    /// the index happened to return, so the same reader would see a different arbitrary twenty on
+    /// another day. Ordered, the first page is an answerable question — the start of the alphabet —
+    /// and the search is how you get anywhere else.
+    ///
+    /// <b>Zubair Yousafzai is chosen deliberately</b>: last of 158 by name, so he is certainly not
+    /// on the first page. The test asserts his absence from it before searching, so it fails loudly
+    /// rather than passing vacuously if the population ever changes.
+    /// </remarks>
+    [Fact]
+    public async Task ThePlacePickerListsEveryoneAToZAndSearchReachesBeyondTheFirstPage()
+    {
+        await using var context = await _tenant.SignedInContextAsync();
+        var page = await context.NewPageAsync();
+
+        // Arriving with nobody chosen, which is how the screen opens from a unit's card.
+        await page.GotoAsync("/Admin/Employees/Placement/Place");
+
+        await Assertions.Expect(Picker(page)).ToBeVisibleAsync();
+
+        // Read from the <select>, because the <select> is the form control: the script hides it and
+        // drives it, so what it holds is what would be posted with or without the script.
+        var offered = await page.EvaluateAsync<string[]>(
+            """
+            () => [...document.querySelectorAll('select[data-employee-picker] option')]
+                .map(option => option.textContent.trim())
+                .filter(text => text.length > 0)
+            """);
+
+        offered.Should().HaveCountGreaterThan(1, "the first page is a page of people");
+
+        var names = offered.Select(NameIn).ToList();
+
+        names.Should().BeInAscendingOrder(
+            StringComparer.CurrentCultureIgnoreCase,
+            "A–Z: unordered, 'the first twenty' is whatever the index happened to return");
+
+        names.Should().NotContain(
+            "Zubair Yousafzai",
+            "he sorts last of 158, so if he is on the first page this test is no longer testing "
+            + "anything and should be given somebody who is not");
+
+        // And the search reaches him, by code, which is what a reader types when a name is common.
+        var chosen = await SelectWithMouseAsync(page, "zenith-tech-ew-18");
+
+        NameIn(chosen).Should().Be("Zubair Yousafzai");
+
+        await AssertChosenAsync(page, chosen);
     }
 
     // ---- the two ways of selecting -----------------------------------------------------------

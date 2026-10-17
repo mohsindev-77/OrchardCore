@@ -154,6 +154,17 @@ public sealed class DimensionRecordDetailsViewModel
     public IReadOnlyList<PositionHolderViewModel> Holders { get; set; } = [];
 
     /// <summary>
+    /// How many hold it in total, which is not <c>Holders.Count</c> on a post with more than a
+    /// page of them.
+    /// </summary>
+    /// <remarks>
+    /// <em>Labourer</em> has an approved headcount of 44 in the brief's own example and a real one
+    /// could have hundreds, so the list is paged and says so rather than quietly showing the first
+    /// fifty — the same judgement the value tree's truncation notice makes.
+    /// </remarks>
+    public int HoldersTotal { get; set; }
+
+    /// <summary>
     /// The posts between the top of the reporting line and this one, highest first. Empty for a
     /// position that reports to nobody, and on every other dimension.
     /// </summary>

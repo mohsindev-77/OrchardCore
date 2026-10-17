@@ -1,0 +1,59 @@
+@model ChangeGradeViewModel
+@*
+    An increment. Decision D26 G: the employee's grade is dated like every other fact about where
+    they sit, so this is a dated write rather than an edit — the row open today closes the day
+    before and a new one opens with the SAME position and the new grade.
+
+    Its own screen because it is its own change. A promotion is a new position; an increment is a
+    new grade within the one they hold, and one form for both would make somebody re-choose a
+    position they are not changing.
+*@
+<h1 id="change-grade-heading">@T["Change {0}'s grade", Model.Name]</h1>
+
+<p class="text-muted" id="change-grade-position">
+    @T["In {0}, which this does not change. Use Change position to move them to a different post.",
+        Model.PositionName ?? string.Empty]
+</p>
+
+<form method="post" asp-action="ChangeGrade" id="employee-change-grade">
+    <div asp-validation-summary="All" class="text-danger"></div>
+
+    <input type="hidden" asp-for="EmployeeId" />
+    <input type="hidden" asp-for="StructureId" />
+    <input type="hidden" asp-for="PositionRecordId" />
+    <input type="hidden" asp-for="CurrentFrom" />
+
+    @if (!string.IsNullOrEmpty(Model.CurrentGradeName))
+    {
+        <p id="change-grade-current">@T["Currently {0}.", Model.CurrentGradeName]</p>
+    }
+    else
+    {
+        @* A holder with no grade recorded — every row written before slice F6a is one, and
+           ADR-0029 makes that a permanent shape rather than a transitional one. *@
+        <p class="text-muted" id="change-grade-none">@T["No grade is recorded for them today."]</p>
+    }
+
+    <div class="mb-3" style="max-width: 16rem;">
+        <label class="form-label" asp-for="EffectiveFrom">@T["Effective from"]</label>
+        <input class="form-control" asp-for="EffectiveFrom" type="date" id="change-grade-effective-from" required />
+        <div class="form-text">
+            @T["The row they are on closes the day before, so the history reads as two periods rather than one overwritten one."]
+        </div>
+    </div>
+
+    @{ var gradeHint = T["Only the grades this position carries as its levels. Removing one from the position never changes the grade of anybody already on it."].Value; }
+    <workmate-grade-picker for="GradeRecordId" label="@T["New grade"]"
+                           position-field="PositionRecordId"
+                           position-id="@Model.PositionRecordId"
+                           as-at="@Model.EffectiveFrom"
+                           date-field="change-grade-effective-from"
+                           hint="@gradeHint" />
+
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary" id="change-grade-submit">@T["Change grade"]</button>
+        <a class="btn btn-link" asp-action="Index" asp-route-id="@Model.EmployeeId">@T["Cancel"]</a>
+    </div>
+</form>
+
+<script asp-name="workmate-grade-picker" at="Foot"></script>

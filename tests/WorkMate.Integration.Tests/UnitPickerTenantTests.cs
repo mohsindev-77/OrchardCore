@@ -305,7 +305,14 @@ public sealed class UnitPickerTenantTests : IAsyncLifetime, IDisposable
             $"/Admin/Employees/Placement/Place?structureId={structureId}");
 
         page.Should().Contain("data-unit-picker-url", "the control is on the form");
-        page.Should().Contain("data-unit-picker-within", "and so is the scope filter it offers");
+
+        // The Within filter is OFF on every employee screen since slice F6b. It narrows a list of
+        // units, which earns its place on an admin screen about units and is a control nobody uses
+        // on a form about one person — and on a position-based axis there is no unit list left for
+        // it to narrow, so leaving it on this shape would mean the two placement screens disagreed
+        // about what controls an employee form has. It is still on the Positions and Units screens,
+        // which ThePositionsScreenKeepsTheWithinFilter holds.
+        page.Should().NotContain("data-unit-picker-within");
 
         // Read as a browser would, so the assertion is about what the option says rather than about
         // how the encoder spelled a chevron.
@@ -324,6 +331,44 @@ public sealed class UnitPickerTenantTests : IAsyncLifetime, IDisposable
         options.Should().Contain(
             text => text.Contains(WorkMate.Dimensions.ViewModels.BilingualDisplay.PathSeparator, StringComparison.Ordinal),
             "the path is drawn with the separator the control and the search agree on");
+    }
+
+    /// <summary>
+    /// The Within filter survives where it earns its place: an admin screen about units.
+    /// </summary>
+    /// <remarks>
+    /// The other half of slice F6b's item 8. Removing a control everywhere is easy and usually
+    /// wrong; what was decided is that it belongs on a screen whose job is to narrow a list of
+    /// units and not on a form about one person. Without this test, "removed from employee screens"
+    /// and "removed" are indistinguishable the next time somebody tidies up.
+    ///
+    /// <b>Two different controls share the word "Within", and only one of them is this one.</b> The
+    /// records list's filter <em>is</em> a unit picker bound to <c>Within</c> — the whole control,
+    /// which is why it carries <c>allow-within="false"</c>: you do not narrow the narrower. The
+    /// marker <c>data-unit-picker-within</c> is the <em>nested</em> scope select a picker renders
+    /// inside itself, which is what the employee screens switched off and what
+    /// <see cref="ThePlaceScreenRendersThePickerWithPathsAndTheWithinFilter"/> holds absent.
+    /// Asserting the nested marker here would pass only if this screen grew a control it has never
+    /// had.
+    /// </remarks>
+    [Fact]
+    public async Task ThePositionsScreenKeepsTheWithinFilter()
+    {
+        var typeId = string.Empty;
+
+        await InTenantAsync(async services =>
+        {
+            typeId = (await services.GetRequiredService<IDimensionTypeService>()
+                .GetByCodeAsync("crescent-department"))!.DimensionTypeId;
+        });
+
+        var page = await _tenant.Administrator.GetStringAsync(
+            $"/Admin/Dimensions/Records/Index?dimensionTypeId={typeId}");
+
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(page);
+
+        document.QuerySelector("select[data-unit-picker]#Within")
+            .Should().NotBeNull("narrowing a list of units is exactly what this screen's filter is for");
     }
 
     // ---- harness ---------------------------------------------------------------------------

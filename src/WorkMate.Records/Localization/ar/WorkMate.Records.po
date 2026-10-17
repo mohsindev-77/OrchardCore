@@ -1289,9 +1289,12 @@ msgstr "تعذّر تحميل قوائم الاختيار القياسية لأ�
 msgid "Sections: {0}"
 msgstr "الأقسام: {0}"
 
+#. Said about what a section IS, not about which six there are: the form designer publishes more
+#. in B3 and a sentence naming the six would then be a wrong statement above the right editor.
+#. Shared by the sections editor and the employee page, which is why it carries no screen name.
 #: WorkMate.Records.Views.EmployeeSectionsAdmin.Edit
-msgid "Job details, documents, bank details, qualifications, dependants and contacts. Each is a list of rows kept over time, so earlier rows stay readable: add a new row when something changes rather than editing the one that was true before."
-msgstr "تفاصيل الوظيفة والمستندات والتفاصيل المصرفية والمؤهلات والمعالين وجهات الاتصال. كل قسم قائمة صفوف محفوظة عبر الزمن، فتبقى الصفوف السابقة مقروءة: أضف صفًا جديدًا عند تغيّر شيء بدلًا من تعديل الصف الذي كان صحيحًا من قبل."
+msgid "Each section is a list of rows kept over time, so earlier rows stay readable: add a new row when something changes rather than editing the one that was true before."
+msgstr "كل قسم قائمة صفوف محفوظة عبر الزمن، فتبقى الصفوف السابقة مقروءة: أضف صفًا جديدًا عند تغيّر شيء بدلًا من تعديل الصف الذي كان صحيحًا من قبل."
 
 #: WorkMate.Records.Views.EmployeeSectionsAdmin.Edit
 msgid "Back to the employee"
@@ -1357,6 +1360,303 @@ msgstr "العناوين وأرقام الهاتف والشخص الذي يُت�
 msgid "Rows kept on this employee record."
 msgstr "صفوف محفوظة في سجل هذا الموظف."
 
-#: WorkMate.Records.Views.EmployeesAdmin.Edit
-msgid "Job details, documents, bank details, qualifications, dependants and contacts are lists on this employee, each a set of rows kept over time."
-msgstr "تفاصيل الوظيفة والمستندات والتفاصيل المصرفية والمؤهلات والمعالون وجهات الاتصال قوائم على سجل هذا الموظف، كل منها مجموعة صفوف محفوظة عبر الزمن."
+#. ---- Slice F6b: an employee joins the organisation only through a position (D30, ADR-0030) ----
+#. The Placement screen stops asking which unit and starts asking which position. The organisation
+#. chain is computed from where that position sits and is stored nowhere, so it is rendered as a
+#. fact rather than a field.
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Job and organisation"
+msgstr "الوظيفة والهيكل التنظيمي"
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Their department, division and company follow from where this position sits. Nothing else to choose."
+msgstr "تتبع إدارتهم وقطاعهم وشركتهم من موقع هذا المنصب. لا شيء آخر للاختيار."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Only the grades this position carries as its levels."
+msgstr "فقط الدرجات التي يحملها هذا المنصب كمستويات له."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Choose a position."
+msgstr "اختر منصبًا."
+
+#: Views/EmployeePlacementAdmin/Place.cshtml
+msgid "Line manager"
+msgstr "المدير المباشر"
+
+#. The derived block, shown on four screens from one partial.
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Choose a position to see where it sits."
+msgstr "اختر منصبًا لمعرفة موقعه."
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "This position is not placed in the organisation yet, so nothing is derived from it."
+msgstr "هذا المنصب غير مُلحق بالهيكل التنظيمي بعد، فلا يُشتق منه شيء."
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "{0} (vacant)"
+msgstr "{0} (شاغر)"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "{0} ({1} holders)"
+msgstr "{0} ({1} شاغلين)"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "{0} approved"
+msgstr "{0} معتمد"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "{0} filled"
+msgstr "{0} مشغول"
+
+#. D26 F: a full position is offered with a warning and never withheld — refusing it would stop the
+#. product recording what an organisation has actually done.
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Already full — this would over-fill it"
+msgstr "مكتمل بالفعل — هذا سيتجاوز العدد المعتمد"
+
+#. ADR-0029's mid-migration state, made legible rather than hidden (D28 C).
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "No position yet — {0}."
+msgstr "لا يوجد منصب بعد — {0}."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "This placement is still valid and nothing has been lost. Choosing a position is what gives this person a derived department, grade and reporting line."
+msgstr "هذا الإلحاق ما زال صالحًا ولم يُفقد شيء. اختيار منصب هو ما يمنح هذا الشخص إدارةً ودرجةً وخط تبعية مشتقة."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Choose position"
+msgstr "اختر منصبًا"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Change position"
+msgstr "تغيير المنصب"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Change grade"
+msgstr "تغيير الدرجة"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "since {0}"
+msgstr "منذ {0}"
+
+#. The job history. Each row's organisation path is resolved as at that row's own start date.
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Job history"
+msgstr "السجل الوظيفي"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Nothing on record yet."
+msgstr "لا يوجد شيء مسجّل بعد."
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "No grade recorded"
+msgstr "لم تُسجَّل درجة"
+
+#. Changing a grade within the position somebody holds — an increment (D26 G).
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "Change {0}'s grade"
+msgstr "تغيير درجة {0}"
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "In {0}, which this does not change. Use Change position to move them to a different post."
+msgstr "في {0}، وهذا لا يغيّره. استخدم «تغيير المنصب» لنقلهم إلى منصب آخر."
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "Currently {0}."
+msgstr "حاليًا {0}."
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "No grade is recorded for them today."
+msgstr "لا توجد درجة مسجّلة لهم اليوم."
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "The row they are on closes the day before, so the history reads as two periods rather than one overwritten one."
+msgstr "يُغلق السطر الحالي في اليوم السابق، فيُقرأ السجل كفترتين بدل فترة واحدة مُستبدلة."
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "New grade"
+msgstr "الدرجة الجديدة"
+
+#: Views/EmployeePlacementAdmin/ChangeGrade.cshtml
+msgid "Only the grades this position carries as its levels. Removing one from the position never changes the grade of anybody already on it."
+msgstr "فقط الدرجات التي يحملها هذا المنصب كمستويات له. حذف إحداها من المنصب لا يغيّر أبدًا درجة من يشغله بالفعل."
+
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "{0} holds no position, so there is no grade to change."
+msgstr "لا يشغل {0} أي منصب، فلا توجد درجة لتغييرها."
+
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "This grade would start before the position they hold did, on {0}. Choose that date or later."
+msgstr "ستبدأ هذه الدرجة قبل بدء المنصب الذي يشغلونه في {0}. اختر ذلك التاريخ أو ما بعده."
+
+#: Controllers/EmployeePlacementAdminController.cs
+msgid "{0}'s grade was changed from {1}."
+msgstr "تم تغيير درجة {0} اعتبارًا من {1}."
+
+#. D26 I. A position carries no permissions, so nothing is changed here — somebody is told to look.
+
+#: Services/AccessRoleReminder.cs
+msgid "Position changed — review {0}'s access roles."
+msgstr "تغيّر المنصب — راجع أدوار الصلاحيات لـ {0}."
+
+#. Short labels shared by the derived block and the job history. Each has its own msgctxt where the
+#. bare word could collide: "Position" is the post (D26 A — Position = Designation = Job title),
+#. "Organisation" here is the derived chain rather than the demo-company column the dimension list
+#. uses it for.
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Position"
+msgstr "المنصب"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Organisation"
+msgstr "الهيكل التنظيمي"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Reports to"
+msgstr "يتبع"
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Headcount"
+msgstr "العدد"
+
+#: Views/EmployeePlacementAdmin/Index.cshtml
+msgid "Grade"
+msgstr "الدرجة"
+
+#. ---- Slice F6b item 1: the fixed "Job and organisation" block on Create and Edit ----
+#. The same block the Placement screen shows, on the two screens an employee record is made and
+#. read on. The strings below are the ones those two screens add; everything the block itself says
+#. is above, under _JobAndOrganisation, because one partial renders it on all of them.
+
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "Optional. Their department, division and company follow from where the position sits — nothing else to choose. Leave it blank and add one later from their record."
+msgstr "اختياري. يتبع قسمه وإدارته وشركته موقعَ المنصب — لا شيء آخر لاختياره. اتركه فارغًا وأضف منصبًا لاحقًا من سجله."
+
+#. D26 I: the reminder is raised before the save as well as after it, because the person filling
+#. this form is the one who would act on it.
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "A position carries no permissions by itself. Review this person's access roles after adding them."
+msgstr "لا يمنح المنصب أي صلاحيات بذاته. راجع أدوار الصلاحيات لهذا الشخص بعد إضافته."
+
+#: Controllers/EmployeesAdminController.cs
+msgid "Choose one of this position's own grades."
+msgstr "اختر إحدى درجات هذا المنصب."
+
+#: Controllers/EmployeesAdminController.cs
+msgid "{0} holds their position from {1}."
+msgstr "يشغل {0} منصبه اعتبارًا من {1}."
+
+#: Controllers/EmployeesAdminController.cs
+msgid "{0} was added but not placed. Choose a position from their record."
+msgstr "تمت إضافة {0} دون إلحاقه. اختر منصبًا من سجله."
+
+#. The employee page's copy of the block: its heading action, and the two states somebody can be
+#. in without holding a post. The second is ADR-0029's mid-migration state, which D28 C requires
+#. be made legible rather than hidden.
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "Change position or grade"
+msgstr "تغيير المنصب أو الدرجة"
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "No position assigned. This employee is placed directly in {0}."
+msgstr "لم يُسند أي منصب. هذا الموظف مُلحق مباشرةً بـ {0}."
+
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "This employee holds no position yet."
+msgstr "لا يشغل هذا الموظف أي منصب بعد."
+
+#. ---- Slice F6b item 9: the sections LOOP, which is never a list of six ----
+#: Views/EmployeesAdmin/Edit.cshtml
+msgid "This employee record has no sections."
+msgstr "لا توجد أقسام في سجل هذا الموظف."
+
+#. The position picker's empty option, relabelled for this screen. The control's own default is
+#. "— reports to nobody —", which is right where it was built (a position's own Reports to) and
+#. nonsense on a form asking which post somebody holds.
+#: Views/EmployeesAdmin/Create.cshtml
+msgid "— no position yet —"
+msgstr "— لا يوجد منصب بعد —"
+
+#. ---- Slice F6b polish A: the line manager follows the position (D31) ----
+#. Four cases, one partial, shared by the Add-employee form and the Placement screen. D28 A still
+#. decides what may be derived — one holder is a fact, several is not — and D31 adds that the
+#. choice is constrained to those holders, with a labelled override for a dotted line.
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Follows the position."
+msgstr "يتبع المنصب."
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Choose…"
+msgstr "اختر…"
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "{0} is held by {1} people. Choose which of them this person answers to."
+msgstr "يشغل {0} عددُ {1} من الأشخاص. اختر من يتبعه هذا الشخص منهم."
+
+#. The override, and the label that keeps it from reading as the ordinary case.
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Change…"
+msgstr "تغيير…"
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Differs from the position's reporting line."
+msgstr "يختلف عن خط تبعية المنصب."
+
+#: Controllers/EmployeesAdminController.cs
+msgid "Choose one of the people who hold {0}, or use Change to name somebody else."
+msgstr "اختر أحد شاغلي {0}، أو استخدم «تغيير» لتسمية شخص آخر."
+
+#. ---- F6b polish 2: Reports to and Line manager are ONE row (D31 addendum) ----
+#. The row names the post above and its state, then whoever answers for it. "Vacant" is not
+#. "answers to nobody": while a manager's chair is empty the people under it answer to whoever is
+#. above the gap, and the screen used to say they answered to no one.
+
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "Nobody — top of the reporting line"
+msgstr "لا أحد — أعلى خط التبعية"
+
+#. The post first, then the person: the post is the fact and the person answers for it.
+#: Views/Shared/_JobAndOrganisation.cshtml
+msgid "{0} — {1} (line manager)"
+msgstr "{0} — {1} (المدير المباشر)"
+
+#. The acting manager: somebody holding a post ABOVE the vacant one, labelled with the post they
+#. actually hold so a manager two levels up never appears unexplained.
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "{0} — acting ({1})"
+msgstr "{0} — بالإنابة ({1})"
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "{0} is vacant. Choose which holder of {1} is acting."
+msgstr "{0} شاغر. اختر من يتولى الإنابة من شاغلي {1}."
+
+#. The honest end of the walk up the line: the posts exist and are empty, which is a different
+#. statement from "answers to no one" and is one somebody can act on.
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "No one above holds a post yet"
+msgstr "لا أحد في المناصب الأعلى حتى الآن"
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Choose which of them this person answers to."
+msgstr "اختر من يتبعه هذا الشخص منهم."
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "No line manager chosen"
+msgstr "لم يُختر مدير مباشر"
+
+#. ---- D31 addendum 2: a stored choice whose person has left the post it was made from ----
+#. Never silently replaced: picking another holder would be the product inventing a line manager,
+#. which is what D28 A refuses. The person is named, what changed is said, and the question asked
+#. again.
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "Needs a new line manager — {0} no longer holds {1}"
+msgstr "يلزم تعيين مدير مباشر جديد — لم يعد {0} يشغل {1}"

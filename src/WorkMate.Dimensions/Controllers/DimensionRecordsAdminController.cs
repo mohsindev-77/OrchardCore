@@ -68,6 +68,9 @@ public sealed class DimensionRecordsAdminController : Controller
     /// </summary>
     private readonly IPositionService _positions;
 
+    /// <summary>The authority on what a position may say it reports to. D31.</summary>
+    private readonly IDimensionValidator _validator;
+
     private readonly IEnumerable<IEmployeeLookup> _employeeLookups;
     private readonly IDimensionAuthorisation _authorisation;
     private readonly IAuthorizationService _authorizationService;
@@ -82,6 +85,7 @@ public sealed class DimensionRecordsAdminController : Controller
         IStructureService structures,
         IEmployeeAssignmentService assignments,
         IPositionService positions,
+        IDimensionValidator validator,
         IEnumerable<IEmployeeLookup> employeeLookups,
         IDimensionAuthorisation authorisation,
         IAuthorizationService authorizationService,
@@ -95,6 +99,7 @@ public sealed class DimensionRecordsAdminController : Controller
         _structures = structures;
         _assignments = assignments;
         _positions = positions;
+        _validator = validator;
         _employeeLookups = employeeLookups;
         _authorisation = authorisation;
         _authorizationService = authorizationService;
@@ -868,9 +873,63 @@ public sealed class DimensionRecordsAdminController : Controller
                         BilingualDisplay.Name(grade.NameEn, grade.NameAr),
                         UnitName: string.Empty)),
             ];
+
+            await FillHoldersAsync(model, record.RecordId, date, cancellationToken);
         }
 
         return View(model);
+    }
+
+    /// <summary>
+    /// Who holds this position today: the employee, the grade and the day they took it.
+    /// Decisions D26 D and D26 E.
+    /// </summary>
+    /// <remarks>
+    /// <b>Three batched reads, whatever the headcount.</b> One holder read, one batched employee
+    /// lookup across the module boundary, and one batched grade read — never one query per holder,
+    /// which is the rule every read on this page already follows. <em>Labourer</em> has an approved
+    /// headcount of 44 in the brief's own example.
+    ///
+    /// <b>An employee whose record will not resolve is still listed</b>, under their id. They hold
+    /// the post; the count on the Positions list already counts them, and a list that quietly
+    /// dropped them would disagree with it. That is the same judgement the designer card makes when
+    /// a head's name will not resolve.
+    /// </remarks>
+    private async Task FillHoldersAsync(
+        DimensionRecordDetailsViewModel model,
+        string positionRecordId,
+        DateOnly date,
+        CancellationToken cancellationToken)
+    {
+        var holders = await _positions.GetHoldersAsync(
+            positionRecordId, date, cancellationToken: cancellationToken);
+
+        if (holders.Items.Count == 0)
+        {
+            return;
+        }
+
+        var lookup = _employeeLookups.FirstOrDefault();
+
+        var people = lookup is null
+            ? new Dictionary<string, EmployeeRef>(StringComparer.Ordinal)
+            : await lookup.GetManyAsync(
+                [.. holders.Items.Select(holder => holder.EmployeeId)], cancellationToken);
+
+        model.Holders =
+        [
+            .. holders.Items.Select(holder => new PositionHolderViewModel(
+                holder.EmployeeId,
+                people.TryGetValue(holder.EmployeeId, out var person)
+                    ? person.ForCulture()
+                    : holder.EmployeeId,
+                holder.Grade is { } grade
+                    ? BilingualDisplay.Name(grade.NameEn, grade.NameAr)
+                    : string.Empty,
+                holder.Since)),
+        ];
+
+        model.HoldersTotal = holders.Total;
     }
 
     /// <summary>One ancestor path, root first, as linked steps.</summary>
@@ -1539,6 +1598,38 @@ public sealed class DimensionRecordsAdminController : Controller
             return View(model);
         }
 
+        // D31: a position must say what it reports to, and "nobody" is one of the answers. Asked
+        // BEFORE the record is written, because a position created and then refused its reporting
+        // line is exactly the half-finished state AddUnitAsync's own remarks exist to avoid.
+        //
+        // The rule is the validator's, not this screen's, so the recipe and any later import refuse
+        // it in the same words — CLAUDE.md rule 5.
+        if (model.IsPosition)
+        {
+            var reportsTo = await _validator.ValidateReportsToAsync(
+                model.ReportingStructureId,
+                ReportsToChoice.IntentOf(model.ReportsToRecordId),
+                model.ReportsToRecordId,
+                effectiveFrom,
+                cancellationToken);
+
+            if (reportsTo.Any(error => !error.IsAdvisory))
+            {
+                AddErrors(reportsTo);
+
+                return View(model);
+            }
+
+            // A second post at the top of the line is advisory: unusual, worth naming, and an
+            // organisation entitled to have two. Carried past the write and raised with the
+            // success, so it reads as a remark rather than a failure.
+            foreach (var advisory in reportsTo)
+            {
+                await _notifier.WarningAsync(new LocalizedHtmlString(
+                    advisory.Message.Name, advisory.Message.Value));
+            }
+        }
+
         // The one write: the record and its dated link together, validated before either is
         // written. The same call the designer's Add unit screen makes.
         var result = await _records.AddUnitAsync(
@@ -1613,10 +1704,21 @@ public sealed class DimensionRecordsAdminController : Controller
         DateOnly effectiveFrom,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrEmpty(reportingStructureId) && !string.IsNullOrEmpty(reportsToRecordId))
+        // THE POSITION GOES ON THE REPORTING LINE EITHER WAY, which is the D31 fix. "Nobody" is a
+        // placement row with a null parent — exactly what the CEO has in the Zenith recipe — and
+        // not the absence of a row. Before this, choosing "reports to nobody" wrote nothing at all:
+        // the post was on that axis nowhere, so the reporting chart was quietly short a box and
+        // every position beneath it answered "top of the line".
+        var intent = ReportsToChoice.IntentOf(reportsToRecordId);
+
+        if (!string.IsNullOrEmpty(reportingStructureId) && intent != ReportsToIntent.Unstated)
         {
             var placed = await _graph.PlaceAsync(
-                reportingStructureId, recordId, reportsToRecordId, effectiveFrom, cancellationToken);
+                reportingStructureId,
+                recordId,
+                intent == ReportsToIntent.Top ? null : reportsToRecordId,
+                effectiveFrom,
+                cancellationToken);
 
             if (!placed.Succeeded)
             {
@@ -1921,6 +2023,68 @@ public sealed class DimensionRecordsAdminController : Controller
         });
     }
 
+    /// <summary>
+    /// Where a position sits on the reporting line today, for the Edit form to show. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// Read rather than offered. Changing it is a reparenting on a second axis — a dated move with
+    /// its own permission and dry run — and the Edit form has neither a date for it nor
+    /// <c>MoveDimensionRecords</c>; the designer, opened on the reporting line, is where that move
+    /// already lives.
+    ///
+    /// Asked across every reporting axis the tenant has, not just <c>base</c>'s, for the reason
+    /// <see cref="IPositionService.GetReportingAxesAsync"/> gives: the demo tenant has Zenith's as
+    /// well, and a read that asked only the shipped one answered "top of the line" for every post
+    /// in the company.
+    /// </remarks>
+    private async Task FillReportsToAsync(
+        DimensionRecordEditViewModel model,
+        string recordId,
+        CancellationToken cancellationToken)
+    {
+        var today = await _authorisation.TodayAsync();
+
+        foreach (var axis in await _positions.GetReportingAxesAsync(cancellationToken))
+        {
+            model.ReportingStructureId ??= axis.StructureId;
+
+            var ancestors = await _graph.GetAncestorsAsync(
+                axis.StructureId, recordId, today, cancellationToken);
+
+            // Ancestors come root-first, so the post directly above is the last of them. An empty
+            // list is ambiguous on its own — it means both "top of this line" and "not on this
+            // line" — so membership is settled separately, below.
+            if (ancestors.Count > 0)
+            {
+                model.IsOnTheReportingLine = true;
+                model.ReportsToName = BilingualDisplay.Name(
+                    ancestors[^1].NameEn, ancestors[^1].NameAr);
+                model.ReportingStructureId = axis.StructureId;
+
+                return;
+            }
+
+            // No ancestors is ambiguous on its own — it means both "the top of this line" and "not
+            // on this line at all" — and the whole point of showing this is to tell those apart.
+            // The roots of the axis settle it: a top-of-line post is one of them, and a post that
+            // was never placed is nowhere.
+            //
+            // GetAncestorPathsAsync looked like the natural read and is not: it answers for every
+            // id it is given, so an absent record came back as a root and every unplaced post read
+            // as the top of the line.
+            var roots = await _graph.GetRootsAsync(axis.StructureId, today, cancellationToken);
+
+            if (roots.Any(root => string.Equals(root.RecordId, recordId, StringComparison.Ordinal)))
+            {
+                model.IsOnTheReportingLine = true;
+                model.ReportsToName = null;
+                model.ReportingStructureId = axis.StructureId;
+
+                return;
+            }
+        }
+    }
+
     private async Task<IActionResult?> PrepareEditAsync(
         DimensionRecordEditViewModel model,
         DimensionNodeRef record,
@@ -1952,6 +2116,8 @@ public sealed class DimensionRecordsAdminController : Controller
                 asAt: null, cancellationToken);
 
             model.CurrentAllowedGradeRecordIds = [.. allowed.Select(grade => grade.RecordId)];
+
+            await FillReportsToAsync(model, record.RecordId, cancellationToken);
 
             // A freshly opened form shows what is stored; a post shows what was posted, including
             // the empty set. The two are told apart by the hidden empty value the Edit form renders

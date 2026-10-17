@@ -47,5 +47,6 @@ public sealed record DimensionError(
     public bool IsAdvisory =>
         Rule is DimensionRule.ParentNotEffectiveWhenChildIs
             or DimensionRule.ParentTypeNotDeclared
-            or DimensionRule.EmployeeAtContainerUnit;
+            or DimensionRule.EmployeeAtContainerUnit
+            or DimensionRule.SecondTopOfReportingLine;
 }

@@ -103,6 +103,46 @@ public sealed class PositionPickerTagHelper : TagHelper
     [HtmlAttributeName("none-label")]
     public object? NoneLabel { get; set; }
 
+    /// <summary>
+    /// The value the "nobody" option posts, when "nobody" must be <em>chosen</em> rather than
+    /// merely left alone.
+    /// </summary>
+    /// <remarks>
+    /// <b>Empty by default, which conflates two different answers on purpose and has to stop where
+    /// a choice is required.</b> Ordinarily the empty option is both "I have not chosen" and
+    /// "nobody" — fine on a form where leaving it blank is a legitimate answer, as it is for an
+    /// employee's optional position.
+    ///
+    /// It is not fine on a position's <em>Reports to</em>: a post saved with it untouched was being
+    /// read as "top of the reporting line", which is a claim nobody made, and in fact wrote no
+    /// reporting-line row at all. Giving "nobody" a value of its own separates the two, so the
+    /// empty option can go back to meaning "unanswered" and the server can refuse it.
+    ///
+    /// Set it and the control renders a <em>Choose…</em> prompt at <c>value=""</c>, then the
+    /// "nobody" option at this value, then the positions.
+    /// </remarks>
+    [HtmlAttributeName("none-value")]
+    public string? NoneValue { get; set; }
+
+    /// <summary>
+    /// Whether choosing a position should redraw the form it sits on. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>For a form that derives something from the choice.</b> The employee forms show the
+    /// organisation chain and the line manager, both computed on the server from the position —
+    /// so until the form goes back to the server they describe the <em>previous</em> position, and
+    /// a reader choosing a different post watched the block below it stay wrong.
+    ///
+    /// The redraw is the same <c>IsRefresh</c> round trip the structure chooser takes: it is
+    /// navigation, validates nothing, and the flag is found by its <c>data-refresh-flag</c>
+    /// attribute so one control works on forms whose own flags are named differently.
+    ///
+    /// <b>Off by default</b>, because the position's own Add form derives nothing from this control
+    /// and a round trip there would cost a reader their place for no gain.
+    /// </remarks>
+    [HtmlAttributeName("refresh-on-change")]
+    public bool RefreshOnChange { get; set; }
+
     /// <summary>The label. Already localised by the caller — see <see cref="TagHelperLabel"/>.</summary>
     public object? Label { get; set; }
 
@@ -135,7 +175,12 @@ public sealed class PositionPickerTagHelper : TagHelper
 
         // The stored value may not be on the first page, and a control that silently dropped it
         // would change the row the next time anybody saved the form.
+        //
+        // The "nobody" sentinel is excluded: it is a choice, not a record id, so looking it up
+        // would find nothing and the control would report the operator's own answer back to them
+        // as "a position that is not active on that date".
         var missing = !string.IsNullOrEmpty(selected) &&
+            !string.Equals(selected, NoneValue, StringComparison.Ordinal) &&
             !options.Any(option => string.Equals(option.Position.RecordId, selected, StringComparison.Ordinal));
 
         var markup = new StringBuilder();
@@ -147,11 +192,31 @@ public sealed class PositionPickerTagHelper : TagHelper
 
         markup.Append(
             CultureInfo.InvariantCulture,
-            $"<select class=\"form-select\" id=\"{id}\" name=\"{name}\" data-position-picker>");
+            $"<select class=\"form-select\" id=\"{id}\" name=\"{name}\" data-position-picker{RefreshAttribute()}>");
 
-        var prompt = AllowNone ? NoneText() : Encode(S["Choose a position…"].Value);
+        // Three shapes, and the third is the one a required choice needs.
+        //
+        //   none-value unset, allow-none      → one empty option reading "nobody": blank IS nobody
+        //   none-value unset, !allow-none     → one empty option reading "Choose…": blank is unanswered
+        //   none-value set                    → "Choose…" at blank, THEN "nobody" at its own value
+        //
+        // The third keeps "unanswered" and "nobody" apart, which is what lets the server refuse the
+        // first while accepting the second.
+        if (string.IsNullOrEmpty(NoneValue))
+        {
+            var prompt = AllowNone ? NoneText() : Encode(S["Choose a position…"].Value);
 
-        markup.Append(CultureInfo.InvariantCulture, $"<option value=\"\">{prompt}</option>");
+            markup.Append(CultureInfo.InvariantCulture, $"<option value=\"\">{prompt}</option>");
+        }
+        else
+        {
+            markup.Append(
+                CultureInfo.InvariantCulture,
+                $"<option value=\"\">{Encode(S["Choose…"].Value)}</option>"
+                + $"<option value=\"{Encode(NoneValue)}\""
+                + $"{(string.Equals(selected, NoneValue, StringComparison.Ordinal) ? " selected" : string.Empty)}>"
+                + $"{NoneText()}</option>");
+        }
 
         if (missing && await _records.GetAsync(selected, asAt) is { } current)
         {
@@ -254,6 +319,26 @@ public sealed class PositionPickerTagHelper : TagHelper
 
         return structure is null ? null : [.. structure.DimensionTypeIds];
     }
+
+    /// <summary>
+    /// The onchange that redraws the form, when the caller asked for one. Decision D31.
+    /// </summary>
+    /// <remarks>
+    /// Marked with <c>data-position-picker-refreshes</c> as well, so the picker's own script knows
+    /// the control it enhances will navigate and a test can assert the behaviour is switched on
+    /// without executing it.
+    /// </remarks>
+    private string RefreshAttribute() => RefreshOnChange
+        ? " data-position-picker-refreshes onchange=\""
+            // ONLY ON AN ACTUAL CHOICE. The combobox clears the select and fires change the moment
+            // somebody starts typing in the search box — workmate-picker.js does it so the posted
+            // value and the visible text can never disagree — so an unguarded handler submitted
+            // the form on the first keystroke and the control could not be used at all.
+            + "if(this.value){"
+            + "var f=document.querySelector('[data-refresh-flag]');"
+            + "if(f){f.value='true';}"
+            + "this.form.submit();}\""
+        : string.Empty;
 
     private string NoneText() =>
         TagHelperLabel.Html(NoneLabel) ?? Encode(S["— reports to nobody —"].Value);

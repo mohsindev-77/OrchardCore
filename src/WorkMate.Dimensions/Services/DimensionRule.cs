@@ -198,4 +198,69 @@ public enum DimensionRule
     /// is serialised into audit entries by number.
     /// </remarks>
     ReferenceNotPermitted,
+
+    /// <summary>
+    /// A position was written without saying what it reports to, on a tenant that has a reporting
+    /// line. Slice F6b, decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Silence is not an answer, and it used to be read as one.</b> A position saved with
+    /// <em>Reports to</em> untouched was taken to mean "top of the reporting line" — a claim nobody
+    /// had made — and in fact wrote no reporting-line row at all, so the post was on that axis
+    /// nowhere and every chart drawn from it was quietly short a box.
+    ///
+    /// <b>"Nobody" remains a real and legitimate answer</b>, and needs no new storage: it is a
+    /// placement row with a null parent, exactly what the CEO has in the Zenith recipe today. What
+    /// this rule refuses is the <em>absence of a statement</em>, which is why the recipe is
+    /// unaffected — all eight of its positions state their reporting line, the CEO's as
+    /// <c>"parentCode": null</c>.
+    ///
+    /// <b>Appended, never inserted</b>, for the reason <see cref="InvalidValue"/> gives: this enum
+    /// is serialised into audit entries by number.
+    /// </remarks>
+    ReportsToRequired,
+
+    /// <summary>
+    /// A position was put at the top of a reporting line that already has somebody there. Advisory.
+    /// Slice F6b, decision D31.
+    /// </summary>
+    /// <remarks>
+    /// <b>Worth saying and not worth refusing.</b> One top is the ordinary shape and two is usually
+    /// a mistake — but an organisation mid-handover, or one with joint chief executives, is
+    /// entitled to record what it actually has, and a rule that refused would be the engine
+    /// overruling a customer about their own company. So it names the post already there and lets
+    /// the save through, which is the same judgement
+    /// <see cref="EmployeeAtContainerUnit"/> makes.
+    ///
+    /// Its own rule rather than a flag on <see cref="ReportsToRequired"/>, because
+    /// <c>DimensionError.IsAdvisory</c> is derived from the rule on purpose: whether something
+    /// blocks is a property of the rule and must not be settable differently in two places.
+    ///
+    /// <b>Appended, never inserted</b>, for the reason <see cref="InvalidValue"/> gives.
+    /// </remarks>
+    SecondTopOfReportingLine,
+
+    /// <summary>
+    /// An employee was placed on a structure that is not somewhere people go at all — a reporting
+    /// line, or a grade ladder. Decision D30, "where the rule is applied".
+    /// </summary>
+    /// <remarks>
+    /// <b>Distinct from <see cref="UnitDoesNotHoldEmployees"/>, which is about the node.</b> That
+    /// rule answers "may a Department hold staff on this axis" and presumes the axis is a place.
+    /// This one answers whether the axis is a place at all, and the difference is not pedantic: on
+    /// a reporting line every node IS a position, so the node-level rules all said yes and the
+    /// write would have gone through. ADR-0028 makes the reporting line a position's second parent
+    /// axis — what a post answers to — and D26 C makes a grade a reference carried on the
+    /// assignment row (ADR-0026) rather than a node anybody is placed at.
+    ///
+    /// <b>Blocking, not advisory.</b> A placement here is not an unusual shape somebody might
+    /// legitimately mean — the way a departmental secretary under a container unit is. It would
+    /// roll employees up under grades, or under posts on an axis no headcount reads, and both
+    /// numbers would stay plausible while being wrong.
+    ///
+    /// <b>Nothing already written is touched.</b> ADR-0029: this runs on the write.
+    ///
+    /// <b>Appended, never inserted</b>, for the reason <see cref="InvalidValue"/> gives.
+    /// </remarks>
+    StructureDoesNotHoldEmployees,
 }

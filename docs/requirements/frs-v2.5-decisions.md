@@ -894,3 +894,547 @@ F5+F7 shipped Position and Grade because the slice needed them, and the other el
 2 have not shipped, so the ADR would be describing something that does not exist. It is owed by
 whichever slice ships the rest. **ADR-0026** is owed by **F6**, which is where the employee's dated
 grade and the unbinding of `GradeCode` land.
+
+---
+
+# D28 — F6 design review: employees join the organisation through a position
+
+Recorded 15 October 2026 by Mohsin Hasnain, answering the seven open questions in
+`docs/design/f6-employees-via-positions.md` §11.
+**Status: product owner decisions. Binding for slice F6.**
+
+## D28 A Reports to names a holder only when there is exactly one — and the line manager is seeded from it
+
+The proposal's rule is accepted: **Reports to** shows the *parent position* on the reporting line,
+and names the holder only when the position has exactly one. A vacant parent shows the position with
+**"(vacant)"**. **Several holders shows `Reports to: <position> (n holders)`.**
+
+Nothing guesses which of several holders somebody answers to. What the product does instead:
+
+- **One holder** → the employee's **Line manager** is **defaulted to that holder** when the position
+  is assigned. It is a default, not a derivation: the field stays editable and nothing overwrites a
+  value somebody has set.
+- **Several holders** → the Line manager picker **lists the parent position's current holders
+  first**, with everybody else still searchable below them. The product offers the likely answer
+  without asserting it.
+
+`EmployeePart.LineManagerEmployeeId` is the field; it already exists. **Reports to** and **Line
+manager** are two rows on the page, because they are two facts: one is about the post, one is about
+the person.
+
+## D28 B The employee's grade is a column on the assignment row
+
+Option (ii) of §2.4 is accepted: a **nullable `GradeRecordId` on the assignment row**, not a second
+assignment on the grades axis. The deciding argument is D26 C's — an assignment on the grades axis
+would put employees *under* grades in the closure index, which D26 C forbids in terms.
+
+Written up as **ADR-0026**, *accepted pending second review*.
+
+## D28 C Existing data: nothing moves
+
+Options **(a) + (c)** are accepted. The migration adds Position to the attachable types and **moves
+nobody**. Existing unit placements stay valid, as history and as the present; HR assigns positions
+going forward; the demo tenants get theirs through a **separate additive recipe**.
+
+Option (b) — a generated placeholder position per unit — is **rejected**: it writes dated rows about
+real people that nobody asked for, invents master data a tenant cannot delete (ADR-0016), and
+contradicts **D26 D**, since a placeholder per unit is a position per *unit* and is neither a job nor
+a post.
+
+Two things make the resulting mixed state liveable, and both are required:
+
+- a **"No position yet"** filter on the Employees list, so HR can work the backlog through;
+- a **one-sentence explanation on every affected employee's page** — *"No position assigned. This
+  employee is placed directly in &lt;unit&gt;."* — rather than an empty block.
+
+Written up as **ADR-0029**, *accepted pending second review*.
+
+## D28 D The organisation columns are the tenant's own dimensions
+
+Accepted as proposed. **One Organisation path column**, each step labelled with that ancestor's own
+dimension name, plus **optional per-dimension columns** a tenant turns on — the way the dimension
+list's attribute columns already work. Four fixed columns named Division / Department / Business unit
+/ Cost centre would be right for Zenith and wrong for Crescent, whose chart has Regions and Branches.
+
+## D28 E Sorting and filtering by Position or Grade is F6c
+
+Accepted. The columns ship unsorted in F6b; sort and filter land in **F6c**, with a decision then
+about whether they justify a denormalised column on `EmployeeIndex` — which would be derived data on
+an index and needs its own argument.
+
+## D28 F The job-title importer is not in F6
+
+Accepted. F6 ships only the **notice** — *"you have N distinct job titles and no positions"*. The
+profile / propose / dry run / apply importer **D22 step 4** describes is its own slice. What the
+right positions are is a business question and not a migration's to guess.
+
+## D28 G Session B resumes straight after F6
+
+Accepted. **B3 → B7 run after F6 and before F8/F9.** F6 is the slice that settles the shape of the
+employee record — fixed core, derived organisation, sections — and B3's compiler has to be written
+against a settled shape. F8 and F9 read that shape, so building them first would mean reading one
+that is about to change.
+
+---
+
+# D29 — Three engineering decisions accepted with D28
+
+Recorded 15 October 2026 by Mohsin Hasnain, with **D28**. **Status: product owner decisions.**
+
+## D29 A The ADR-0006 handler repair is pulled forward into F6
+
+`EmployeeHandler` lacks the `ActivatingAsync` repair `DimensionRecordHandler` carries. The form
+designer's own design (§5.2) flags it as a slice B3 task and names the failure: *a recipe can
+publish a form and then create employees in the same shell scope*, and `IContentManager.NewAsync`
+reads the **cached** definition, producing a content item with no parts welded that silently
+discards everything set on it.
+
+**F6 fixes it**, because F6 is the first slice with a recipe that creates employees in a scope where
+content definitions have just changed — so it is the first slice that can reproduce it. A silent,
+high-likelihood data-loss failure is not left on a later slice's list when an earlier slice can
+prove the fix.
+
+## D29 B Position, Grade and Reports to are forbidden on designer-added fields
+
+`EmployeeFieldNames.ForbiddenOnSections` already refuses `Department`, `Division`, `CostCentre`,
+`Unit` and friends on any section or form field, because the employee record holds no department by
+design. **F6 adds `Position`, `PositionCode`, `PositionId`, `Grade`, `GradeCode`, `GradeId` and
+`ReportsTo`** to that set, so a tenant cannot build a shadow copy of the facts this slice derives.
+
+The refusal **must say why**: *"Grade is part of the employee's position; see Placement"* rather
+than *"forbidden field name"*. A guard that refuses without explaining teaches somebody to work
+around it.
+
+## D29 C The organisation block is fixed core, and the section list stays a loop
+
+The derived block — Position, Grade, the unit ancestry, Reports to — is part of the **fixed core**
+and is rendered by the page's own shape. It is **not** a seventh entry in `EmployeeSections.All`,
+and nothing in F6 hard-codes the section list or its order.
+
+`EmployeeSections` already says why: *"these are the standard sections, not the only ones"*, and its
+stereotype exists *"so that a picker, a report or session B's designer can ask for 'an employee
+section' without a hard-coded list of six type names that would be wrong the moment a tenant adds a
+seventh."* Writing the organisation block as a section is the mistake B3 would then have to undo.
+
+The block is built **collapsible and first**, so slice B4's screen work does not have to restructure
+a page that is about to grow `EmployeeProfilePart` and designer-added sections beneath it.
+
+---
+
+# D30 — An employee joins the organisation only through a position
+
+Recorded 15 October 2026 by Mohsin Hasnain, with slice F6b.
+**Status: product owner decision. Binding.** Written up as **ADR-0030**.
+
+## The decision
+
+**An employee joins the organisation ONLY through a position.** The position's place in the
+organisation structure gives the employee their department, division, company and so on. **Nobody
+picks an organisation unit for an employee.** The organisation chain is **computed** from the
+position, never stored separately.
+
+This is **D2** and **D26 H** stated as a rule the product enforces rather than a shape it permits.
+D2 said employees *join the organisation by being assigned a position*; until now the engine also
+allowed them to be placed directly in a unit, and both were valid. D30 closes that: on a structure
+that has positions, a unit is not somewhere an employee goes.
+
+## How it reconciles with ADR-0029
+
+**It does not reopen ADR-0029, and the distinction is between a new placement and an existing one.**
+
+ADR-0029 decided that the F6 migration **moves nobody**: a tenant's existing unit placements stay
+valid, as history and as the present, and HR assigns positions going forward. That decision stands
+in full. D30 is a rule about what may be **written from now on**, not a judgement on what is
+already there.
+
+| | Existing unit placement | New placement |
+| --- | --- | --- |
+| On a structure **with** positions | **Kept.** Shown as *"No position yet — &lt;unit path&gt;"*, with a **Choose position** action | **Refused** on a non-position node, server-side |
+| On a structure **without** positions | Kept | Allowed, exactly as today |
+
+So the two decisions answer different questions and neither bends. ADR-0029 is why nothing moves;
+D30 is why nothing new arrives the old way. The gap between them — a tenant holding both shapes at
+once — is the state ADR-0029 already describes and the one the *"No position yet"* label exists to
+make legible. **F6d closes it** by moving the Zenith demo people onto positions, after which the
+recipe sets `zenith-org`'s employee-attachable set to positions only.
+
+## How it reconciles with D26 and D28
+
+**D26 H** is confirmed, not amended: *"Department, division, business unit and cost centre are
+derived from the Position's placement."* D30 adds that there is no longer another way to get them.
+
+**D26 B** is the reason this is safe to make exclusive: a Position carries no permissions, so
+routing everybody through one does not route anybody's access through one. The access-roles notice
+(D26 I) stays a reminder.
+
+**D28 D** already settled how the derived chain is shown: **the tenant's own dimension names**, one
+row per ancestor, never four hard-coded words. D30 makes that block the only answer rather than one
+of two, which is what lets it be rendered as a fact instead of a field.
+
+**D28 C's two liveability requirements become more important, not less.** The *"No position yet"*
+filter and the one-sentence explanation on an affected employee's page are what stop D30 reading as
+"the product has lost my data". They are required by D28 C and restated here.
+
+## Where the rule is applied
+
+D30 is one rule and it is read in one place — `IPositionService.PermitsEmployeesAtAsync`, which
+combines the structure's attachable set with this decision. Four callers resolve it there: the unit
+and position **pickers**, the **Place screen**, the organisation **designer's card menu**, and the
+**validator** on the write.
+
+The designer is the one that had to change in F6b and the reason is worth recording, because it is
+the shape of mistake this decision invites. A card asked `StructureDocument.PermitsEmployeesAt`,
+which knows the attachable set and nothing about what a Position is. ADR-0029 deliberately *keeps*
+departments in that set so existing rows stay valid — so a department's card went on offering
+**Place an employee here…**, the form opened, and the save came back *"choose a position instead"*.
+
+> On a structure that has positions, a unit or department card no longer offers the action; a
+> position's card offers it and opens the Place screen with that position already chosen. Nothing
+> else in the designer changes — the cards, the layout, the other menu entries, zoom and drag are
+> untouched. On a structure with no positions, nothing changes at all.
+
+### Addendum, slice F6b polish 3 — a reporting line and a grade ladder are not places
+
+**Date:** 17 October 2026. **Rests on:** ADR-0028, ADR-0026, D26 C.
+
+The rule above asks *"may an employee be attached at this node?"* and presumes the structure is
+somewhere people go. Two structures are not, and both got through:
+
+- **The reporting line**, which got through by being right about everything else. Every node on it
+  **is** a position, so the test "on an axis with positions, is this node a position?" answered
+  **yes** for every card. The Zenith reporting chart offered **Place an employee here…**, and the
+  old Place screen opened — headed *"Place an employee in CEO › Director Technology › Manager
+  Technology"*, with an allocation percentage and a **main placement** checkbox — for the axis
+  ADR-0028 makes a post's *answer-to* chain rather than anywhere somebody sits. The write would
+  have gone through.
+- **The grade ladder**, which got through by the opposite door: no Position level at all, so the
+  rule said nothing about it, and the attachable set — unconstrained, as any structure written
+  before these rules is — said yes. D26 C and ADR-0026 make a grade a reference **carried on the
+  placement row**, not a node anybody is placed at; an assignment here would roll employees up
+  under grades in the closure index.
+
+**The decision.** A structure employees may be placed on is one that is **neither**:
+
+| Shape | Not a place because |
+| --- | --- |
+| every level is a **Position** | it is a reporting line — what each post answers to (ADR-0028) |
+| every level is a **Grade** | it is a grade ladder — a grade is a reference, not a placement (D26 C) |
+| **no levels at all** | there is nowhere on it to put anybody |
+
+**Asked of the shape, never of the code or the name.** A tenant may rename anything and the demo
+tenants prefix everything, so a rule written against the word *"reporting"* would hold on the demo
+data and nowhere else.
+
+**Still one rule, read in one place.** The shape test is stated once and
+`IPositionService.PermitsEmployeesAtAsync` asks it first — so the **designer's card menu**, the
+**pickers** and the **Place screen** stop offering it — and `IDimensionValidator` asks the same
+question on the **write**, so the screen, the `employee-assignments` recipe step and any later
+import refuse it in the same words. A designer that merely stopped offering the action would leave
+the old shape reachable by every other route, which is exactly how it was reachable here.
+
+**Blocking, not advisory** (`DimensionRule.StructureDoesNotHoldEmployees`). This is not an unusual
+shape somebody might legitimately mean, the way a departmental secretary under a container unit is:
+the numbers it produces stay plausible while being wrong.
+
+**Nothing already written is touched.** ADR-0029: the rule runs on the write. An audit of the
+development tenant found **no** such placement to begin with — all 176 assignments are on
+`zenith-org`, and `zenith-reporting` and `zenith-grades` hold none.
+
+**An ordinary organisation axis is untouched**, including a position-based one: its levels are
+divisions and departments **and** positions, so neither test fires. A tenant with no positions is
+likewise unaffected.
+
+## What does not change
+
+- **Allocation and the main-placement flag stay in the model.** A second concurrent position — an
+  acting assignment, a secondment — is the matrix case `ReallocateAsync` already expresses (D26 H),
+  and D30 says nothing against it. What F6b does is **hide both controls on the ordinary screen**,
+  which always means main and 100 per cent. Building the second-position screen is a later slice.
+- **Unit heads are untouched.** ADR-0012 stands: a head appointment is its own dated record, carries
+  no allocation, is counted by no headcount, and the head need not be a member of the unit they
+  head. A head is still appointed at a **unit**, not at a position. **D11** moved *"should a head be
+  a position"* to prompt 5 and **ADR-0027 stays unwritten**.
+- **Tenants and structures with no positions keep today's screens exactly.** D30 is scoped to a
+  structure that has positions; a tenant that has not built any sees no change at all.
+
+---
+
+# D31 — The line manager follows the position, and a position must say what it reports to
+
+**Status: accepted.** Built in slice F6b polish.
+**Date:** 17 October 2026
+**Narrows:** D28 A. **Rests on:** D26 B, D26 D, D26 I, D28 A, D30, ADR-0005, ADR-0012, ADR-0028,
+ADR-0030.
+
+## The problem, in two halves
+
+**The employee form asked who somebody reports to twice.** A free *Line manager* picker listing
+every employee in the tenant A–Z sat **above** the *Job and organisation* block — which had just
+derived, from the chosen position's reporting line, who the post answers to. The two controls were
+unrelated, and the free one was the one people filled in. A record could therefore assert a line
+manager that the reporting line on the same screen contradicted, and nothing said so.
+
+**A position could be saved without saying what it reports to.** The *Reports to* control's empty
+option read *"— reports to nobody —"*, so a form nobody had touched looked like a deliberate claim
+to be the top of the reporting line. It was not even that: the save wrote **no reporting-line row at
+all**, so the post sat on that axis nowhere, every chart drawn from it was short a box, and every
+position beneath it answered *"top of the line"*.
+
+## The decision
+
+### A. The line manager follows the position
+
+It lives **inside** the block, after Position, Grade and *Reports to*, and is derived from the
+holders of the post above on the reporting line:
+
+| The post above | What the control does |
+| --- | --- |
+| exactly one holder | **shown, not asked** — *"<name> (<post>)"* |
+| several holders | a list of **those holders and nobody else**, and an answer is **required** |
+| vacant, or the top of the line | **no line manager**, and it says so |
+| no position chosen | hidden, with *"Follows the position."* |
+
+It **updates when the position changes**, which is a server redraw: the block is rendered from the
+chart, so following the position means a round trip. The picker asks for one when a position is
+chosen — and only then, never while somebody is typing in its search box.
+
+**This narrows D28 A** and is the reason D31 exists rather than being an implementation note. D28 A
+said that with several holders *"the picker lists them first and the operator chooses"* and that
+with none *"the field is left optional"*; it treated `LineManagerEmployeeId` as a free, independent
+fact beside *Reports to*. D31 constrains the list to those holders and requires an answer. What is
+**unchanged** is D28 A's core refusal: nothing picks between several holders, because any rule that
+chose would invent a line manager the customer never stated.
+
+**The override is what makes the constraint affordable.** A *Change…* link opens the any-employee
+picker for a dotted line, a matrix or a secondment — real arrangements a product that refused them
+would be refusing to record. It is labelled **"Differs from the position's reporting line"** on the
+form *and* on the employee's page, so an exception never reads as the ordinary case.
+
+**Storage is unchanged:** `EmployeePart.LineManagerEmployeeId`, exactly as before. Only which
+control writes it, and from what.
+
+> **A limitation stated rather than designed around.** `LineManagerEmployeeId` is **undated**. Every
+> other fact in the organisation block has an effective range; an override does not, so changing it
+> leaves no record of what it was and no way to ask who managed somebody last March. Dating it is a
+> model change and an ADR, and is **not** done here. F6b's brief asked this question directly and
+> this is the answer: there is no effective date, and none was invented.
+
+### B. A position must say what it reports to
+
+The control starts **unanswered** (*"Choose…"*), then offers **"— Reports to nobody (top of the
+reporting line) —"** as a value of its own, then the positions. Saving with nothing chosen is
+refused: *"Choose who this position reports to, or choose 'Reports to nobody' for the top of the
+reporting line."*
+
+**"Nobody" needs no new storage.** It is a placement row on the reporting-line axis with a null
+parent — exactly what the Zenith CEO has today. The three states live where they always did; what
+changes is that the form can no longer leave the question unanswered, and that choosing "nobody"
+now actually **writes the row** instead of writing nothing.
+
+**Choosing "nobody" when somebody is already there warns and saves**, naming the post already at the
+top. An organisation mid-handover, or one with joint chief executives, is entitled to record what it
+has — the same judgement D26 F makes about a full position. It is a separate rule
+(`SecondTopOfReportingLine`) because `DimensionError.IsAdvisory` is derived from the rule on
+purpose.
+
+**Enforced in the validator**, so the screen, the recipe and any later import refuse it in the same
+words (CLAUDE.md rule 5). **The shipped recipe is unaffected**: all eight Zenith positions already
+state their reporting line, the CEO's as `"parentCode": null` — which is the test of whether this is
+a rule about positions or merely a rule about a form.
+
+## What this does *not* do
+
+- **It does not add a Reports to control to the position's Edit form**, and that is deliberate.
+  *Reports to* **is a parent**, on a second axis: changing it is a reparenting, which is a dated
+  move under `MoveDimensionRecords` with its own dry run (ADR-0005) — which is precisely why the
+  organisation parent is not on that form either. Edit therefore **shows** the reporting line,
+  read-only, in three honest states — under a named post, at the top of the line, or **on the
+  reporting line nowhere** — and links to the organisation designer opened on that axis, where the
+  move already lives. The brief asked for the Edit control to preselect "nobody" for a parentless
+  position; that is answered by showing the state instead, because a control there would be an
+  undated reparent bypassing a permission.
+- **It does not change the organisation designer's layout**, its cards, its other menu entries, its
+  zoom or its drag.
+- **It moves nobody's data** and adds no migration.
+- **Tenants and structures with no positions keep today's behaviour exactly**: no reporting line to
+  follow means the free line-manager picker is not a second answer to a question already asked — it
+  is the only answer there is, and it stays.
+
+## D31 addendum — a vacant post above, and the one row
+
+**Status: accepted.** Built in slice F6b polish 2.
+**Date:** 17 October 2026
+**Amends:** D31 (the line manager half). **Rests on:** D28 A, D30.
+
+### The defect
+
+Add employee → Zenith → **Software Engineer**, whose post above is **Manager Technology**, which
+nobody holds. The screen said:
+
+> Nobody — this post answers to no one on the reporting line
+
+That is false. A Software Engineer under a vacant Manager Technology answers to the **Director
+above the gap** — which is how an organisation works while a manager's chair is empty. The sentence
+is true at the top of the reporting line and nowhere else, and D31 had one case covering both.
+
+**And it said it twice.** *Reports to* and *Line manager* rendered as two rows from two models, so
+they read as two independent facts and invited a reader to wonder how a post could report to one
+place and a person answer to another.
+
+### The decision
+
+**1. The two cases are split.** *Top of the line* and *the post above is vacant* are different
+facts and get different sentences. A post at the top reads **"Nobody — top of the reporting line"**;
+a vacant post above is named and marked **"(vacant)"**, which is something somebody can act on.
+
+**2. One row.** *Reports to* carries the post above, its state, and whoever answers for it:
+
+| Case | The row reads |
+| --- | --- |
+| one holder | **Manager Technology — Ali Khan (line manager)** |
+| several holders | **Site Supervisor (3 holders)**, with the required picker of only those holders |
+| vacant | **Manager Technology (vacant)**, with the acting manager below |
+| top of the line | **Nobody — top of the reporting line** |
+
+The *Change…* override link stays under that row, unchanged.
+
+**3. The acting line manager.** When the post above is vacant, the reporting line is walked
+**upwards** to the first post anybody holds.
+
+- **One holder** → that person, labelled **"acting (&lt;the post they hold&gt;)"**, so a manager two
+  levels up never appears unexplained.
+- **Several holders** → the picker of exactly those holders, labelled acting. D28 A's refusal to
+  pick survives the walk: nothing chooses between them.
+- **Nobody held all the way to the top** → no line manager, and the row says **"No one above holds
+  a post yet"** — the posts exist and are unfilled, which is a different statement from answering
+  to nobody and is the honest end of the walk.
+
+**Derived, never stored.** The walk is a read over the reporting line, recomputed on every render
+like the rest of the block. What is saved is what was always saved — the chosen or derived person
+in `LineManagerEmployeeId` — so an acting manager is a person on the record, not a second kind of
+fact the model has to carry. No migration, no new column.
+
+**4. All four screens show the same row** — Create, Change position, the employee page and the
+Placement screen — from one partial. The page's separate *Line manager* row is gone; it was the
+second place the wrong sentence lived.
+
+### What does not change
+
+- **D28 A still decides what may be derived**: one holder is a fact, several is not, and nothing
+  picks between them. The walk changes *whose* holders are offered, never whether one is chosen.
+- **Storage**: `LineManagerEmployeeId`, still undated. D31's limitation stands — an override, and
+  now an acting choice, is a present-tense fact with no history.
+- **Tenants with no positions** keep today's free line-manager field.
+
+## D31 addendum 2 — a derived line manager is never written down
+
+**Status: accepted.** Built in slice F6b polish 3.
+**Date:** 17 October 2026
+**Amends:** D31 and its first addendum (the line manager half). **Rests on:** D28 A, D30, ADR-0029.
+
+### The defect
+
+D31 and its first addendum derived the line manager correctly and then **saved the answer**.
+`LineManagerEmployeeId` was written on every create and every placement, in every case, and the
+read-only screens showed the saved value. A derivation that is written down is a derivation that
+has stopped happening:
+
+- **The post above changes hands.** Ali Khan leaves *Manager Technology*, Sara Noor takes it. Every
+  engineer under that post still reports to Ali Khan, for ever, on every screen.
+- **A vacant post above is filled.** The acting manager two levels up was saved while the chair was
+  empty. The chair is filled; the record still names the person who was standing in.
+
+Neither failure announces itself. There is no later moment at which anybody notices the value is
+no longer being recomputed.
+
+### The decision
+
+**1. Only a human's answer is stored.** Three cases, and nothing else:
+
+| Stored | When |
+| --- | --- |
+| **Chosen** | somebody picked among **several** holders of the post above |
+| **ChosenActing** | somebody picked among several **acting** holders, the post above being vacant |
+| **Override** | somebody pressed *Change…* and named a person off the reporting line |
+
+**One holder, and one acting holder, store nothing at all.** The chart already says who they are, so
+the record repeating it adds no information and subtracts correctness. They are derived on every
+read.
+
+**2. One read path.** `IEmployeeOrganisationService.GetLineManagerAsync(employeeId, asAt)` returns
+*who*, *on what footing*, and *why*. The Create form, the Edit form, the employee page, the
+Placement screen, the lists and any other module go through it. There is no second way to ask who
+manages somebody, because a second way is how two screens come to disagree about one person.
+
+The footings are `None`, `Stored`, `Derived`, `Acting`, `Chosen`, `ChosenActing`, `Override` and
+`NeedsChoice`. A stored value is shown as stored for the last four only.
+
+**3. What happens when a stored answer stops being true.**
+
+- **Chosen, and that person no longer holds the post above** (as at the date asked about) → the
+  screen reads **"Needs a new line manager — &lt;name&gt; no longer holds &lt;position&gt;"**, with the
+  picker of the current holders. **Never a silent fallback.** Picking another holder would be the
+  product inventing a line manager nobody stated, which is exactly what D28 A refuses; doing it
+  quietly would also hide that the record needs attention.
+- **ChosenActing, and the post above has been filled** → the acting arrangement is over. The stored
+  value is simply not obeyed, live derivation takes over, and the value is cleared on the next save.
+  Nothing is wrong and nobody needs telling: the real manager is back.
+- **Override** → stands through all of it, labelled **"Differs from the position's reporting line."**
+  A dotted line is deliberate and survives the post above changing hands, being filled or emptying.
+
+**Where the sentence appears, and where a picker appears instead.** The read-only screens — the
+employee page and the Placement screen — show the sentence, because they report what the record
+says. The *editable* forms (Add employee, Change position) ask the question fresh about the
+position being **considered**, which may not be the one held: a sentence there would name the post
+above a position the operator is in the middle of replacing. They show the required picker of the
+current holders, so neither screen falls back silently and neither invents an answer.
+
+**4. One stored value says which of the three it is.** `EmployeePart.LineManagerKind` — `None`,
+`Chosen`, `ChosenActing`, `Override` — and it is the one thing the chart cannot tell us. Once the
+post above moves, all three read as *not a holder*: a departed chosen holder, a stand-in whose
+chair has been refilled, and a deliberate dotted line are the same two bytes. The product must
+treat them three different ways — ask loudly, ignore quietly, leave alone — so the kind is written
+down when the form that knows it saves.
+
+It costs no migration: `EmployeePart` is JSON-serialised inside the content item, so pre-addendum
+data deserialises as `None` and is read by comparing the stored person with the holders — which is
+right for everything the migration keeps. It is deliberately **not** on `EmployeeIndex`: nothing
+queries by it, and a column serves a query.
+
+**5. An employee who holds no position is untouched.** Every pre-F6 record and every tenant with no
+positions is in that state. Their stored line manager is shown exactly as today, with **no override
+label**: it is not an exception to a reporting line that does not exist, and nothing is derived for
+them.
+
+### Existing data
+
+A one-time, append-only migration step — `WorkMate.Records.Migrations.UpdateFrom5Async`, over
+`ILineManagerBackfill`. **It moves nobody** (ADR-0029) and touches exactly one field,
+`LineManagerEmployeeId`. For each employee who has a stored line manager:
+
+| Outcome | Rule |
+| --- | --- |
+| **cleared** | holds a position, and the stored person is the **sole** holder of the post above (or of the acting post above a vacant one) — a written-down derivation, which starts being recomputed and shows the same answer |
+| **kept as chosen** | holds a position, and the stored person is **one of several** holders |
+| **kept as override** | holds a position, and the stored person is **not among** the holders — including a post at the top of the line, where there is no list |
+| **untouched** | holds **no position** |
+
+The step reports the four counts to the log. It is safe to re-enter: it writes nothing where the
+comparison does not match.
+
+**One honest limitation.** Data written before this addendum carries no `LineManagerKind`, so a
+deliberate pre-addendum override is kept but reads afterwards as *Needs a new line manager* rather
+than as an override. The migration does not set the kind, because it cannot know — from
+off-the-line data alone, a dotted line and a stale pick are indistinguishable. Asking a human is
+the only answer that is not a guess, and is the same answer D28 A gives everywhere else.
+Confirming the person through *Change…* records the override properly and the message goes.
+
+### What does not change
+
+- **D28 A still decides what may be derived**: one holder is a fact, several is not, nothing picks
+  between them.
+- **The first addendum's walk upwards** past a vacant post is unchanged; what changes is that its
+  single-holder result is no longer saved.
+- **Storage is still `LineManagerEmployeeId`**, still undated, plus one boolean on the same part.
+  No new column, no index change.
+- **The four screens still show one *Reports to* row** from one partial.

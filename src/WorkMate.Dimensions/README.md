@@ -1641,6 +1641,110 @@ the guard on the other side: a department still has a head, employees, a Dimensi
 row, a Parent row and the chooser. The cheapest way to get one of these wrong is
 to apply it to every dimension.
 
+### Employees hold positions (slice F6a)
+
+**A position is somewhere an employee can be placed.** That is one line on the
+organisation structure — `EmployeeAttachableDimensionTypeIds` gains the Position
+type — and it turns on every picker, every placement screen and the designer's
+*Place an employee here…* together, because all three read one rule.
+
+**That rule is `IPositionService.PermitsEmployeesAtAsync`, not
+`StructureDocument.PermitsEmployeesAt` — F6b.** The document method answers only
+half of it: it holds type *ids* and knows nothing about what a Position is,
+because the roles live on the types. D30 is the other half — on an axis that has
+positions, a unit is not somewhere an employee goes.
+
+The two must not be confused, because ADR-0029 deliberately **keeps** the
+department types in the attachable set so existing placements stay valid. The
+half-answer therefore still returns `true` for a department on a position-based
+axis, and a caller that stopped there offered an action the validator would then
+refuse. That is exactly what the designer's card menu did until F6b:
+*Place an employee here…* appeared on a department, the form opened, and the save
+came back *"choose a position instead"*.
+
+`PermitsEmployeesAtAsync` is where the two halves are put together, and it is
+what the pickers, the Place screen, the designer card and the validator all
+resolve. On an axis with no positions it **is** `PermitsEmployeesAt` and nothing
+moves. `DesignerPlaceEmployeeActionTenantTests` holds both ends.
+
+**And a third half, F6b polish 3: is the structure a place at all?** Both rules
+above presume it is, and two structures are not.
+
+A **reporting line** is positions all the way down, so the D30 test — *is this
+node a position?* — answered **yes** for every one of its cards. The Zenith
+reporting chart offered *Place an employee here…* and the Place screen opened,
+with an allocation percentage and a *main placement* checkbox, for the axis
+ADR-0028 makes a post's **answer-to** chain rather than anywhere somebody sits.
+A **grade ladder** got there by the opposite door: no Position level at all, so
+the rule said nothing and an unconstrained attachable set said yes, for something
+D26 C and ADR-0026 make a reference **carried on the placement row** rather than
+a node anybody is placed at.
+
+`EmployeeAxes.HoldsEmployees` is the one statement of that test — *not every
+level a Position, not every level a Grade, and at least one level* — and it is
+read by `GetEmployeeAxesAsync`, by `PermitsEmployeesAtAsync` and by
+`DimensionValidator`. **Asked of the axis's shape, never of its code**: a tenant
+may rename anything, so a rule written against the word *"reporting"* would hold
+on the demo data and nowhere else.
+
+The validator's half is not optional tidiness. A designer that merely stopped
+offering the action would leave the old shape reachable from the Place screen,
+the `employee-assignments` recipe step and any later import — CLAUDE.md rule 5,
+and the reason `DimensionRule.StructureDoesNotHoldEmployees` is blocking rather
+than advisory. It is distinct from `UnitDoesNotHoldEmployees`, which is about the
+node and presumes the axis is a place.
+
+`Migrations.UpdateFrom14Async` does it for a tenant that already exists; the
+`addEmployeeAttachableTypeCodes` key on an additive `structures` row does it for
+one built fresh from the recipes. Both are needed, and a tenant that reached the
+same state by two routes is what `DimensionsMigrationUpgradeTenantTests` is for.
+**Only a structure that states a non-empty set is changed.** An empty set means
+*unconstrained*, so it already permits a position and there is nothing to add;
+writing a one-item list would be the only way to "add" one and would narrow the
+axis from *anything may hold employees* to *only this may*. The recipe step skips
+that type and logs it; the migration leaves the set alone. The step refused it at
+first and that was wrong — a tenant whose `zenith-org` placed employees anywhere
+had the recipe stop over a difference that did not exist.
+
+**The migration moves nobody**, and that is **ADR-0029** rather than a property of
+the code. A tenant keeps every unit placement it had, as history and as the
+present, and ends up holding both shapes of row at once — people in units and
+people in positions inside those units. The generated-placeholder-position
+alternative was weighed and rejected: it writes dated rows about real people that
+nobody asked for, invents master data a tenant cannot delete, contradicts D26 D,
+and destroys the difference between *"Ahmed is in Civil"* and *"Ahmed holds a post
+that sits in Civil"* while appearing to keep both.
+
+**The consequence that needs a test rather than a sentence** is that a department
+must count a person once across both shapes. `DISTINCT EmployeeId` (D1, §2.5) is
+what makes it work and it had never been exercised against a person reachable
+through two kinds of node. The pair of numbers the value page prints stays
+meaningful: the direct count is the node itself, the roll-up is the subtree, and
+a department whose people all hold positions inside it has a direct count of zero
+and is not empty.
+
+**The employee's grade is a column on the assignment row** (`GradeRecordId`), not
+an assignment on the grades axis — **ADR-0026**. The deciding argument is D26 C's:
+an assignment names a structure and a node, so writing one on `grades` would make
+*"how many people are under SE-2"* a question the engine answers, which is exactly
+the roll-up D26 C forbids. ADR-0012 made the same call about unit heads for the
+same reason. It also keeps a split allocation unambiguous — somebody holding two
+positions may hold two grades, and on the row there is no question which goes with
+which.
+
+A grade outside the position's allowed set is **refused** by `IDimensionValidator`,
+where a *full* position only warns (D26 F): a full post is something an
+organisation has actually done, and a grade the post does not have is not. A grade
+later **removed** from the position keeps resolving on rows that already carry it
+— D26 G in terms — which is why `GetHoldersAsync` reads the grade undated.
+
+`IPositionService.GetHoldersAsync` is the other half of `GetEstablishmentAsync`:
+one answers *how many* and the other *who*, from the same assignment rows, so the
+Positions list's count and the position page's list cannot disagree. It resolves
+the **grade** and not the **employee** — a grade is this module's own record, an
+employee is `WorkMate.Records`' and reachable only through `IEmployeeLookup`, the
+same division `GetHeadsAsync` already makes.
+
 ### Two controls manual testing sent back
 
 **The allowed-grades picker is a list of checkboxes, not a `<select multiple>`.**
@@ -2175,3 +2279,37 @@ history instead of staying proportional to the live structure.
 ## Specification
 Section 4 of `/docs/technical-specification.md`, and the whole of
 `/docs/dimension-engine-architecture.md`.
+
+### Reports to is an answer, not a silence — F6b polish, D31
+
+A position's *Reports to* used to default to an empty option reading
+*"— reports to nobody —"*, so a form nobody had touched looked like a deliberate
+claim to be the top of the reporting line. It was not even that: the save wrote
+**no reporting-line row at all**, leaving the post on that axis nowhere.
+
+The control now starts at **"Choose…"**, offers **"— Reports to nobody (top of
+the reporting line) —"** as a value of its own (`ReportsToChoice.Nobody`), and
+then the positions. `IDimensionValidator.ValidateReportsToAsync` refuses the
+unanswered case, so the screen, the `dimension-records` recipe step and any later
+import refuse it in the same words.
+
+**No new storage.** "Nobody" is a placement row with a null parent, exactly what
+the Zenith CEO has. All eight positions in the shipped positions recipe already
+state their reporting line, so nothing existing changes — which is the test of
+whether this is a rule about positions or merely a rule about a form.
+
+A second post at the top of the same line **warns and saves**
+(`SecondTopOfReportingLine`, advisory): an organisation mid-handover, or one with
+joint chief executives, is entitled to record what it has.
+
+**The Edit form shows the reporting line and does not change it.** *Reports to*
+is a parent on a second axis, so changing it is a dated move under
+`MoveDimensionRecords` with its own dry run — which is exactly why the
+organisation parent is not on that form either. Edit states one of three things —
+under a named post, the top of the line, or **on the reporting line nowhere** —
+and links to the designer opened on that axis.
+
+> `GetAncestorPathsAsync` is the wrong read for "is this record on this axis": it
+> answers for every id it is given, so an absent record comes back looking like a
+> root and every unplaced post read as the top of the line. `GetRootsAsync`
+> settles it.

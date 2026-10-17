@@ -176,7 +176,155 @@ public interface IPositionService
         string positionDimensionTypeId,
         DateOnly? asAt = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Who holds <paramref name="positionRecordId"/> on <paramref name="asAt"/>: the employee, the
+    /// grade they hold it at, and the day they took it. Decisions D26 D and D26 E.
+    /// </summary>
+    /// <remarks>
+    /// <b>The other half of <see cref="GetEstablishmentAsync"/>.</b> That answers <em>how many</em>
+    /// and this answers <em>who</em>, from the same assignment rows, so the count on the Positions
+    /// list and the list on the position's page cannot disagree about who is in a post.
+    ///
+    /// <b>Distinct by employee, like every count in this module.</b> A split allocation is several
+    /// rows for one person at one node; D1 and architecture §2.5 make that one holder, and the row
+    /// returned is the one effective on the date with the largest allocation — the one that most
+    /// nearly answers "what are they doing here".
+    ///
+    /// <b>Names are not resolved here.</b> This returns employee <em>ids</em>, because
+    /// <c>WorkMate.Dimensions</c> knows nothing about employee records — <c>IEmployeeLookup</c> in
+    /// <c>WorkMate.Records</c> is the one way across that boundary, and the caller that has it
+    /// resolves the names. The same division <c>GetHeadsAsync</c> already makes.
+    ///
+    /// <b>Paged, and never unbounded.</b> <em>Labourer</em> has an approved headcount of 44 in the
+    /// brief's own example and a real one could have hundreds.
+    /// </remarks>
+    Task<Page<PositionHolder>> GetHoldersAsync(
+        string positionRecordId,
+        DateOnly? asAt = null,
+        int skip = 0,
+        int take = 50,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The axes an employee can actually be placed on, and whether each is position-based.
+    /// Decision D30, ADR-0030.
+    /// </summary>
+    /// <remarks>
+    /// <b>What the employee screens ask instead of "list every structure".</b> They used to offer
+    /// all of them, which on a tenant with positions means offering the <em>grade ladder</em> and
+    /// the <em>reporting line</em> — two axes the Position type is a level of and neither of which
+    /// is anywhere a person goes. Nothing ever writes an assignment on a reporting line (ADR-0028)
+    /// and a grade is a reference rather than a placement (D26 C), so both were always wrong to
+    /// offer and became visible the moment the chooser was the only control left.
+    ///
+    /// <b>Excluded by shape, never by code.</b> A reporting line is one whose every level is a
+    /// Position; a grade ladder is one whose every level is a Grade. Zenith's are coded
+    /// <c>zenith-reporting</c> and <c>zenith-grades</c> and a tenant may rename either, so the test
+    /// is what the axis is made of — the same judgement <see cref="IsReportingLineAsync"/> makes.
+    ///
+    /// <b>Position-based</b> means at least one level is a Position. That is the flag D30 turns on:
+    /// such an axis places employees at positions and refuses them at units, and its screens drop
+    /// the unit picker, the <em>Within</em> filter and the allocation controls.
+    /// </remarks>
+    Task<IReadOnlyList<EmployeeAxis>> GetEmployeeAxesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Every reporting line in the tenant — each axis whose levels are all Positions.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not <see cref="GetReportingLineAsync"/>, and the difference bit.</b> That one resolves
+    /// the single axis <c>base.recipe.json</c> ships, by its code. A demo tenant has Zenith's
+    /// <c>zenith-reporting</c> as well — prefixed for the reason every demo type is (ADR-0028) —
+    /// and a caller asking "what does this position report to" on a Zenith post got base's empty
+    /// axis, found no ancestors, and answered <em>top of the reporting line</em> for every post in
+    /// the company.
+    ///
+    /// So this returns all of them, by shape, and the caller looks for its position on each —
+    /// exactly what <c>GetUnitsAsync</c> and <c>GetEstablishmentAsync</c> already do for the
+    /// organisation side.
+    /// </remarks>
+    Task<IReadOnlyList<StructureDocument>> GetReportingAxesAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether an employee may be placed at a node of <paramref name="dimensionTypeId"/> on
+    /// <paramref name="axis"/> — the attachable set <em>and</em> D30, in one answer.
+    /// </summary>
+    /// <remarks>
+    /// <b>The rule read forwards, in the one place that owns it.</b>
+    /// <c>StructureDocument.PermitsEmployeesAt</c> answers only half of it: it knows the tenant's
+    /// attachable set and nothing about what a Position is, because a document holds type <em>ids</em>
+    /// and the roles live on the types. D30 is the other half — on an axis that has positions, a
+    /// unit is not somewhere an employee goes — and <c>IDimensionValidator</c> enforces it on the
+    /// write.
+    ///
+    /// <b>Why it has to be shared rather than restated.</b> ADR-0029 deliberately leaves the
+    /// department types in the attachable set, so that existing placements stay valid; a caller
+    /// that asked <c>PermitsEmployeesAt</c> alone therefore still gets <c>true</c> for a department
+    /// on a position-based axis, and offers an action whose save the validator then refuses. That
+    /// is what the organisation designer's <em>Place an employee here…</em> did: the card offered
+    /// it, the form opened, and the write came back <em>"choose a position instead"</em>. The
+    /// screens and the validator must answer this question the same way or one of them is lying.
+    ///
+    /// <b>And it asks first whether the axis is a place at all.</b> D30's addendum, slice F6b
+    /// polish 3. The attachable set and the position rule both presume the structure is somewhere
+    /// people go, and two are not: a <b>reporting line</b> is positions all the way down, so the
+    /// position rule said yes for every one of its cards and the designer offered <em>Place an
+    /// employee here…</em> on the axis ADR-0028 makes a post's answer-to chain; a <b>grade
+    /// ladder</b> has no Position level at all, so the rule said nothing and an unconstrained
+    /// attachable set said yes, for something D26 C makes a reference rather than a placement. See
+    /// <c>EmployeeAxes.HoldsEmployees</c>, which is the one statement of that test and is shared
+    /// with <c>GetEmployeeAxesAsync</c> and with <c>IDimensionValidator</c>.
+    ///
+    /// <b>Unchanged for a tenant with no positions.</b> Such an axis is not position-based, so this
+    /// is exactly <c>PermitsEmployeesAt</c> and nothing moves.
+    /// </remarks>
+    Task<bool> PermitsEmployeesAtAsync(
+        StructureDocument axis,
+        string dimensionTypeId,
+        CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// One axis an employee may be placed on, and whether placement there goes through a position.
+/// </summary>
+/// <param name="IsPositionBased">
+/// True when at least one level of the axis is a Position dimension. D30: on such an axis an
+/// employee is placed at a position and nowhere else, and the organisation chain is computed from
+/// it rather than chosen.
+/// </param>
+public sealed record EmployeeAxis(StructureDocument Structure, bool IsPositionBased)
+{
+    /// <summary>The axis's id, for a caller that only needs to name it.</summary>
+    public string StructureId => Structure.StructureId;
+}
+
+/// <summary>
+/// One person holding one position on a date: who, at what grade, and since when.
+/// </summary>
+/// <param name="Grade">
+/// The grade they hold it at, resolved, or null where none was recorded — which is every placement
+/// made before slice F6 and every placement at a unit rather than a position (ADR-0026, ADR-0029).
+/// </param>
+/// <param name="Since">
+/// The day this placement started. <b>Not the day they joined the company</b>, and not the day they
+/// first held this position if they have held it twice: it is the start of the row that is
+/// effective on the date being asked about, which is what "since" means on a dated record.
+/// </param>
+/// <remarks>
+/// <b>The grade is resolved and the employee is not</b>, which looks inconsistent and is the module
+/// boundary showing. A grade is a dimension record and resolving one is this module's own business,
+/// batched here so a page of holders is one read. An employee is <c>WorkMate.Records</c>', reachable
+/// only through <c>IEmployeeLookup</c>, and this module does not get to decide what an employee's
+/// name is — the same division <c>GetHeadsAsync</c> already makes.
+/// </remarks>
+public sealed record PositionHolder(
+    string EmployeeId,
+    DimensionNodeRef? Grade,
+    DateOnly Since,
+    decimal AllocationPercent);
 
 /// <summary>
 /// One position as a drop-down offers it: what it is, where it sits, and how full it is.
