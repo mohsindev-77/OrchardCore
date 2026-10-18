@@ -142,6 +142,12 @@ Platform, Records, Integration, then Browser. Running Integration and Browser
 together starves the machine and produces click timeouts that are not defects.
 Report counts per suite and in total.
 
+While working, run only the test classes you added or changed, plus any that
+cover the code you touched (`dotnet test --no-restore --filter
+"FullyQualifiedName~<ClassName>"`). Run the full suites once, at the end, before
+reporting. If the full run finds a failure, fix it and re-run that suite, not
+all of them.
+
 If api.nuget.org is unreachable, restore with `dotnet restore
 -p:NuGetAudit=false` and then build and test with `--no-restore`. Use the flag
 on the command line only; never disable NuGet audit in Directory.Build.props or
