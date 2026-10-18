@@ -93,6 +93,21 @@ public static class StandardLookupLists
         new(EmployeeSections.ContactType, "CountryCode", Country),
     ];
 
+    /// <summary>
+    /// The lists a dimension now answers for. D22, slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Retired, never removed from <see cref="All"/>.</b> A tenant that has them keeps them and
+    /// every code already typed still resolves to a name; what retirement stops is their being
+    /// offered for a new binding. <c>job-title</c> is superseded by the Position dimension and
+    /// <c>grade</c> by the Grade dimension, which is the whole of D22 steps 5 and 6.
+    ///
+    /// They are still loaded by the standard-lists action, deliberately: a tenant upgrading into
+    /// F6 may have records holding these codes and no lists to resolve them, and refusing to load
+    /// them would leave those records showing a bare code for ever.
+    /// </remarks>
+    public static readonly IReadOnlyList<string> Superseded = [JobTitle, Grade];
+
     /// <summary>Every list this module ships, by code.</summary>
     public static readonly IReadOnlyList<string> All =
     [

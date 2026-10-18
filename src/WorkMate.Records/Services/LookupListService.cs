@@ -174,6 +174,18 @@ internal sealed class LookupListService : ILookupListService
             Code = normalised,
             Name = Trimmed(name),
             IsSystemDefined = isSystemDefined,
+
+            // D22, slice F6c: born retired. The standard lists arrive through the lookup-lists
+            // recipe step, which runs AFTER this module's migrations — so a step that retired them
+            // could only ever catch a tenant that already had them, and every new tenant would
+            // load job-title and grade fresh and unretired. Said here instead, where every path
+            // that creates a list goes through: the recipe, the standard-lists action and any
+            // later import.
+            //
+            // They are still created, and that is the point: a tenant upgrading into F6 holds
+            // records naming these codes, and a list that did not exist would leave them showing a
+            // bare code for ever.
+            IsRetired = StandardLookupLists.Superseded.Contains(normalised, StringComparer.Ordinal),
             Items = Ordered(items),
         };
 
@@ -271,6 +283,43 @@ internal sealed class LookupListService : ILookupListService
         _session.Delete(document);
 
         await RecordAsync(document, before, after: null, operation: "Deleted");
+        await InvalidateCacheAsync();
+
+        return RecordResult.Success(document);
+    }
+
+    /// <inheritdoc />
+    public async Task<RecordResult<LookupListDocument>> RetireAsync(
+        string lookupListId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!await MayConfigureAsync())
+        {
+            return RecordResult.NotAuthorised<LookupListDocument>();
+        }
+
+        var document = await GetAsync(lookupListId, cancellationToken);
+
+        if (document is null)
+        {
+            return RecordResult.Failed<LookupListDocument>(UnknownList(lookupListId));
+        }
+
+        if (document.IsRetired)
+        {
+            // Already said. A second retirement is not an error and must not file a second audit
+            // entry about a change nobody made — the same no-op guard SetLineManagerAsync keeps.
+            return RecordResult.Success(document);
+        }
+
+        var before = LookupListState.Of(document);
+
+        document.IsRetired = true;
+
+        await _session.SaveCheckedAsync(document, cancellationToken);
+        await RecordAsync(document, before, LookupListState.Of(document), operation: "Retired");
         await InvalidateCacheAsync();
 
         return RecordResult.Success(document);

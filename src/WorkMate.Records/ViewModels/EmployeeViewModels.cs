@@ -75,6 +75,20 @@ public sealed class EmployeeListItemViewModel
     public IReadOnlyList<EmployeePlacementLine> OtherUnits { get; set; } = [];
 
     /// <summary>
+    /// What they hold, where it sits and who answers for it — all derived. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>One object rather than four properties</b>, because they are one read:
+    /// <c>IEmployeeOrganisationService.GetLinesAsync</c> resolves the whole page in a bounded
+    /// number of queries, and splitting its answer across four setters here would invite the next
+    /// column to be filled by a fifth read per row.
+    ///
+    /// Null on a tenant with no positions at all, where none of these columns is shown — D30's own
+    /// scope, and what keeps that tenant's list exactly as it was.
+    /// </remarks>
+    public EmployeeOrganisationLine? Organisation { get; set; }
+
+    /// <summary>
     /// The star's tooltip — "Heads Civil, Mechanical" — or null when this person heads nothing.
     /// </summary>
     /// <remarks>
@@ -176,6 +190,73 @@ public sealed class EmployeeListViewModel
 
     /// <summary>The unit this list is filtered to, or null for the whole tenant.</summary>
     public UnitFilterViewModel? Unit { get; set; }
+
+    /// <summary>
+    /// Whether this tenant places employees at positions at all. Slice F6c, decision D30.
+    /// </summary>
+    /// <remarks>
+    /// False keeps the list exactly as F6a shipped it — Code, Name, Status, Joined, Where they sit
+    /// — because D30 is scoped to a structure that has positions and a tenant with none must see
+    /// no change at all. Asked of the axes, never of this page's employees, who may simply not be
+    /// placed yet.
+    /// </remarks>
+    public bool IsPositionBased { get; set; }
+
+    /// <summary>The position the list is filtered to, or null. Slice F6c.</summary>
+    public string? PositionRecordId { get; set; }
+
+    /// <summary>Its name, for the heading and the cleared-filter link.</summary>
+    public string? PositionName { get; set; }
+
+    /// <summary>How the list is ordered. Slice F6c.</summary>
+    public EmployeeListSort Sort { get; set; }
+
+    /// <summary>
+    /// Set when the list was asked to sort by something it could not, and why. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// Position and grade are not columns on <c>EmployeeIndex</c> and cannot be — see the module
+    /// README. Sorting by them is done over the matching employees, which is only affordable up to
+    /// a cap; past it the list keeps its name order and <b>says so</b> rather than quietly
+    /// returning a sorted subset, which would look exactly like a correct answer.
+    /// </remarks>
+    public bool SortWasTooWide { get; set; }
+}
+
+/// <summary>
+/// One sortable column heading: which order it asks for, and whether the list is in it.
+/// </summary>
+/// <remarks>
+/// Carries the whole list model rather than the handful of filter values the link needs, because
+/// the link's job is to change ONE thing and keep everything else — and a model that listed the
+/// filters by hand would silently drop the next one somebody adds.
+/// </remarks>
+public sealed record EmployeeSortLinkViewModel(
+    EmployeeListViewModel List,
+    EmployeeListSort Sort,
+    string Label)
+{
+    /// <summary>Whether the list is currently in this order.</summary>
+    public bool IsCurrent => List.Sort == Sort;
+}
+
+/// <summary>How the employees list is ordered. Slice F6c.</summary>
+/// <remarks>
+/// <b>Name is index-backed and the other two are not</b>, which is the whole reason this is an
+/// enum of three rather than a column name. <c>EmployeeIndex</c> can order by name and code
+/// forever; a position's name lives on a dimension record and a grade's on an assignment row, so
+/// ordering by either is a join YesSql cannot make and this module resolves by hand.
+/// </remarks>
+public enum EmployeeListSort
+{
+    /// <summary>By name, then code. The default, and the only one the index can do alone.</summary>
+    Name,
+
+    /// <summary>By the position they hold, then by name within it.</summary>
+    Position,
+
+    /// <summary>By the grade on their placement row, then by name within it.</summary>
+    Grade,
 }
 
 /// <summary>
@@ -379,7 +460,7 @@ public sealed class EmployeeEditViewModel
     /// Derived live where the chart answers and stored only where somebody chose, so a change of
     /// holder above shows here without anybody editing this record.
     /// </remarks>
-    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody;
+    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody();
 
     /// <summary>
     /// The sections <em>this tenant</em> has, in its own order — never the six as a literal.
@@ -535,7 +616,7 @@ public sealed class EmployeePlacementViewModel
     /// one the reporting line implies — the two differ wherever somebody overrode it, and a page
     /// that showed the implied one would contradict the record it is drawn from.
     /// </remarks>
-    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody;
+    public LineManagerAnswer LineManager { get; set; } = LineManagerAnswer.Nobody();
 
     public string EmployeeId { get; set; } = string.Empty;
 
@@ -1166,6 +1247,15 @@ public sealed record LineManagerViewModel(
     public string ActingPositionName { get; init; } = string.Empty;
 
     /// <summary>
+    /// The empty posts above, nearest first, when nobody above holds anything. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// What turns "No one above holds a post yet" from a true sentence into an actionable one. See
+    /// <c>ReportsTo.VacantAbove</c>.
+    /// </remarks>
+    public IReadOnlyList<string> VacantAbove { get; init; } = [];
+
+    /// <summary>
     /// The state for a screen that <em>states</em> rather than asks. D31 addendum.
     /// </summary>
     /// <remarks>
@@ -1198,7 +1288,10 @@ public sealed record LineManagerViewModel(
                 answer.PositionName,
                 [],
                 null,
-                false),
+                false)
+            {
+                VacantAbove = answer.VacantAbove,
+            },
 
             // Somebody answered, and what they answered is no longer true.
             LineManagerHow.NeedsChoice when !string.IsNullOrEmpty(answer.EmployeeId) =>
@@ -1326,7 +1419,11 @@ public sealed record LineManagerViewModel(
         if (reportsTo.Kind == ReportsToKind.Vacant && acting is null)
         {
             return new LineManagerViewModel(
-                LineManagerMode.NobodyAbove, reportsTo.PositionName, [], null, false);
+                LineManagerMode.NobodyAbove, reportsTo.PositionName, [], null, false)
+            {
+                // Named, not counted — slice F6c. A list of empty chairs is something to act on.
+                VacantAbove = reportsTo.VacantAbove ?? [],
+            };
         }
 
         return holders.Count == 1

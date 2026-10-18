@@ -86,4 +86,24 @@ public interface ILookupListService
     Task<RecordResult<LookupListDocument>> DeleteAsync(
         string lookupListId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a whole list superseded: no longer offered, still read. D22, slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>The list-level version of retiring an entry, and it exists for the same reason</b>
+    /// <see cref="DeleteAsync"/> is so narrow: fields bind to a list and records hold its codes, so
+    /// taking it away would leave both naming something nothing can resolve. <c>job-title</c> and
+    /// <c>grade</c> are what D22 retires — the Position and Grade dimensions answer those questions
+    /// now — and retiring rather than deleting is what keeps last year's typed values resolving to
+    /// a name.
+    ///
+    /// <b>Idempotent, and one-way.</b> Retiring a retired list succeeds and changes nothing. There
+    /// is no un-retire, for ADR-0014's reason: a list coming back would start being offered again
+    /// for new bindings, and whether that is right is a decision somebody should make deliberately
+    /// by creating the list they actually want.
+    /// </remarks>
+    Task<RecordResult<LookupListDocument>> RetireAsync(
+        string lookupListId,
+        CancellationToken cancellationToken = default);
 }

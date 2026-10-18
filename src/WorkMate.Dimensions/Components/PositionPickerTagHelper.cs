@@ -96,6 +96,19 @@ public sealed class PositionPickerTagHelper : TagHelper
     public string? StructureId { get; set; }
 
     /// <summary>Whether "nobody" is a choice — the CEO reports to no one.</summary>
+    /// <summary>
+    /// A unit whose posts are offered first. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// The department the post being created or edited sits in. Somebody saying what it reports to
+    /// is almost always looking inside that department, and an alphabetical first page across the
+    /// whole company routinely did not contain the obvious answer. See
+    /// <c>IPositionService.SearchSelectableAsync</c> for why they are fetched first rather than
+    /// the page re-sorted.
+    /// </remarks>
+    [HtmlAttributeName("near-unit")]
+    public string? NearUnit { get; set; }
+
     [HtmlAttributeName("allow-none")]
     public bool AllowNone { get; set; } = true;
 
@@ -164,7 +177,8 @@ public sealed class PositionPickerTagHelper : TagHelper
 
         DateOnly? asAt = IsoDate.TryParse(AsAt, out var parsed) ? parsed : null;
 
-        var found = await _positions.SearchSelectableAsync(searchText: null, asAt, FirstPage);
+        var found = await _positions.SearchSelectableAsync(
+            searchText: null, asAt, FirstPage, nearUnitRecordId: NearUnit);
         var onTheAxis = await TypesOnTheAxisAsync();
 
         var options = found.Items
@@ -278,6 +292,7 @@ public sealed class PositionPickerTagHelper : TagHelper
         output.Attributes.SetAttribute("data-position-picker-date-field", DateField ?? string.Empty);
         output.Attributes.SetAttribute("data-position-picker-excluding", Excluding ?? string.Empty);
         output.Attributes.SetAttribute("data-position-picker-structure", StructureId ?? string.Empty);
+        output.Attributes.SetAttribute("data-position-picker-near", NearUnit ?? string.Empty);
         output.Attributes.SetAttribute("data-position-picker-allow-none", AllowNone ? "true" : "false");
         output.Attributes.SetAttribute("data-position-picker-strings", Strings());
 

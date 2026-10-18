@@ -819,6 +819,12 @@ public sealed class DimensionRecordsAdminController : Controller
             {
                 model.ReportsTo = await PathAboveAsync(
                     scope.StructureId, record.RecordId, date, cancellationToken);
+
+                // Slice F6c: the axis the "Change reports to…" action moves the post on. The
+                // designer's own dated Move, never an undated reparent — moving a post on the
+                // reporting line is a dated change like every other, and the only screen that
+                // takes a date for it is that one.
+                model.ReportingStructureId = scope.StructureId;
             }
         }
 
@@ -1546,11 +1552,41 @@ public sealed class DimensionRecordsAdminController : Controller
     public async Task<IActionResult> Create(
         string dimensionTypeId,
         string? structureId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? group = null)
     {
         if (!await CanEditAsync())
         {
             return Forbid();
+        }
+
+        // ADD, FROM A GROUPED "All <plural>" LIST. The group holds one entry per dimension type
+        // sharing a name — two Position types on the demo tenant, one per company — so the list's
+        // own DimensionTypeId is empty and this arrived with nothing to create. It used to be a
+        // 404 on a button the screen had just offered.
+        //
+        // The same "refuse to guess, offer the choice" the list already does for its tree view:
+        // one type goes straight to the form unchanged, several ask which organisation first,
+        // named by exactly the choices the Organisation filter is built from.
+        if (string.IsNullOrEmpty(dimensionTypeId) && !string.IsNullOrEmpty(group))
+        {
+            var scope = await ResolveGroupAsync(dimensionTypeId: null, group, cancellationToken);
+
+            if (scope is null)
+            {
+                return NotFound();
+            }
+
+            if (scope.Siblings.Count > 1)
+            {
+                return View("ChooseOrganisation", new ChooseOrganisationViewModel(
+                    scope.GroupKey,
+                    scope.Caption,
+                    structureId,
+                    await GroupChoicesAsync(scope.Siblings, cancellationToken)));
+            }
+
+            dimensionTypeId = scope.Siblings[0].DimensionTypeId;
         }
 
         var model = new DimensionRecordCreateViewModel

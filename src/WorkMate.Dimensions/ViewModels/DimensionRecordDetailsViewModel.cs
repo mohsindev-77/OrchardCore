@@ -104,6 +104,11 @@ public sealed class DimensionRecordDetailsViewModel
     public bool IsReportingAxis { get; set; }
 
     /// <summary>
+    /// The reporting axis this post sits on, for the <em>Change reports to…</em> action. F6c.
+    /// </summary>
+    public string? ReportingStructureId { get; set; }
+
+    /// <summary>
     /// Whether to offer the Structure chooser. Never on a position.
     /// </summary>
     /// <remarks>

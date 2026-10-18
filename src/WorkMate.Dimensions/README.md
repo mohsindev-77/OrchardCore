@@ -1493,6 +1493,23 @@ of failure nobody notices until a headcount does not add up.
   controller's type name and the route values rather than on a reference to
   `OrchardCore.Contents`, which this module does not take and must not.
 
+### Slice F6c's three changes here
+
+**"Change reports to…" on a position's page** opens the designer's **dated** Move on the reporting
+axis with the post already chosen. Never an undated reparent: ADR-0005 makes every move a dated pair
+of rows, and that screen is the one place that takes the date and writes them.
+
+**The Reports-to picker offers the same department first.**
+`IPositionService.SearchSelectableAsync` gained `nearUnitRecordId`; those posts are **fetched**
+first rather than the page re-sorted, because re-sorting would only move the ones that happened to
+land in the first twenty. The axis the unit sits on is resolved first — the closure index is per
+structure, so a `withinRecordId` with no structure quietly returns the unscoped list.
+
+**Add on a grouped "All &lt;plural&gt;" list asks which organisation first** — the pending item from
+the F6 design note. The group holds one type per organisation sharing a name, so the list has no
+single `DimensionTypeId`; Add used to post an empty one and answer 404. One type still goes straight
+to the form.
+
 ### "Place an employee here…" on a card
 
 Declared in `DesignerCardActions.All` immediately after `sethead` and gated on the

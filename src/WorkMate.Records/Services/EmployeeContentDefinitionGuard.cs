@@ -65,6 +65,17 @@ public static class EmployeeContentDefinitionGuard
                 EmployeeDefinitionViolationKind.PlacementBelongsInTheDimensionEngine);
         }
 
+        // D22, slice F6c. Asked of the PART as well as of the name, because the one section that
+        // already holds these keeps them — that is the history D22 promised — and nothing else may
+        // take the name beside it.
+        if (EmployeeFieldNames.IsRetiredOnSection(partName, fieldName))
+        {
+            return new EmployeeDefinitionViolation(
+                partName,
+                fieldName,
+                EmployeeDefinitionViolationKind.RetiredByTheDimension);
+        }
+
         return null;
     }
 
@@ -108,6 +119,17 @@ public enum EmployeeDefinitionViolationKind
     /// did they sit last March" with today's answer.
     /// </summary>
     PlacementBelongsInTheDimensionEngine,
+
+    /// <summary>
+    /// The name was retired by D22, and a dimension answers for it now. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <c>JobTitle</c> and <c>GradeCode</c>. The shipped Job details section still holds both,
+    /// read-only, because a tenant's history is exactly the values it already typed — so a NEW
+    /// field of either name would collide with something that is still on the screen and still
+    /// meaningful, while holding something else entirely.
+    /// </remarks>
+    RetiredByTheDimension,
 }
 
 /// <summary>One refused addition to the employee record.</summary>

@@ -40,8 +40,22 @@
         @* The post above is empty AND so is everything above it, all the way up. The posts exist
            and are unfilled, which is a different statement from "answers to no one" and is one
            somebody can act on. *@
+        @* SLICE F6c: NAMED, NOT COUNTED. "No one above holds a post yet" was true and
+           unactionable — a reader could not tell whether one chair was empty or five, or which.
+           Naming them turns the sentence into a list of posts somebody can go and fill.
+
+           Composed on the server, like every other list in this product: Arabic's list separator
+           is "، " rather than ", ", so even the comma is a resource. *@
         <span class="text-warning" id="line-manager-nobody-above">
-            @T["No one above holds a post yet"]
+            @if (lineManager.VacantAbove.Count > 0)
+            {
+                @T["No acting manager — {0} are also vacant",
+                    string.Join(T[", "].Value, lineManager.VacantAbove)]
+            }
+            else
+            {
+                @T["No one above holds a post yet"]
+            }
         </span>
     }
     else if (lineManager.Mode == LineManagerMode.Derived && lineManager.Sole is { } sole)

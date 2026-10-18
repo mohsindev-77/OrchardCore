@@ -1,0 +1,26 @@
+@model EmployeeSortLinkViewModel
+@*
+    One column heading that is also the control for ordering by it. Slice F6c.
+
+    A LINK, NOT A BUTTON, and not a form. The list is already a GET whose filters live in the URL —
+    so a bookmarked, shared or reloaded list keeps its order for the same reason it keeps its
+    search — and a sort control that posted would break that for no gain.
+
+    EVERY OTHER FILTER TRAVELS WITH IT. A sort link that dropped the unit, the position or the
+    search would widen the list to the whole tenant on the first click, which is the one thing
+    somebody ordering a filtered list is certainly not asking for.
+*@
+<a asp-action="Index"
+   asp-route-search="@Model.List.Search"
+   asp-route-status="@Model.List.Status"
+   asp-route-structureId="@Model.List.Unit?.StructureId"
+   asp-route-recordId="@Model.List.Unit?.RecordId"
+   asp-route-asAt="@Model.List.Unit?.AsAtIso"
+   asp-route-includeSubUnits="@(Model.List.Unit?.IncludeSubUnits == true ? "true" : null)"
+   asp-route-positionRecordId="@Model.List.PositionRecordId"
+   asp-route-sort="@Model.Sort"
+   asp-route-take="@Model.List.Take"
+   class="text-decoration-none employee-sort"
+   data-sort="@Model.Sort"
+   aria-sort="@(Model.IsCurrent ? "ascending" : "none")">@Model.Label@if (Model.IsCurrent)
+{<span aria-hidden="true"> ▲</span>}</a>

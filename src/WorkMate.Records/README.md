@@ -1026,6 +1026,7 @@ Append-only, per CLAUDE.md rule 6 and ADR-0009. The body of a shipped step is ne
 | `UpdateFrom3Async` | creates `LookupListIndex` for a tenant from before B1 |
 | `UpdateFrom4Async` | binds the standard section fields to the lookup lists |
 | `UpdateFrom5Async` | **the line manager backfill** — D31 addendum 2 |
+| `UpdateFrom6Async` | **D22's retirement** — points `JobTitle` and `GradeCode` at the retired editor and marks the `job-title` and `grade` lists superseded |
 
 ### The line manager backfill — D31 addendum 2
 
@@ -1056,7 +1057,51 @@ the step exists for. `LineManagerBackfill` reads the holders straight off the po
 `WorkMate.Dimensions` in its manifest dependencies, so that feature's migrations have run and its
 tables exist before this step is entered.
 
+### D22's retirement — slice F6c
+
+`JobTitle` and `GradeCode` are **retired, not removed**: same type, same stored value, same display
+name, and on `GradeCode` the same binding to the `grade` list — which is how a code typed last year
+still resolves to a name. What changed is the editor. `ContentPartFieldSettings.Editor` becomes
+`RetiredFieldEditor.Name`, Orchard resolves the shape alternate, and this module supplies
+`TextField-WorkMateRetired.Edit.cshtml` and `BilingualTextField-WorkMateRetired.Edit.cshtml`. **No
+field driver is registered**, for the reason `LookupFieldEditor` records at length.
+
+**The hidden input in those views is load-bearing.** Orchard's field drivers bind their editor's
+model and write the result straight back, so an editor that rendered nothing would post nothing, the
+driver would store the empty string, and the second save of a Job details row would erase the
+history the first one displayed.
+
+**A tenant with no positions still types them** — D22 step 3. The retired editor asks the tenant's
+own axes and renders an ordinary box when there are none, so there is no second definition and no
+setting anybody can get wrong.
+
+The two lists are retired **as they are created** (`ILookupListService.CreateAsync` consults
+`StandardLookupLists.Superseded`), because the `lookup-lists` recipe step runs after this module's
+migrations — a migration alone would catch only tenants that already had them.
+`EmployeeFieldNames.RetiredOnSections` then reserves both names for **new** definitions, with the
+shipped `EmployeeJobDetail` part exempt; `EmployeeContentDefinitionGuard` asks the part as well as
+the name.
+
+### The employees list — D32, slice F6c
+
+Code, Name, Position, Grade, Reports to, Organisation, Status. The four new columns are derived on
+read through `IEmployeeOrganisationService.GetLinesAsync`, which resolves a page in a number of
+queries bounded by the **distinct positions** on it, never by the rows. It shares one body with
+`GetLineManagerAsync` for the staleness rules, so the list and the employee's own page cannot
+disagree about who manages somebody.
+
+Filters by position and by unit, intersected. Sorts by name (index-backed), and by position or grade
+over the matching set up to a cap — see D32 for why no column on `EmployeeIndex` can do it and why
+the list says so rather than sorting a subset. A tenant with no positions sees none of it.
+
 ## Known limitations
+
+### Ordering by position or grade needs a filter on a very large tenant
+
+Above 2,000 matching employees the list keeps its name order and says so. `EmployeeIndex` cannot
+carry a position or grade column: both change without the employee's content item being touched, so
+the column would be a cache nothing invalidates. D32 records the argument; the honest fix is a
+reporting read model, which is a later slice.
 
 ### A pre-addendum override reads as "needs a new line manager"
 

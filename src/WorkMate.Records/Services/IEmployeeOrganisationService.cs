@@ -1,4 +1,5 @@
 using WorkMate.Dimensions.Services;
+using WorkMate.Dimensions.ViewModels;
 
 namespace WorkMate.Records.Services;
 
@@ -75,6 +76,70 @@ public interface IEmployeeOrganisationService
         string employeeId,
         DateOnly asAt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same answers for a whole page of employees, in a bounded number of reads. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why a second method rather than the first one in a loop.</b> The employees list draws
+    /// fifty rows and shows four derived things on each — Position, Grade, Reports to and the
+    /// organisation path. Composed per row that is four reads times fifty, and the list is the one
+    /// screen in this module where that difference is the difference between usable and not.
+    ///
+    /// <b>What "bounded" means here, precisely.</b> The reads are bounded by the number of
+    /// <em>distinct positions</em> on the page and the number of <em>axes</em> the tenant has —
+    /// never by the number of rows. Fifty people in one department cost what one of them costs.
+    /// The one read that is still per row is the employee's own record, and only for those who
+    /// have a stored line manager at all: what kind of answer it is lives on the content item and
+    /// not on <c>EmployeeIndex</c>, deliberately (D31 addendum 2). After that addendum's migration
+    /// the set is people somebody actually chose or overrode, which is a minority of any page.
+    ///
+    /// <b>The same rules, not similar ones.</b> This and <see cref="GetLineManagerAsync"/> share
+    /// one body for deciding what a stored value means, so an employee's own page and the list she
+    /// appears on cannot disagree about who manages her.
+    ///
+    /// An employee absent from the result is on no axis at all — the same thing
+    /// <see cref="GetAsync"/> returning null says.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, EmployeeOrganisationLine>> GetLinesAsync(
+        IReadOnlyList<string> employeeIds,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// One employee's row on a list: what they hold, where it sits, and who answers for it. Slice F6c.
+/// </summary>
+/// <remarks>
+/// <b>Leaner than <see cref="EmployeeOrganisation"/> on purpose.</b> That type carries the whole
+/// <see cref="PositionOrganisation"/>, including the post's approved headcount — which a list does
+/// not show and which costs a read per distinct position to find. A list row needs a name, a grade,
+/// a path and a line manager, and asking for more would be paying for columns nobody rendered.
+/// </remarks>
+/// <param name="PositionRecordId">
+/// The post they hold, or null when they hold none — ADR-0029's mid-migration state, which
+/// <paramref name="LegacyUnitPath"/> then describes.
+/// </param>
+/// <param name="Chain">
+/// The units above the position, root first, each labelled with the tenant's OWN name for that kind
+/// of unit. D28 D: never four hard-coded words.
+/// </param>
+public sealed record EmployeeOrganisationLine(
+    string EmployeeId,
+    string StructureId,
+    string? PositionRecordId,
+    string PositionName,
+    string GradeName,
+    IReadOnlyList<OrganisationStep> Chain,
+    string LegacyUnitPath,
+    LineManagerAnswer LineManager)
+{
+    /// <summary>True for somebody on a position-based axis who does not hold a position.</summary>
+    public bool HasNoPositionYet => PositionRecordId is null && !string.IsNullOrEmpty(LegacyUnitPath);
+
+    /// <summary>The organisation chain as one line — "Zenith › Engineering › Civil".</summary>
+    public string OrganisationPath =>
+        string.Join(BilingualDisplay.PathSeparator, Chain.Select(step => step.Name));
 }
 
 /// <summary>On what footing somebody is an employee's line manager. D31 addendum 2.</summary>
@@ -154,8 +219,25 @@ public sealed record LineManagerAnswer(
     IReadOnlyList<PositionHolderRef> Candidates)
 {
     /// <summary>Nobody, from nothing stored and nothing derived.</summary>
-    public static readonly LineManagerAnswer Nobody =
+    /// <remarks>
+    /// <b>A method, not a shared static instance</b> — ADR-0007. This record is immutable and a
+    /// singleton would in fact be safe, but it is handed out as the DEFAULT of settable view-model
+    /// properties, and that is precisely the shape ADR-0007 was written about: the rule is that a
+    /// settable property gets a fresh instance, not that the author has checked this one cannot be
+    /// written into. <c>SharedStaticDocumentDefaultTests</c> is the guard, and it is right to be
+    /// unable to tell the two cases apart.
+    /// </remarks>
+    public static LineManagerAnswer Nobody() =>
         new(LineManagerHow.None, null, string.Empty, string.Empty, string.Empty, []);
+
+    /// <summary>
+    /// The empty posts above, nearest first, when nobody above holds anything. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the answer so the read-only screens say the same thing the forms do. See
+    /// <see cref="ReportsTo.VacantAbove"/> for why naming them beats counting them.
+    /// </remarks>
+    public IReadOnlyList<string> VacantAbove { get; init; } = [];
 
     /// <summary>Whether this answer is one the employee's record holds rather than derives.</summary>
     /// <remarks>
@@ -209,12 +291,24 @@ public enum ReportsToKind
 /// The holders of the parent position, in the order the picker should offer them. Empty unless
 /// somebody holds it.
 /// </param>
+/// <param name="VacantAbove">
+/// The posts above a vacant one that are <em>also</em> vacant, nearest first, when nobody holds
+/// anything all the way to the top. Slice F6c.
+/// </param>
+/// <remarks>
+/// <b>Why the names and not just a count.</b> "No one above holds a post yet" was true and
+/// unactionable: a reader could not tell whether one chair was empty or five, or which. Naming
+/// them — "No acting manager — Manager Technology, Director Technology and CEO are also vacant" —
+/// turns the sentence into a list of posts somebody can go and fill. Empty in every other case,
+/// including when somebody IS acting, because then there is nothing outstanding to report.
+/// </remarks>
 public sealed record ReportsTo(
     ReportsToKind Kind,
     string? PositionRecordId,
     string PositionName,
     IReadOnlyList<PositionHolderRef> Holders,
-    ActingAbove? Acting = null)
+    ActingAbove? Acting = null,
+    IReadOnlyList<string>? VacantAbove = null)
 {
     /// <summary>The top of the line, which is a real answer rather than an absence.</summary>
     public static readonly ReportsTo Top = new(ReportsToKind.Top, null, string.Empty, []);

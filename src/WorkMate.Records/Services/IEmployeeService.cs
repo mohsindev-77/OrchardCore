@@ -236,6 +236,23 @@ public interface IEmployeeService
         int take = 50,
         IReadOnlyCollection<string>? restrictedTo = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// These employees, read from the index in one query. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>From the index, so it costs one query however many are asked for</b> — which is the
+    /// point, and also the limitation. The two fields the index does not carry are absent here
+    /// exactly as they are from <see cref="ListAsync"/>: date of birth and nationality, and
+    /// <see cref="EmployeeRecord.LineManagerKind"/>, which is on the content item alone because
+    /// nothing queries by it (D31 addendum 2). A caller that needs one of those asks
+    /// <see cref="GetAsync"/> for the few rows that need it rather than loading every row's item.
+    ///
+    /// An id that names nobody is simply absent from the result.
+    /// </remarks>
+    Task<IReadOnlyDictionary<string, EmployeeRecord>> GetManyAsync(
+        IReadOnlyList<string> employeeIds,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

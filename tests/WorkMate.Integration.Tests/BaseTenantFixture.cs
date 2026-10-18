@@ -9,6 +9,7 @@ using OrchardCore.Environment.Shell;
 using OrchardCore.Environment.Shell.Scope;
 using OrchardCore.Users.Models;
 using OrchardCore.Users.Services;
+using WorkMate.Tests.Shared;
 using Xunit;
 
 namespace WorkMate.Integration.Tests;
@@ -40,7 +41,16 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     /// <see cref="AssertTheDeveloperTenantWasNotTouched"/> exists.
     /// </remarks>
     private readonly string _contentRoot =
-        Path.Combine(Path.GetTempPath(), "workmate-integration", Guid.NewGuid().ToString("n"));
+        Path.Combine(Path.GetTempPath(), ContentRootFolder, Guid.NewGuid().ToString("n"));
+
+    /// <summary>
+    /// The folder this suite's content roots live under, and the one it is allowed to sweep.
+    /// </summary>
+    /// <remarks>
+    /// Its own, separate from the browser suite's: see <see cref="AbandonedContentRoots"/> for why
+    /// one suite must never sweep another's.
+    /// </remarks>
+    private const string ContentRootFolder = "workmate-integration";
 
     /// <summary>
     /// Orchard features struck out of the base recipe before this tenant is set up.
@@ -316,7 +326,11 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
     /// </summary>
     private void PrepareContentRoot()
     {
-        SweepAbandonedContentRoots();
+        // ONCE PER ASSEMBLY, not once per fixture. Most test classes here new a fixture up per
+        // class rather than sharing a collection one, so this used to run ~170 times a suite, each
+        // time enumerating every root every earlier run had left — quadratic in the leftovers, and
+        // minutes of a suite spent stat-ing the same folders.
+        AbandonedContentRoots.SweepOnce(ContentRootFolder);
 
         Directory.CreateDirectory(_contentRoot);
 
@@ -384,42 +398,6 @@ public sealed class BaseTenantFixture : WebApplicationFactory<Program>, IAsyncLi
                 {
                     File.Copy(po, Path.Combine(destination, Path.GetFileName(po)), overwrite: true);
                 }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Removes content roots left behind by earlier runs.
-    /// </summary>
-    /// <remarks>
-    /// Cleanup at the end of a run is best effort and sometimes loses: SQLite can still hold the
-    /// tenant's database file when the fixture is disposed. Sweeping at the start, once the files
-    /// are long since released, keeps a build agent from accumulating a tenant per run forever.
-    /// Only roots older than an hour are touched, so a run cannot delete another run's tenant.
-    /// </remarks>
-    private static void SweepAbandonedContentRoots()
-    {
-        var parent = Path.Combine(Path.GetTempPath(), "workmate-integration");
-
-        if (!Directory.Exists(parent))
-        {
-            return;
-        }
-
-        foreach (var candidate in Directory.EnumerateDirectories(parent))
-        {
-            try
-            {
-                if (Directory.GetCreationTimeUtc(candidate) < DateTime.UtcNow.AddHours(-1))
-                {
-                    Directory.Delete(candidate, recursive: true);
-                }
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
             }
         }
     }

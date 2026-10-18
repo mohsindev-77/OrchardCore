@@ -97,10 +97,11 @@ public static class EmployeeFieldNames
             // form designer would have built an undated shadow of all three, which would disagree
             // with the organisation block on the same page the first time somebody transferred.
             //
-            // NOT "JobTitle" AND NOT "GradeCode", deliberately: the shipped JobDetails section
-            // defines both, so forbidding them here would make CreateAsync throw on a brand-new
-            // tenant. D22 retires those two — keeping the data and the field, removing them from
-            // the editor — and that is slice F6c's to do, together with adding them to this set.
+            // "JobTitle" AND "GradeCode" ARE NOT HERE, and that is still deliberate — see
+            // RetiredOnSections below, which is the set F6c added for them. They cannot go in this
+            // set because the shipped JobDetails section defines both, and this set is consulted
+            // as that definition is written: putting them here would make CreateAsync throw on
+            // every brand-new tenant.
             "Position",
             "PositionId",
             "PositionCode",
@@ -111,6 +112,39 @@ public static class EmployeeFieldNames
 
         return names;
     }
+
+    /// <summary>
+    /// Names no NEW section or form field may take, because D22 retired them. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why these are a separate set from <see cref="ForbiddenOnSections"/>.</b> That set is
+    /// consulted while this module's own migration writes the shipped sections, and the shipped
+    /// <c>EmployeeJobDetail</c> section defines both of these — so a name in both sets would make
+    /// tenant setup throw. These are forbidden <em>everywhere else</em>: the one part that already
+    /// holds them keeps them, and nothing new may take the name.
+    ///
+    /// <b>Why forbid a name nobody is using.</b> Because the values are still there and still
+    /// shown. A form the designer publishes with a field called <c>JobTitle</c> on another section
+    /// would read as the employee's job title in Liquid, in GraphQL and to anybody scanning the
+    /// record, while holding something else — and the one it collides with is the historical value
+    /// D22 promised to keep legible.
+    /// </remarks>
+    public static readonly IReadOnlySet<string> RetiredOnSections =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "JobTitle", "GradeCode" };
+
+    /// <summary>
+    /// Whether a NEW field of this name is refused because D22 retired it on the section that
+    /// already has it.
+    /// </summary>
+    /// <param name="partName">The part the field would go on.</param>
+    /// <param name="fieldName">The name it would take.</param>
+    public static bool IsRetiredOnSection(string? partName, string? fieldName) =>
+        fieldName is not null &&
+        RetiredOnSections.Contains(fieldName) &&
+
+        // The one part that already holds them. Its own declaration is the history D22 keeps, so
+        // it is exempt; everything else is not.
+        !string.Equals(partName, EmployeeSections.JobDetailType, StringComparison.Ordinal);
 
     /// <summary>Whether the fixed core owns this name.</summary>
     public static bool IsReserved(string? name) => name is not null && Reserved.Contains(name);

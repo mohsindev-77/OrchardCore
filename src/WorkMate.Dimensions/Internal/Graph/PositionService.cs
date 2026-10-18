@@ -70,6 +70,7 @@ internal sealed class PositionService : IPositionService
         string? searchText,
         DateOnly? asAt = null,
         int take = 20,
+        string? nearUnitRecordId = null,
         CancellationToken cancellationToken = default)
     {
         var date = asAt ?? await _authorisation.TodayAsync();
@@ -80,10 +81,12 @@ internal sealed class PositionService : IPositionService
             return new Page<PositionOption>([], 0, 0, take);
         }
 
+        var typeIds = positionTypes.Select(type => type.DimensionTypeId).ToArray();
+
         // Active only (D26 F). A position that has closed is not a post anybody can be put into, and
         // offering it greyed out is offering it.
         var page = await _graph.SearchRecordsOfTypesAsync(
-            [.. positionTypes.Select(type => type.DimensionTypeId)],
+            typeIds,
             searchText,
             structureId: null,
             withinRecordId: null,
@@ -94,6 +97,47 @@ internal sealed class PositionService : IPositionService
             cancellationToken);
 
         var positions = page.Items.ToList();
+
+        // SLICE F6c: THE POSTS IN THE SAME DEPARTMENT FIRST. A reader choosing what a new post
+        // reports to is almost always looking inside the department they are building it in, and
+        // the first page is alphabetical across the whole company — so the obvious answer was
+        // routinely not on it.
+        //
+        // Fetched rather than re-sorted. Re-ordering the page would only move the same-department
+        // posts that happened to land in the first twenty, which is the half of the problem that
+        // did not need solving. The total stays the unscoped one, because "how many posts are
+        // there" is still the question the caption answers.
+        // "Within this unit" is a question about one axis — the closure index is per structure —
+        // so the axis the unit is actually on has to be found first. Asking with no structure
+        // returns the unscoped list, which is how this first shipped and why its test caught it.
+        var nearAxis = string.IsNullOrEmpty(nearUnitRecordId)
+            ? null
+            : await AxisOfAsync(nearUnitRecordId, date, cancellationToken);
+
+        if (!string.IsNullOrEmpty(nearUnitRecordId) && nearAxis is not null)
+        {
+            var near = await _graph.SearchRecordsOfTypesAsync(
+                typeIds,
+                searchText,
+                nearAxis,
+                withinRecordId: nearUnitRecordId,
+                DimensionRecordStatus.Active,
+                date,
+                skip: 0,
+                take,
+                cancellationToken);
+
+            var alreadyNear = near.Items.Select(item => item.RecordId).ToHashSet(StringComparer.Ordinal);
+
+            positions =
+            [
+                .. near.Items,
+                .. positions.Where(position => !alreadyNear.Contains(position.RecordId)),
+            ];
+
+            positions = [.. positions.Take(take)];
+        }
+
         var ids = positions.Select(position => position.RecordId).ToList();
 
         var units = await UnitPathsAsync(positions, date, cancellationToken);
@@ -109,6 +153,38 @@ internal sealed class PositionService : IPositionService
             page.Total,
             page.Skip,
             page.Take);
+    }
+
+    /// <summary>
+    /// The structure <paramref name="recordId"/> is placed on, or null if it is on none. F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is needed at all.</b> The closure index is per structure, so "the positions
+    /// within this unit" cannot be asked without naming the axis — a search with no structure and
+    /// a <c>withinRecordId</c> quietly returns the unscoped list, which is exactly the shape of
+    /// bug that looks like a working feature.
+    ///
+    /// Organisation axes only, in their fixed order, so the same unit always resolves to the same
+    /// axis. A unit placed on two would otherwise order the picker differently on different
+    /// requests for no reason anybody could explain.
+    /// </remarks>
+    private async Task<string?> AxisOfAsync(
+        string recordId,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        foreach (var axis in await OrganisationAxesAsync(cancellationToken))
+        {
+            var depths = await _graph.GetDepthsAsync(
+                axis.StructureId, [recordId], asAt, cancellationToken);
+
+            if (depths.ContainsKey(recordId))
+            {
+                return axis.StructureId;
+            }
+        }
+
+        return null;
     }
 
     public async Task<IReadOnlyList<DimensionNodeRef>> GetAllowedGradesAsync(

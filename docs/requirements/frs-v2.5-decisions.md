@@ -1438,3 +1438,149 @@ Confirming the person through *Change…* records the override properly and the 
 - **Storage is still `LineManagerEmployeeId`**, still undated, plus one boolean on the same part.
   No new column, no index change.
 - **The four screens still show one *Reports to* row** from one partial.
+
+---
+
+## D22 addendum — the retirement, as built in F6c
+
+**Status: accepted.** Built in slice F6c.
+**Date:** 18 October 2026
+**Implements:** D22 steps 1, 3, 5 and 6. **Rests on:** ADR-0009, ADR-0014, ADR-0016, D26, D30.
+
+D22 was written as design and left four things for the slice that built it to settle. These are the
+answers.
+
+**1. How a field is retired: a new editor, not a new setting and not a deletion.**
+`ContentPartFieldSettings.Editor` on `JobDetails.JobTitle` and `JobDetails.GradeCode` becomes
+`WorkMateRetired`, and this module supplies the two views Orchard then resolves. The field keeps its
+type, its stored value, its display name and — on `GradeCode` — its binding to the `grade` list,
+which is how a code typed last year still resolves to a name. The same mechanism the lookup editor
+already uses, and for the same reason: **no field driver is registered**, so nothing collides with
+the one `OrchardCore.ContentFields` has for `TextField`.
+
+**The retired editor renders a hidden input carrying the value.** Orchard's field drivers bind
+their editor's model and write the result straight back, so an editor that rendered nothing would
+post nothing, the driver would store the empty string, and the second save of a Job details row
+would erase the history the first one displayed. Retiring a field by deleting its contents is the
+one outcome D22 exists to prevent, and it would be silent and permanent.
+
+**2. A tenant with no positions still types them**, which is D22 step 3 made mechanical rather than
+remembered. The retired editor asks the tenant's own axes whether it has positions and renders an
+ordinary box when it has none. One definition, no second setting, nothing an operator can get
+wrong — and the hard rule that a tenant with no positions keeps today's behaviour is kept by
+construction.
+
+**3. The lists are retired at creation, not by a migration step alone.** `job-title` and `grade`
+arrive through the `lookup-lists` recipe step, which runs **after** this module's migrations — so a
+step that retired them could only ever catch a tenant that already had them, and every new tenant
+would load them fresh and unretired. `ILookupListService.CreateAsync` marks a list whose code is in
+`StandardLookupLists.Superseded` retired as it is written, which covers the recipe, the
+standard-lists action and any later import. `Migrations.UpdateFrom6Async` still retires them for a
+tenant that loaded them earlier.
+
+**Retired means not offered, not gone.** `LookupListDocument.IsRetired` changes what is proposed for
+a new binding and nothing about what resolves. ADR-0014's rule applied one level up: an entry is
+retired rather than deleted because records name it; a list is retired rather than deleted because
+fields bind to it and records hold its codes. There is no un-retire.
+
+**4. The names are reserved for new definitions, and the section that has them keeps them.**
+`JobTitle` and `GradeCode` go into `EmployeeFieldNames.RetiredOnSections`, which is a **separate set
+from `ForbiddenOnSections`** — that one is consulted while this module's own migration writes the
+shipped sections, so a name in both would make every brand-new tenant's setup throw. The guard asks
+the part as well as the name: `EmployeeJobDetail` may declare them, nothing else may. A second
+`JobTitle` published by the form designer would read as the employee's job title in Liquid and in
+GraphQL while holding something else, beside the historical one D22 promised to keep legible.
+
+**What is still not done:** D22 step 4, the operator-run import that seeds the Position dimension
+from typed values. Unchanged and still its own slice — what the right positions are is a business
+question and not a migration's to guess.
+
+---
+
+# D32 — The employees list shows what people hold, derived
+
+**Status: accepted.** Built in slice F6c.
+**Date:** 18 October 2026
+**Rests on:** D22, D26, D28 D, D30, D31 and its addenda, ADR-0029.
+
+## The decision
+
+The employees list carries **Code, Name, Position, Grade, Reports to, Organisation, Status**, and
+every one of the four new columns is **derived on read** rather than stored.
+
+| Column | Where it comes from |
+| --- | --- |
+| **Position** | the dated assignment's node, when that node is a position (D30) |
+| **Grade** | the grade on the same assignment row (ADR-0026) |
+| **Reports to** | `IEmployeeOrganisationService.GetLineManagerAsync`'s answer — the **live** line manager, with its footing (D31 addendum 2) |
+| **Organisation** | the position's ancestors, labelled with the tenant's **own** dimension names (D28 D) |
+
+**One *Organisation* column, not four.** Division, Department, Business unit and Cost centre would
+be right for Zenith and wrong for Crescent. Per-dimension optional columns are the shape the
+dimension list already uses and are a later slice; the path answers the question today.
+
+**An employee with no position reads "No position yet — &lt;unit&gt;"**, naming the unit. ADR-0029's
+mid-migration state, which D28 C requires be made legible — and a blank cell on a list of two
+hundred people is exactly how it stays hidden.
+
+**Filters: by position and by unit**, intersected rather than replacing one another, because "in
+this department **and** a Site Supervisor" is what somebody setting both is asking. The unit filter
+includes everything below it, which costs nothing: a position is a node on the organisation axis
+with a parent, so the closure index already rolls its holder up to the department.
+
+**A tenant with no positions sees none of this.** D30's scope, restated: the columns, the position
+filter and the derived sorts are all absent, and that list is exactly what F6a shipped.
+
+## Batched, and what "batched" means precisely
+
+`GetLinesAsync` resolves a page in a number of reads bounded by the **distinct positions** on it and
+the **axes** the tenant has — never by the number of rows. Fifty people in one department cost what
+one of them costs. It shares one body with `GetLineManagerAsync` for deciding what a stored line
+manager means, so an employee's own page and the list she appears on cannot disagree about who
+manages her.
+
+**One read is still per row**, and only for employees who have a stored line manager at all: *what
+kind* of answer it is lives on the content item and not on `EmployeeIndex`, deliberately (D31
+addendum 2). After that addendum's migration the set is people somebody actually chose or
+overrode — a minority of any page.
+
+## Sorting by position or grade, and the column that would have made it free
+
+Name is index-backed and orders the whole tenant. **Position and grade are not columns on
+`EmployeeIndex` and cannot be.** The F6 design note floated a denormalised column and asked for an
+argument; the argument fails:
+
+> A position's name lives on a dimension record and a grade's on an assignment row, and **both
+> change without the employee's content item being touched.** YesSql re-indexes on save of the
+> indexed document, so renaming a position or transferring somebody would leave the column holding a
+> value that is no longer true — a cache nothing invalidates, sorting and filtering by a stale
+> answer. Keeping it fresh would mean a write into the employee record from the dimension engine,
+> which is the cross-module write-coupling rule 9 exists to prevent.
+
+So the matching employees are resolved and ordered in the module, **up to a cap of 2,000**. Past it
+the list keeps its name order and **says so** — *"Too many people to order by position or grade.
+Narrow the list first."* Silently sorting the first two thousand would look exactly like a correct
+answer, which is the one outcome worth refusing.
+
+**Known limitation, recorded rather than hidden:** on a tenant with more than 2,000 matching
+employees, ordering by position or grade requires a filter first. The honest fix is a reporting
+read model rather than a column on the record, and that is a later slice's decision.
+
+## F6c also settled, under existing decisions
+
+- **A post's reporting line changes through the designer's dated Move** (ADR-0005). The position
+  page's *Change reports to...* opens that screen on the **reporting** axis with the post chosen.
+  There is no undated reparent anywhere in the product.
+- **"No one above holds a post yet" names the empty chairs** — *"No acting manager — Manager
+  Technology, Director Technology and CEO are also vacant"*. True and unactionable became a list of
+  posts somebody can go and fill. D31 addendum.
+- **A stale stored choice stops the row claiming a line manager.** With one holder above and a
+  choice that has gone stale, the row reads the post and the holder without *"(line manager)"*,
+  because the sentence directly below says the record needs a new one. Two statements one line
+  apart, disagreeing, is what that removes.
+- **The Reports-to picker offers the same department first**, fetched rather than re-sorted — see
+  `IPositionService.SearchSelectableAsync`. Re-sorting the page would only move the posts that
+  happened to land in the first twenty.
+- **Add on a grouped "All &lt;plural&gt;" list asks which organisation first**, which is the pending
+  item from the F6 design note section 8. One type goes straight to the form, unchanged. It used to
+  post an empty dimension type id and answer 404 from a button the screen had just offered.

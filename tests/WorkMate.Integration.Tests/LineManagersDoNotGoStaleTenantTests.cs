@@ -641,7 +641,7 @@ public sealed class LineManagersDoNotGoStaleTenantTests : IAsyncLifetime, IDispo
 
     private async Task<LineManagerAnswer> LineManagerAnswerAsync(string employeeId)
     {
-        var answer = LineManagerAnswer.Nobody;
+        var answer = LineManagerAnswer.Nobody();
 
         await InTenantAsSystemAsync(async services =>
             answer = await services.GetRequiredService<IEmployeeOrganisationService>()

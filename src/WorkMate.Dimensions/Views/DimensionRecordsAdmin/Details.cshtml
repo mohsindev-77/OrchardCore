@@ -199,6 +199,21 @@
                     }
                 </ol>
             }
+
+            @if (Model.CanMove && !string.IsNullOrEmpty(Model.ReportingStructureId))
+            {
+                @* SLICE F6c. The designer's own dated Move, on the reporting axis, with this post
+                   already chosen — never an undated reparent. Moving a post on the reporting line
+                   is a dated change like every other write in this engine (ADR-0005), and that
+                   screen is the one that takes the date and writes the pair of rows. A control
+                   here that simply set a new parent would be the one place in the product where
+                   the reporting line changed without a date. *@
+                <a class="btn btn-outline-secondary btn-sm mt-2" id="value-change-reports-to"
+                   asp-controller="OrganisationDesignerAdmin" asp-action="Move"
+                   asp-route-structureId="@Model.ReportingStructureId"
+                   asp-route-recordId="@Model.RecordId"
+                   asp-route-asAt="@Model.AsAtIso">@T["Change reports to…"]</a>
+            }
         </dd>
     }
     else

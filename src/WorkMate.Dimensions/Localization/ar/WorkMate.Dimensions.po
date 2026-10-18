@@ -2573,3 +2573,17 @@ msgstr "‏'{0}' سلّم درجات. تُسجَّل الدرجة على الت�
 #: Internal/Graph/DimensionValidator.cs
 msgid "'{0}' has no levels yet, so there is nowhere on it to place anybody. Build its levels first."
 msgstr "‏'{0}' ليس له مستويات بعد، فلا يوجد عليه مكان لوضع أي شخص. ابنِ مستوياته أولاً."
+
+#. ---- F6c: the position page's dated "change reports to", and the grouped list's Add step ----
+
+#: Views/DimensionRecordsAdmin/Details.cshtml
+msgid "Change reports to…"
+msgstr "تغيير جهة التبعية…"
+
+#: Views/DimensionRecordsAdmin/ChooseOrganisation.cshtml
+msgid "Add to {0}"
+msgstr "إضافة إلى {0}"
+
+#: Views/DimensionRecordsAdmin/ChooseOrganisation.cshtml
+msgid "More than one organisation has a dimension of this name. Which one is this for?"
+msgstr "أكثر من جهة لديها بُعد بهذا الاسم. لأي جهة هذا؟"

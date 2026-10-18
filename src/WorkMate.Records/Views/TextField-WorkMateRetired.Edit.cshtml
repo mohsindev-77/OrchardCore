@@ -1,0 +1,76 @@
+@using OrchardCore.ContentFields.ViewModels
+@using OrchardCore.ContentManagement.Metadata.Models
+@using WorkMate.Dimensions.Services
+@inject IPositionService Positions
+@model EditTextFieldViewModel
+
+@*
+    A field D22 has retired: kept, readable, and no longer offered for typing.
+
+    THE HIDDEN INPUT IS THE WHOLE SAFETY OF THIS. Orchard's TextFieldDisplayDriver binds
+    {Prefix}.Text and writes the result straight back onto the field, so an editor that rendered
+    nothing would post nothing, the driver would bind the empty string, and saving a Job details
+    row would silently erase the job title it was showing read-only a second earlier. Retiring a
+    field by deleting its contents is the one outcome D22 exists to prevent.
+
+    NO DRIVER BEHIND THIS, for the reason TextField-WorkMateLookup.Edit.cshtml sets out at length:
+    OrchardCore.ContentFields already registers one for TextField, and a second would render the
+    field twice.
+
+    TENANTS WITH NO POSITIONS KEEP TODAY'S BEHAVIOUR. D22 step 3: where there are no positions the
+    typed value is still the only answer there is, so the box stays editable. The question is asked
+    of the tenant's axes — the same read every other screen in F6 makes — and never of this row.
+*@
+
+@{
+    var settings = Model.PartFieldDefinition.GetSettings<WorkMate.Records.Models.LookupFieldSettings>();
+    var name = $"{ViewData.TemplateInfo.HtmlFieldPrefix}.Text";
+    var label = Model.PartFieldDefinition.DisplayName();
+    var value = Model.Field.Text ?? string.Empty;
+
+    var isPositionBased = (await Positions.GetEmployeeAxesAsync())
+        .Any(axis => axis.IsPositionBased);
+}
+
+@if (!isPositionBased)
+{
+    @* D22 step 3, and the hard rule that a tenant with no positions keeps TODAY'S behaviour —
+       which means the control it had, not merely a box. A bound field goes on offering its list;
+       an unbound one goes on being free text. Downgrading a managed choice to a text box here
+       would be this slice taking a feature away from the tenants D30 does not even apply to. *@
+    <div class="mb-3" data-retired-field="@Model.PartFieldDefinition.Name">
+        @if (!string.IsNullOrEmpty(settings.ListCode))
+        {
+            <workmate-lookup name="@name"
+                             value="@value"
+                             list-code="@settings.ListCode"
+                             label="@label" />
+        }
+        else
+        {
+            <label class="form-label" for="@name">@label</label>
+            <input class="form-control" type="text" id="@name" name="@name" value="@value" />
+        }
+
+        <div class="form-text">
+            @T["This becomes read-only once this tenant builds positions, and Position takes over."]
+        </div>
+    </div>
+
+    return;
+}
+
+<input type="hidden" name="@name" value="@value" />
+
+@if (!string.IsNullOrWhiteSpace(value))
+{
+    @* Shown only where there is something to show. A blank "Former grade code" on every new row
+       would be an empty field that has been given a new name rather than retired. *@
+    <div class="mb-3" data-retired-field="@Model.PartFieldDefinition.Name">
+        <label class="form-label">@T["Former {0}", label.ToLowerInvariant()]</label>
+        <p class="form-control-plaintext text-muted mb-0" data-retired-value>@value</p>
+        <div class="form-text">
+            @T["Kept as history. The answer now comes from the position this employee holds."]
+        </div>
+    </div>
+}

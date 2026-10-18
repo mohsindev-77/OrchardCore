@@ -28,6 +28,9 @@
         // The axis the choice will be written on, when the tenant has more than one Position type.
         // Without it the search would offer a position the save is going to refuse.
         var structureId = wrapper.getAttribute("data-position-picker-structure") || "";
+
+        // The department this post sits in, whose own posts are offered first — slice F6c.
+        var near = wrapper.getAttribute("data-position-picker-near") || "";
         var full = wrapper.querySelector("[data-position-picker-full]");
 
         var fallbackNote = wrapper.querySelector("[data-position-picker-fallback-note]");
@@ -76,6 +79,10 @@
 
                 if (structureId) {
                     parameters.set("structureId", structureId);
+                }
+
+                if (near) {
+                    parameters.set("near", near);
                 }
 
                 picker.fetchJson(

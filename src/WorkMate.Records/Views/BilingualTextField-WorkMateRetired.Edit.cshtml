@@ -1,0 +1,57 @@
+@using OrchardCore.ContentManagement.Metadata.Models
+@using WorkMate.Dimensions.Services
+@using WorkMate.Platform.ViewModels
+@inject IPositionService Positions
+@model EditBilingualTextFieldViewModel
+
+@*
+    The bilingual half of D22's retirement — JobDetails.JobTitle. Everything
+    TextField-WorkMateRetired.Edit.cshtml says applies here; the only difference is that
+    BilingualTextFieldDisplayDriver binds TWO values, so two hidden inputs are needed and losing
+    either would erase half a name.
+*@
+
+@{
+    var prefix = ViewData.TemplateInfo.HtmlFieldPrefix;
+    var label = Model.PartFieldDefinition?.DisplayName() ?? string.Empty;
+    var en = Model.Field.En ?? string.Empty;
+    var ar = Model.Field.Ar ?? string.Empty;
+
+    var isPositionBased = (await Positions.GetEmployeeAxesAsync())
+        .Any(axis => axis.IsPositionBased);
+}
+
+@if (!isPositionBased)
+{
+    @* D22 step 3: with no positions the typed value is still the only answer there is. *@
+    <div class="mb-3" data-retired-field="@Model.PartFieldDefinition?.Name">
+        <label class="form-label" for="@(prefix).En">@label</label>
+        <input class="form-control" dir="ltr" lang="en" id="@(prefix).En" name="@(prefix).En" value="@en" />
+        <input class="form-control mt-1" dir="rtl" lang="ar" id="@(prefix).Ar" name="@(prefix).Ar" value="@ar" />
+        <div class="form-text">
+            @T["This becomes read-only once this tenant builds positions, and Position takes over."]
+        </div>
+    </div>
+
+    return;
+}
+
+<input type="hidden" name="@(prefix).En" value="@en" />
+<input type="hidden" name="@(prefix).Ar" value="@ar" />
+
+@if (!string.IsNullOrWhiteSpace(en) || !string.IsNullOrWhiteSpace(ar))
+{
+    <div class="mb-3" data-retired-field="@Model.PartFieldDefinition?.Name">
+        <label class="form-label">@T["Former {0}", label.ToLowerInvariant()]</label>
+        <p class="form-control-plaintext text-muted mb-0" data-retired-value>
+            <span dir="ltr" lang="en">@en</span>
+            @if (!string.IsNullOrWhiteSpace(ar))
+            {
+                <span dir="rtl" lang="ar" class="d-block">@ar</span>
+            }
+        </p>
+        <div class="form-text">
+            @T["Kept as history. The answer now comes from the position this employee holds."]
+        </div>
+    </div>
+}

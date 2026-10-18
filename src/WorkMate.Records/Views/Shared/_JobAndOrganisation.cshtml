@@ -86,10 +86,24 @@
         }
         else if (position.ReportsTo.Kind == ReportsToKind.OneHolder)
         {
-            @* The post first, then the person: the post is the fact, the person answers for it. *@
+            @* The post first, then the person: the post is the fact, the person answers for it.
+
+               WITHOUT THE "(line manager)" CLAIM WHEN THE RECORD IS ASKING FOR ONE — slice F6c.
+               A stored choice whose person has left reads as NeedsChoice, and the sentence below
+               says so by name; the row asserting that the current holder IS the line manager
+               would contradict it one line above. The post and its holder are both still facts
+               and are both still shown. *@
             <span id="job-reports-to-one">
-                @T["{0} — {1} (line manager)",
-                    position.ReportsTo.PositionName, position.ReportsTo.Holders[0].Name]
+                @if (lineManager?.Mode == LineManagerMode.NeedsChoice)
+                {
+                    @T["{0} — {1}",
+                        position.ReportsTo.PositionName, position.ReportsTo.Holders[0].Name]
+                }
+                else
+                {
+                    @T["{0} — {1} (line manager)",
+                        position.ReportsTo.PositionName, position.ReportsTo.Holders[0].Name]
+                }
             </span>
         }
         else

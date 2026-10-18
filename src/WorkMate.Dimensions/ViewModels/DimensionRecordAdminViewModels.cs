@@ -188,6 +188,29 @@ public sealed record StructureChoiceViewModel(string StructureId, string Code, s
 /// </remarks>
 public sealed record DimensionGroupTypeViewModel(string DimensionTypeId, string Organisation);
 
+/// <summary>
+/// The step between <em>Add</em> on a grouped list and the Create form. Slice F6c.
+/// </summary>
+/// <remarks>
+/// <b>The defect it closes.</b> On an <em>All &lt;plural&gt;</em> list the group holds one entry per
+/// dimension type sharing a name — two Position types on the demo tenant, one per company — so the
+/// list has no single type and <c>DimensionTypeId</c> is empty. <em>Add</em> posted that empty id
+/// and the Create form could not know what it was creating; the reader got a 404 from a button the
+/// screen had just offered them.
+///
+/// <b>No new screen concept.</b> It is the same "refuse to guess, offer the choice" the list
+/// already does when a tree view has no structure to draw, and the choices are exactly the ones its
+/// own Organisation filter is built from — so the two can never offer different answers.
+/// </remarks>
+/// <param name="Choices">
+/// One per type in the group, each named by the organisation whose chart it is a level of.
+/// </param>
+public sealed record ChooseOrganisationViewModel(
+    string Group,
+    string Caption,
+    string? StructureId,
+    IReadOnlyList<DimensionGroupTypeViewModel> Choices);
+
 /// <summary>One of the type's attributes, and whether the list is showing it as a column.</summary>
 public sealed record DimensionAttributeColumnViewModel(string Name, string Label, bool IsShown);
 

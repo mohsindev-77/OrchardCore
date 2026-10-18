@@ -50,6 +50,14 @@ public sealed partial class Migrations : DataMigration
         int untouched);
 
     [LoggerMessage(
+        EventId = 3102,
+        Level = LogLevel.Warning,
+        Message = "The job-title and grade lists were not retired: ILookupListService is not "
+            + "registered. They are superseded by the Position and Grade dimensions (D22) and "
+            + "will still be offered for new bindings until they are marked.")]
+    private partial void LogListRetirementSkipped();
+
+    [LoggerMessage(
         EventId = 3101,
         Level = LogLevel.Warning,
         Message = "Line manager backfill skipped: ILineManagerBackfill is not registered. "
@@ -116,6 +124,11 @@ public sealed partial class Migrations : DataMigration
         // UpdateFrom4Async carries the same change to a tenant created before it; see that step for
         // why a definition change is stated in both places and a table creation is not.
         await BindStandardLookupFieldsAsync();
+
+        // And D22's retirement, AFTER the bindings — it supersedes the one on GradeCode, and a
+        // fresh tenant must end up where an upgraded one does. UpdateFrom6Async is the same change
+        // for a tenant created before it.
+        await RetireSupersededFieldsAsync();
 
         return 1;
     }
@@ -522,6 +535,84 @@ public sealed partial class Migrations : DataMigration
         await FreeDerivedLineManagersAsync();
 
         return 6;
+    }
+
+    /// <summary>
+    /// Retires the free job title and grade code, and the two lists behind them. D22, slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing is deleted and nothing is moved.</b> Both fields keep their type and their stored
+    /// values; what changes is which editor renders them — see <c>RetiredFieldEditor</c>, and the
+    /// two views that round-trip the value in hidden inputs so that saving a row cannot erase the
+    /// history this step exists to keep. The lists are marked retired, which stops them being
+    /// offered for a new binding and changes nothing about what they resolve.
+    ///
+    /// <b>Why a migration and not a recipe step.</b> An editor is part of the content definition —
+    /// schema — and it must reach tenants that already exist, which a recipe cannot do: a recipe is
+    /// applied once at setup and a later edit to it never arrives anywhere. The same argument
+    /// <see cref="UpdateFrom4Async"/> makes for the bindings themselves.
+    ///
+    /// <b>Stated here and in <see cref="CreateAsync"/> both</b>, which is ADR-0009's shape for a
+    /// definition change: altering a definition is idempotent, so a brand-new tenant gets the
+    /// current shape in one pass and this carries the same change to a tenant that ran
+    /// <see cref="CreateAsync"/> before it existed.
+    ///
+    /// <b>Tenants with no positions are unaffected</b>, and the mechanism is why: the retired
+    /// editor asks the tenant's own axes whether it has positions and renders an ordinary editable
+    /// box when it has none — D22 step 3, where the typed value is still the only answer there is.
+    /// </remarks>
+    public async Task<int> UpdateFrom6Async()
+    {
+        await RetireSupersededFieldsAsync();
+        await RetireSupersededListsAsync();
+
+        return 7;
+    }
+
+    /// <summary>
+    /// Points <c>JobTitle</c> and <c>GradeCode</c> at the retired editor. D22, slice F6c.
+    /// </summary>
+    private Task RetireSupersededFieldsAsync() =>
+        _contentDefinitionManager.AlterPartDefinitionAsync(
+            EmployeeSections.JobDetailType,
+            part =>
+            {
+                foreach (var fieldName in EmployeeFieldNames.RetiredOnSections)
+                {
+                    // WithSettings MERGES, so the display name and the description
+                    // CreateSectionTypesAsync set survive, and so does the ListCode on GradeCode —
+                    // which is deliberate: the binding is how an old code still resolves to a name.
+                    part.WithField(fieldName, field => field.WithEditor(RetiredFieldEditor.Name));
+                }
+            });
+
+    /// <summary>
+    /// Marks the <c>job-title</c> and <c>grade</c> lists superseded. D22 steps 5 and 6.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="ILookupListService.RetireAsync"/> rather than by rewriting the document,
+    /// so the audit trail records it and the cache is invalidated — the same reasons every other
+    /// write in this module goes through its service. A tenant that never loaded the standard
+    /// lists has neither, and nothing happens.
+    /// </remarks>
+    private async Task RetireSupersededListsAsync()
+    {
+        var lists = _serviceProvider.GetService<ILookupListService>();
+
+        if (lists is null)
+        {
+            LogListRetirementSkipped();
+
+            return;
+        }
+
+        foreach (var code in StandardLookupLists.Superseded)
+        {
+            if (await lists.GetByCodeAsync(code) is { } list)
+            {
+                await lists.RetireAsync(list.LookupListId);
+            }
+        }
     }
 
     /// <summary>

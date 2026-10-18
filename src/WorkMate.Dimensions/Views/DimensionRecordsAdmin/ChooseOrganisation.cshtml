@@ -1,0 +1,39 @@
+@model ChooseOrganisationViewModel
+@*
+    "Which organisation?" — the step between Add on a grouped list and the Create form. Slice F6c.
+
+    WHY THIS EXISTS. An "All <plural>" list groups every dimension type that shares a name, and the
+    demo tenant has two Position types — one per company, prefixed for the reason ADR-0028 gives.
+    The list is therefore about no single type, and Add posted an empty dimensionTypeId: the Create
+    form could not know what it was creating, and the reader got a 404 from a button the screen had
+    just offered them.
+
+    REFUSING TO GUESS IS THE PRODUCT'S HABIT HERE, not a new idea: the tree view asks the same
+    question when it has no structure to draw. Picking one of the two would silently create a
+    Crescent position from Zenith's list half the time.
+
+    LINKS, NOT A FORM. Nothing is written by choosing; this only decides which Create form to open,
+    and a GET keeps the back button working the way it does everywhere else on these screens.
+*@
+<h1 id="choose-organisation-heading">@T["Add to {0}", Model.Caption]</h1>
+
+<p class="text-muted" id="choose-organisation-hint">
+    @T["More than one organisation has a dimension of this name. Which one is this for?"]
+</p>
+
+<div class="list-group mb-3" id="choose-organisation-choices">
+    @foreach (var choice in Model.Choices)
+    {
+        <a class="list-group-item list-group-item-action choose-organisation-choice"
+           data-dimension-type-id="@choice.DimensionTypeId"
+           asp-action="Create"
+           asp-route-dimensionTypeId="@choice.DimensionTypeId"
+           asp-route-group="@Model.Group"
+           asp-route-structureId="@Model.StructureId">@choice.Organisation</a>
+    }
+</div>
+
+<a class="btn btn-link" id="choose-organisation-cancel"
+   asp-action="Index"
+   asp-route-group="@Model.Group"
+   asp-route-structureId="@Model.StructureId">@T["Cancel"]</a>

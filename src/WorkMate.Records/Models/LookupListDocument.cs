@@ -68,6 +68,27 @@ public sealed class LookupListDocument
     public bool IsSystemDefined { get; set; }
 
     /// <summary>
+    /// Whether the whole list has been superseded. D22, slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>The list-level counterpart of <see cref="LookupListItem.IsActive"/>, and the same
+    /// argument.</b> An entry is retired rather than deleted because records already name it;
+    /// a list is retired rather than deleted because fields already bind to it and records already
+    /// hold its codes. <c>job-title</c> and <c>grade</c> are the first two: the Position and Grade
+    /// dimensions answer those questions now (D22), and the lists stay so that what a tenant typed
+    /// before still resolves to a name rather than to a bare code.
+    ///
+    /// <b>What it changes is what is OFFERED.</b> A retired list is not proposed for a new binding
+    /// and is not re-bound by the standard bindings; it is still read, still resolves, and is still
+    /// shown on the lists screen, marked. Nothing about the data changes — which is why this is a
+    /// property on the document and not a migration that rewrites anything.
+    ///
+    /// Deserialises as false on every list written before this existed, which is the right reading
+    /// of a list nobody has retired.
+    /// </remarks>
+    public bool IsRetired { get; set; }
+
+    /// <summary>
     /// The entries, in the order they were given. Retired ones stay.
     /// </summary>
     /// <remarks>

@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
+using WorkMate.Tests.Shared;
 using Xunit;
 
 namespace WorkMate.Browser.Tests;
@@ -34,8 +35,17 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
     public const string AdminUserName = "admin";
     public const string AdminPassword = "Workmate!Browser1";
 
+    /// <summary>
+    /// The folder this suite's content roots live under, and the one it is allowed to sweep.
+    /// </summary>
+    /// <remarks>
+    /// Its own, separate from the integration suite's: see <see cref="AbandonedContentRoots"/> for
+    /// why one suite must never sweep another's.
+    /// </remarks>
+    private const string ContentRootFolder = "workmate-browser";
+
     private readonly string _contentRoot =
-        Path.Combine(Path.GetTempPath(), "workmate-browser", Guid.NewGuid().ToString("n"));
+        Path.Combine(Path.GetTempPath(), ContentRootFolder, Guid.NewGuid().ToString("n"));
 
     private IHost? _kestrel;
     private IPlaywright? _playwright;
@@ -51,6 +61,11 @@ public class BrowserTenantFixture : WebApplicationFactory<Program>, IAsyncLifeti
 
     public async Task InitializeAsync()
     {
+        // This suite never swept at all, so it accumulated a tenant per run for ever — 470 of them
+        // on the machine this was added on. Once per assembly, for the reason the integration
+        // fixture's own call records.
+        AbandonedContentRoots.SweepOnce(ContentRootFolder);
+
         // Touching Services is what builds the host, and therefore what starts Kestrel.
         _ = Services;
 

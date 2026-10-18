@@ -92,6 +92,8 @@ public sealed class EmployeesAdminController : Controller
         string? structureId,
         string? recordId,
         string? asAt,
+        string? positionRecordId = null,
+        EmployeeListSort sort = EmployeeListSort.Name,
         bool includeSubUnits = false,
         int skip = 0,
         int take = 50,
@@ -111,8 +113,22 @@ public sealed class EmployeesAdminController : Controller
             ? null
             : await MembershipAsync(unit, cancellationToken);
 
+        // Whether to offer the derived columns at all. Asked of the tenant's axes rather than of
+        // this page's employees — D30 is scoped to a structure that has positions, and a tenant
+        // with none keeps today's list exactly.
+        var isPositionBased = (await _positions.GetEmployeeAxesAsync(cancellationToken))
+            .Any(axis => axis.IsPositionBased);
+
+        // Slice F6c: holding a given post is an assignment row, so filtering by one narrows the
+        // list to a set of people exactly as the unit filter does. Intersected rather than
+        // replacing it, because "in this department AND a Site Supervisor" is the question
+        // somebody filtering by both is asking.
+        var holders = await HoldersOfAsync(positionRecordId, asAt, cancellationToken);
+
+        var restrictedTo = Intersect(membership?.EveryoneListed, holders);
+
         var page = await _employees.ListAsync(
-            search, status, skip, take, membership?.EveryoneListed, cancellationToken);
+            search, status, skip, take, restrictedTo, cancellationToken);
 
         var model = new EmployeeListViewModel
         {
@@ -123,11 +139,32 @@ public sealed class EmployeesAdminController : Controller
             Skip = skip,
             Take = take,
             Unit = unit,
+            IsPositionBased = isPositionBased,
+            PositionRecordId = positionRecordId,
+            Sort = sort,
             CanManage = await _authorisation.AuthoriseAsync(Permissions.ManageEmployees),
             CanChangeStatus = await _authorisation.AuthoriseAsync(Permissions.ChangeEmploymentStatus),
             CanAssign = await _authorisation.AuthoriseAsync(
                 WorkMate.Dimensions.Permissions.AssignEmployees),
         };
+
+        if (isPositionBased && sort != EmployeeListSort.Name)
+        {
+            await SortByDerivedAsync(model, search, status, restrictedTo, sort, cancellationToken);
+        }
+
+        if (isPositionBased)
+        {
+            await FillOrganisationAsync(model.Employees, cancellationToken);
+        }
+
+        if (!string.IsNullOrEmpty(positionRecordId))
+        {
+            model.PositionName = await _dimensions.GetAsync(
+                positionRecordId, await _authorisation.TodayAsync(), cancellationToken) is { } post
+                ? BilingualText.Display(post.NameEn, post.NameAr)
+                : null;
+        }
 
         // On the structure being looked at when there is one, and on the primary organisation
         // otherwise. An "Additional" row only means anything if the main placement beside it is
@@ -144,6 +181,161 @@ public sealed class EmployeesAdminController : Controller
         }
 
         return View(model);
+    }
+
+    /// <summary>
+    /// Everybody holding <paramref name="positionRecordId"/> on the date, or null when the list is
+    /// not filtered by a position. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// Through <c>IPositionService.GetHoldersAsync</c>, which is the same read the position's own
+    /// page draws its Holders section from — so the list and the page cannot disagree about who
+    /// holds a post. A page at a time would be wrong here: this is a <em>filter</em>, and the list
+    /// pages the result of it.
+    /// </remarks>
+    private async Task<IReadOnlyCollection<string>?> HoldersOfAsync(
+        string? positionRecordId,
+        string? asAt,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(positionRecordId))
+        {
+            return null;
+        }
+
+        var date = IsoDate.TryParse(asAt, out var parsed) ? parsed : await _authorisation.TodayAsync();
+
+        var holders = await _positions.GetHoldersAsync(
+            positionRecordId, date, skip: 0, take: HolderFilterCap, cancellationToken);
+
+        return [.. holders.Items.Select(holder => holder.EmployeeId).Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// The most holders of one post this list will filter by. A post with more is a data problem.
+    /// </summary>
+    private const int HolderFilterCap = 5000;
+
+    /// <summary>
+    /// Both restrictions, or whichever of them there is. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// An empty set is a real answer and is kept: filtering by a post nobody holds must produce no
+    /// rows, where treating it as "no restriction" would produce every row — the most confusing
+    /// possible reply to a narrowing filter.
+    /// </remarks>
+    private static IReadOnlyCollection<string>? Intersect(
+        IReadOnlyCollection<string>? first,
+        IReadOnlyCollection<string>? second)
+    {
+        if (first is null)
+        {
+            return second;
+        }
+
+        if (second is null)
+        {
+            return first;
+        }
+
+        var narrower = second.ToHashSet(StringComparer.Ordinal);
+
+        return [.. first.Where(narrower.Contains)];
+    }
+
+    /// <summary>
+    /// Orders the page by position or by grade, which no index can do. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Why this is done by hand and cannot be done by the index.</b> <c>EmployeeIndex</c> can
+    /// order by name and code for ever, because those are fields of the employee. A position's
+    /// name is on a dimension record and a grade's is on an assignment row, and both change
+    /// without the employee's content item being touched — so a denormalised column here would be
+    /// a cache nothing invalidates: rename a position, or transfer somebody, and the list would
+    /// sort by a value that is no longer true. The F6 design note floated that column and this is
+    /// the argument it asked for, answered against.
+    ///
+    /// <b>So the matching employees are resolved and ordered here, up to a cap.</b> Past the cap
+    /// the list keeps its name order and SAYS SO. Silently sorting the first two thousand would
+    /// look exactly like a correct answer, which is the one outcome worth refusing.
+    /// </remarks>
+    private async Task SortByDerivedAsync(
+        EmployeeListViewModel model,
+        string? search,
+        EmploymentStatus? status,
+        IReadOnlyCollection<string>? restrictedTo,
+        EmployeeListSort sort,
+        CancellationToken cancellationToken)
+    {
+        if (model.Total > DerivedSortCap)
+        {
+            model.SortWasTooWide = true;
+
+            return;
+        }
+
+        var matching = await _employees.ListAsync(
+            search, status, skip: 0, take: model.Total, restrictedTo, cancellationToken);
+
+        var lines = await _organisation.GetLinesAsync(
+            [.. matching.Items.Select(employee => employee.EmployeeId)],
+            await _authorisation.TodayAsync(),
+            cancellationToken);
+
+        // Blanks last, whichever way round: somebody with no position yet is not "before A", and a
+        // reader sorting by position is looking for the people who have one.
+        static string KeyOf(string? value) =>
+            string.IsNullOrEmpty(value) ? "￿" : value;
+
+        var ordered = matching.Items
+            .OrderBy(employee => KeyOf(sort == EmployeeListSort.Position
+                    ? lines.GetValueOrDefault(employee.EmployeeId)?.PositionName
+                    : lines.GetValueOrDefault(employee.EmployeeId)?.GradeName),
+                StringComparer.CurrentCulture)
+            .ThenBy(employee => employee.NameEn, StringComparer.CurrentCulture)
+            .Skip(model.Skip)
+            .Take(model.Take)
+            .ToList();
+
+        model.Employees = [.. ordered.Select(EmployeeListItemViewModel.Of)];
+    }
+
+    /// <summary>
+    /// How many matching employees this list will order by position or grade in one request.
+    /// </summary>
+    /// <remarks>
+    /// Generous for an HR tenant and bounded for a large one. See <see cref="SortByDerivedAsync"/>
+    /// for why there is a cap at all, and the module README for the column that would remove it
+    /// and the reason it would be wrong.
+    /// </remarks>
+    private const int DerivedSortCap = 2000;
+
+    /// <summary>
+    /// Fills Position, Grade, Reports to and Organisation for the page, in one batched read.
+    /// </summary>
+    /// <remarks>
+    /// <c>GetLinesAsync</c>, never <c>GetAsync</c> in a loop: four derived columns times fifty rows
+    /// is the single most likely way this screen ships something slow, and the service's own
+    /// remarks state the bound it keeps.
+    /// </remarks>
+    private async Task FillOrganisationAsync(
+        IReadOnlyList<EmployeeListItemViewModel> employees,
+        CancellationToken cancellationToken)
+    {
+        if (employees.Count == 0)
+        {
+            return;
+        }
+
+        var lines = await _organisation.GetLinesAsync(
+            [.. employees.Select(employee => employee.EmployeeId)],
+            await _authorisation.TodayAsync(),
+            cancellationToken);
+
+        foreach (var employee in employees)
+        {
+            employee.Organisation = lines.GetValueOrDefault(employee.EmployeeId);
+        }
     }
 
     /// <summary>

@@ -105,14 +105,24 @@ public sealed class LookupBindingTenantTests
 
                 var bound = field!;
 
+                // THE BINDING IS THE SETTING, NOT THE EDITOR — and D22's retirement is what made
+                // the difference visible. GradeCode keeps its ListCode on purpose: that is how a
+                // code typed last year still resolves to a name. What changed in F6c is which
+                // editor renders it, and the retired one is a legitimate second answer here.
+                var expected = EmployeeFieldNames.RetiredOnSections.Contains(binding.FieldName)
+                    ? RetiredFieldEditor.Name
+                    : LookupFieldEditor.Name;
+
                 bound.Editor().Should().Be(
-                    LookupFieldEditor.Name,
+                    expected,
                     "{0}.{1} is bound to '{2}'",
                     binding.PartName,
                     binding.FieldName,
                     binding.ListCode);
 
-                bound.GetSettings<LookupFieldSettings>().ListCode.Should().Be(binding.ListCode);
+                bound.GetSettings<LookupFieldSettings>().ListCode.Should().Be(
+                    binding.ListCode,
+                    "a retired field keeps its binding, or its stored codes stop resolving");
             }
         });
 
@@ -261,8 +271,13 @@ public sealed class LookupBindingTenantTests
 
             var row = await contentManager.NewAsync(EmployeeSections.JobDetailType);
 
+            // EmploymentTypeCode, not GradeCode — slice F6c. D22 retired the grade code, and a
+            // retired field renders its list only while the tenant has no positions. This class
+            // shares the base tenant with tests that build Position types on it, so a claim about
+            // GradeCode here would pass or fail on which of them ran first. The claim being made
+            // is about BOUND FIELDS, and this is an ordinary one.
             row.Alter<ContentPart>(EmployeeSections.JobDetailType, part =>
-                part.Alter<TextField>("GradeCode", field => field.Text = "Grade One"));
+                part.Alter<TextField>("EmploymentTypeCode", field => field.Text = "Grade One"));
 
             employee!.Alter<BagPart>(EmployeeSections.JobDetails, bag => bag.ContentItems.Add(row));
 
@@ -274,8 +289,10 @@ public sealed class LookupBindingTenantTests
 
         var decoded = HtmlDecode(editor);
 
-        decoded.Should().Contain("data-lookup-list=\"grade\"", "the grade field offers the grade list");
-        decoded.Should().Contain("Grade 1 (G1)", "an entry the standard list ships");
+        decoded.Should().Contain(
+            "data-lookup-list=\"employment-type\"", "the bound field offers its list");
+
+        decoded.Should().Contain("Full time (FT)", "an entry the standard list ships");
         decoded.Should().Contain("Grade One", "and the value this row already held");
     }
 

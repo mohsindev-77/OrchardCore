@@ -43,12 +43,22 @@ public interface IPositionService
     /// and employee pickers are: a control that filters a list it already holds can only narrow what
     /// was sent, so on a tenant with four hundred positions the rest are unreachable and nothing
     /// says so.
+    ///
+    /// <b>The same department first — slice F6c.</b> Somebody saying what a new post reports to is
+    /// almost always looking inside the department they are building it in, and an alphabetical
+    /// first page across the whole company routinely did not contain the obvious answer. Those
+    /// posts are <em>fetched</em> first rather than the page being re-sorted: re-sorting would only
+    /// move the ones that happened to land in the first twenty, which is the half of the problem
+    /// that did not need solving. The total is unchanged — it still answers "how many posts are
+    /// there", which is what the caption says.
     /// </remarks>
     /// <param name="searchText">Null or empty offers the first page unfiltered.</param>
+    /// <param name="nearUnitRecordId">A unit whose posts come first, or null for no preference.</param>
     Task<Page<PositionOption>> SearchSelectableAsync(
         string? searchText,
         DateOnly? asAt = null,
         int take = 20,
+        string? nearUnitRecordId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

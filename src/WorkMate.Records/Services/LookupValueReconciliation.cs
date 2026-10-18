@@ -456,8 +456,21 @@ internal sealed class LookupValueReconciliation : ILookupValueReconciliation
     ];
 
     /// <summary>Whether a field's settings bind it to this list.</summary>
+    /// <remarks>
+    /// <b>Either of this module's editors counts, and that matters since D22's retirement.</b>
+    /// A retired field — <c>JobDetails.GradeCode</c> — keeps its <c>ListCode</c> on purpose: that
+    /// binding is how a code typed last year still resolves to a name rather than showing as a
+    /// bare string. Testing the editor name alone would have quietly taken every retired field out
+    /// of reconciliation's sight, so a tenant's historical grade codes could never be mapped onto
+    /// the list again — the values would still be there and nothing would ever offer to fix them.
+    ///
+    /// The editor is still checked rather than the setting alone, because a <c>ListCode</c> left
+    /// behind on a field somebody has since pointed at a different editor is not a binding this
+    /// module put there.
+    /// </remarks>
     private static bool IsBoundTo(ContentPartFieldDefinition field, string listCode) =>
-        string.Equals(field.Editor(), LookupFieldEditor.Name, StringComparison.Ordinal) &&
+        (string.Equals(field.Editor(), LookupFieldEditor.Name, StringComparison.Ordinal) ||
+            string.Equals(field.Editor(), RetiredFieldEditor.Name, StringComparison.Ordinal)) &&
         LookupCodes.Same(field.GetSettings<LookupFieldSettings>().ListCode, listCode);
 
     /// <summary>Every value this employee holds at the bound locations.</summary>

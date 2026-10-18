@@ -35,4 +35,10 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Shared with the browser suite rather than copied into it: both sweep the content roots
+         earlier runs left behind, and the rule about when that is safe belongs in one place. The
+         two suites own different folders, which is the argument the type's own remarks make. -->
+    <Compile Include="../Shared/AbandonedContentRoots.cs" Link="Shared/AbandonedContentRoots.cs" />
+  </ItemGroup>
 </Project>

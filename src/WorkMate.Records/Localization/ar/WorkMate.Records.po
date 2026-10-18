@@ -1660,3 +1660,52 @@ msgstr "لم يُختر مدير مباشر"
 #: Views/Shared/_LineManagerChoice.cshtml
 msgid "Needs a new line manager — {0} no longer holds {1}"
 msgstr "يلزم تعيين مدير مباشر جديد — لم يعد {0} يشغل {1}"
+
+#. ---- F6c: the employees list's derived columns ----
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "No position yet — {0}"
+msgstr "لا يوجد منصب بعد — {0}"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Needs a new one"
+msgstr "يلزم تعيين بديل"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Differs from the reporting line"
+msgstr "يخالف خط التبعية"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Acting"
+msgstr "بالإنابة"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Every position"
+msgstr "كل المناصب"
+
+#: Views/EmployeesAdmin/Index.cshtml
+msgid "Too many people to order by position or grade. Narrow the list first — by unit, by position or by searching — and the order will apply."
+msgstr "عدد الموظفين أكبر من أن يُرتَّب حسب المنصب أو الدرجة. ضيّق القائمة أولاً — حسب الوحدة أو المنصب أو بالبحث — وعندها يُطبَّق الترتيب."
+
+#. ---- D22, slice F6c: the retired job title and grade code ----
+
+#: Views/TextField-WorkMateRetired.Edit.cshtml
+#: Views/BilingualTextField-WorkMateRetired.Edit.cshtml
+msgid "Former {0}"
+msgstr "{0} السابق"
+
+#: Views/TextField-WorkMateRetired.Edit.cshtml
+#: Views/BilingualTextField-WorkMateRetired.Edit.cshtml
+msgid "Kept as history. The answer now comes from the position this employee holds."
+msgstr "يُحتفظ به كسجل تاريخي. أصبحت الإجابة تأتي من المنصب الذي يشغله هذا الموظف."
+
+#: Views/TextField-WorkMateRetired.Edit.cshtml
+#: Views/BilingualTextField-WorkMateRetired.Edit.cshtml
+msgid "This becomes read-only once this tenant builds positions, and Position takes over."
+msgstr "يصبح هذا الحقل للقراءة فقط بمجرد أن ينشئ هذا المستأجر مناصب، ويحل المنصب محله."
+
+#. ---- F6c: naming the empty chairs above instead of counting them ----
+
+#: Views/Shared/_LineManagerChoice.cshtml
+msgid "No acting manager — {0} are also vacant"
+msgstr "لا يوجد مدير بالإنابة — {0} شاغرة أيضاً"

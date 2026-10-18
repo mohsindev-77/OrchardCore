@@ -207,12 +207,19 @@ internal sealed class EmployeeOrganisationService : IEmployeeOrganisationService
             // while a manager's chair is empty the people under it answer to whoever is above the
             // gap, so the walk continues upwards and names them as acting. Only a chain of empty
             // posts all the way to the top really leaves nobody.
+            var acting = await ActingAboveAsync(ancestors, asAt, cancellationToken);
+
             return new ReportsTo(
                 ReportsToKind.Vacant,
                 parent.RecordId,
                 parentName,
                 [],
-                await ActingAboveAsync(ancestors, asAt, cancellationToken));
+                acting,
+
+                // Only when the walk found nobody. Somebody IS acting means there is nothing
+                // outstanding to name; a chain of empty chairs is a list of posts to go and fill,
+                // and "No one above holds a post yet" never said which. Slice F6c.
+                acting is null ? NamesOf(ancestors) : []);
         }
 
         return new ReportsTo(
@@ -229,23 +236,45 @@ internal sealed class EmployeeOrganisationService : IEmployeeOrganisationService
         CancellationToken cancellationToken = default)
     {
         var stored = await _records.GetAsync(employeeId, cancellationToken);
-        var storedId = stored?.LineManagerEmployeeId;
-        var kind = stored?.LineManagerKind ?? StoredLineManagerKind.None;
-
         var organisation = await GetAsync(employeeId, asAt, cancellationToken);
 
-        if (organisation?.Position is not { } position)
+        return await AnswerAsync(
+            stored?.LineManagerEmployeeId,
+            stored?.LineManagerKind ?? StoredLineManagerKind.None,
+            organisation?.Position?.ReportsTo,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The answer itself, from facts a caller has already resolved. D31 addendum 2.
+    /// </summary>
+    /// <remarks>
+    /// <b>Split out so there is still exactly one of these rules, now that two callers resolve the
+    /// facts differently.</b> <see cref="GetLineManagerAsync"/> reads one employee's record and one
+    /// employee's position; <see cref="GetLinesAsync"/> reads a page of both at once. If each then
+    /// applied the staleness rules itself, the employee's own page and the list she appears on
+    /// would be two readings of "who manages this person" — which is the defect the addendum
+    /// exists to close, arriving by a different door.
+    /// </remarks>
+    /// <param name="reportsTo">
+    /// The post above the position this employee holds, or <c>null</c> when they hold none.
+    /// </param>
+    private async Task<LineManagerAnswer> AnswerAsync(
+        string? storedId,
+        StoredLineManagerKind kind,
+        ReportsTo? reportsTo,
+        CancellationToken cancellationToken)
+    {
+        if (reportsTo is null)
         {
             // NO POSITION, SO NOTHING TO DERIVE FROM. Every pre-F6 employee and every tenant with
             // no positions is here: the stored manager is the only answer there is, and it is not
             // an exception to a reporting line that does not exist.
             return string.IsNullOrEmpty(storedId)
-                ? LineManagerAnswer.Nobody
+                ? LineManagerAnswer.Nobody()
                 : await StoredAnswerAsync(
                     LineManagerHow.Stored, storedId, string.Empty, string.Empty, [], cancellationToken);
         }
-
-        var reportsTo = position.ReportsTo;
 
         // Whose holders this is about: the post above, or — while that post is vacant — the
         // nearest held post above the gap, whose holders are acting.
@@ -321,12 +350,16 @@ internal sealed class EmployeeOrganisationService : IEmployeeOrganisationService
         // Nothing stored, or a stored acting choice whose situation has ended: derive live.
         return reportsTo.Kind switch
         {
-            ReportsToKind.Top => LineManagerAnswer.Nobody,
+            ReportsToKind.Top => LineManagerAnswer.Nobody(),
 
             // Vacant with nobody above holding anything: the posts exist and are empty.
-            ReportsToKind.Vacant when acting is null => LineManagerAnswer.Nobody with
+            ReportsToKind.Vacant when acting is null => LineManagerAnswer.Nobody() with
             {
                 PositionName = reportsTo.PositionName,
+
+                // Slice F6c: which chairs are empty, not merely that they are. The read-only
+                // screens say the same sentence the forms do because they read the same answer.
+                VacantAbove = reportsTo.VacantAbove ?? [],
             },
 
             _ => candidates.Count == 1
@@ -347,6 +380,222 @@ internal sealed class EmployeeOrganisationService : IEmployeeOrganisationService
                     string.Empty,
                     candidates),
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, EmployeeOrganisationLine>> GetLinesAsync(
+        IReadOnlyList<string> employeeIds,
+        DateOnly asAt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(employeeIds);
+
+        var lines = new Dictionary<string, EmployeeOrganisationLine>(StringComparer.Ordinal);
+        var outstanding = employeeIds.Distinct(StringComparer.Ordinal).ToList();
+
+        if (outstanding.Count == 0)
+        {
+            return lines;
+        }
+
+        // WHO HAS A STORED LINE MANAGER AT ALL — one query, from the index. The record's content
+        // item is then loaded only for those few, because the KIND of answer it is lives there and
+        // not on the index (D31 addendum 2). Asking every row's item would be the N+1 this whole
+        // method exists to avoid; asking none of them would make the list disagree with the
+        // employee's own page about an override.
+        var storedIds = (await _records.GetManyAsync(outstanding, cancellationToken))
+            .Where(entry => !string.IsNullOrEmpty(entry.Value.LineManagerEmployeeId))
+            .ToDictionary(entry => entry.Key, entry => entry.Value.LineManagerEmployeeId, StringComparer.Ordinal);
+
+        foreach (var axis in await _positions.GetEmployeeAxesAsync(cancellationToken))
+        {
+            if (outstanding.Count == 0)
+            {
+                break;
+            }
+
+            // ONE QUERY FOR EVERYBODY'S PLACEMENTS ON THIS AXIS. The per-employee read this
+            // replaces is GetAllEffectiveAsync, which GetAsync still makes because it answers
+            // about one person.
+            var placements = await _assignments.GetPlacementsAsync(
+                axis.StructureId, outstanding, asAt, cancellationToken);
+
+            if (placements.Count == 0)
+            {
+                continue;
+            }
+
+            // The main placement is the one that answers "where does this person work" — exactly
+            // the rule GetAsync applies, because a list and a page disagreeing about which of a
+            // split is the real one is the defect EmployeePlacementSummary was introduced for.
+            var mains = new Dictionary<string, EmployeeAssignment>(StringComparer.Ordinal);
+
+            foreach (var (employeeId, rows) in placements)
+            {
+                var main = rows.FirstOrDefault(row => row.IsPrimary) ?? (rows.Count > 0 ? rows[0] : null);
+
+                if (main is not null)
+                {
+                    mains[employeeId] = main;
+                }
+            }
+
+            var nodes = await NodesAsync(
+                [.. mains.Values.Select(main => main.RecordId)], asAt, cancellationToken);
+
+            var grades = await GradesAsync(
+                [.. mains.Values.Select(main => main.GradeRecordId).Where(id => id is not null)!],
+                cancellationToken);
+
+            // Bounded by DISTINCT POSITIONS, which is the whole point: fifty people in one
+            // department cost what one of them costs.
+            var positionIds = nodes
+                .Where(node => node.Value.IsPosition)
+                .Select(node => node.Key)
+                .ToList();
+
+            var chains = await PathsAsync(axis.StructureId, [.. nodes.Keys], asAt, cancellationToken);
+            var reportsTo = new Dictionary<string, ReportsTo>(StringComparer.Ordinal);
+
+            foreach (var positionId in positionIds)
+            {
+                reportsTo[positionId] = await ReportsToAsync(positionId, asAt, cancellationToken);
+            }
+
+            foreach (var (employeeId, main) in mains)
+            {
+                if (!nodes.TryGetValue(main.RecordId, out var node))
+                {
+                    continue;
+                }
+
+                var chain = chains.GetValueOrDefault(main.RecordId) ?? [];
+                var above = node.IsPosition ? reportsTo.GetValueOrDefault(main.RecordId) : null;
+
+                // The one read still made per row, and only for somebody who HAS a stored line
+                // manager: what kind of answer it is lives on the content item, not on the index.
+                var stored = storedIds.ContainsKey(employeeId)
+                    ? await _records.GetAsync(employeeId, cancellationToken)
+                    : null;
+
+                lines[employeeId] = new EmployeeOrganisationLine(
+                    employeeId,
+                    axis.StructureId,
+                    node.IsPosition ? main.RecordId : null,
+                    node.IsPosition ? node.Name : string.Empty,
+                    main.GradeRecordId is { } gradeId
+                        ? grades.GetValueOrDefault(gradeId, string.Empty)
+                        : string.Empty,
+                    node.IsPosition ? chain : [],
+                    node.IsPosition || !axis.IsPositionBased
+                        ? string.Empty
+
+                        // ADR-0029's mid-migration state, named rather than hidden: the whole path
+                        // including the unit itself, because "No position yet — Civil" is what the
+                        // reader has to act on.
+                        : string.Join(
+                            BilingualDisplay.PathSeparator,
+                            chain.Select(step => step.Name).Append(node.Name)),
+                    await AnswerAsync(
+                        stored?.LineManagerEmployeeId,
+                        stored?.LineManagerKind ?? StoredLineManagerKind.None,
+                        above,
+                        cancellationToken));
+            }
+
+            outstanding = [.. outstanding.Where(id => !lines.ContainsKey(id))];
+        }
+
+        return lines;
+    }
+
+    /// <summary>Each distinct node, named, and whether it is a position. One read per node.</summary>
+    private async Task<Dictionary<string, (string Name, bool IsPosition)>> NodesAsync(
+        IReadOnlyList<string> recordIds,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var nodes = new Dictionary<string, (string, bool)>(StringComparer.Ordinal);
+
+        foreach (var recordId in recordIds.Distinct(StringComparer.Ordinal))
+        {
+            var node = await _dimensions.GetAsync(recordId, asAt, cancellationToken);
+
+            if (node is null)
+            {
+                continue;
+            }
+
+            nodes[recordId] = (
+                BilingualDisplay.Name(node.NameEn, node.NameAr),
+                await IsAPositionAsync(node.DimensionTypeId, cancellationToken));
+        }
+
+        return nodes;
+    }
+
+    /// <summary>Each distinct grade, named. Undated, for the reason <see cref="GetAsync"/> gives.</summary>
+    private async Task<Dictionary<string, string>> GradesAsync(
+        IReadOnlyList<string> gradeRecordIds,
+        CancellationToken cancellationToken)
+    {
+        var grades = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var gradeId in gradeRecordIds.Distinct(StringComparer.Ordinal))
+        {
+            // Undated, so a grade later removed from the position still names itself on a row that
+            // carries it — D26 G.
+            if (await _dimensions.GetAsync(gradeId, DateOnly.MaxValue, cancellationToken) is { } grade)
+            {
+                grades[gradeId] = BilingualDisplay.Name(grade.NameEn, grade.NameAr);
+            }
+        }
+
+        return grades;
+    }
+
+    /// <summary>
+    /// <see cref="PathAsync"/> for a whole page: one ancestor query, one read per distinct level.
+    /// </summary>
+    private async Task<Dictionary<string, IReadOnlyList<OrganisationStep>>> PathsAsync(
+        string structureId,
+        IReadOnlyList<string> recordIds,
+        DateOnly asAt,
+        CancellationToken cancellationToken)
+    {
+        var ancestors = await _graph.GetAncestorPathsAsync(
+            structureId, [.. recordIds.Distinct(StringComparer.Ordinal)], asAt, cancellationToken);
+
+        // The tenant's OWN name for each level — D28 D — read once per distinct dimension type
+        // rather than once per step of every path. A chart has a handful of levels and a page has
+        // hundreds of steps.
+        var levelNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var paths = new Dictionary<string, IReadOnlyList<OrganisationStep>>(StringComparer.Ordinal);
+
+        foreach (var (recordId, chain) in ancestors)
+        {
+            var steps = new List<OrganisationStep>();
+
+            foreach (var ancestor in chain)
+            {
+                if (!levelNames.TryGetValue(ancestor.DimensionTypeId, out var levelName))
+                {
+                    var type = await _types.GetAsync(ancestor.DimensionTypeId, asAt, cancellationToken);
+
+                    levelName = type is null ? string.Empty : BilingualText.Display(type.Name.En, type.Name.Ar);
+                    levelNames[ancestor.DimensionTypeId] = levelName;
+                }
+
+                steps.Add(new OrganisationStep(
+                    levelName,
+                    ancestor.RecordId,
+                    BilingualDisplay.Name(ancestor.NameEn, ancestor.NameAr)));
+            }
+
+            paths[recordId] = steps;
+        }
+
+        return paths;
     }
 
     /// <summary>An answer built around a person the record holds, with their name resolved.</summary>
@@ -432,6 +681,22 @@ internal sealed class EmployeeOrganisationService : IEmployeeOrganisationService
         // drawn and whose posts are not yet filled, and said as such rather than as "nobody".
         return null;
     }
+
+    /// <summary>
+    /// The posts above a vacant one, nearest first, named. Slice F6c.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nearest first, which reverses the ancestor order</b> — <c>GetAncestorPathsAsync</c>
+    /// returns root first — because a reader is told about the empty chair closest to them before
+    /// the one at the top. The post directly above is included: it is the vacancy the sentence is
+    /// about, and leaving it out would name every empty post except the one that started it.
+    /// </remarks>
+    private static IReadOnlyList<string> NamesOf(IReadOnlyList<DimensionNodeRef> ancestors) =>
+    [
+        .. ancestors
+            .Reverse()
+            .Select(above => BilingualDisplay.Name(above.NameEn, above.NameAr)),
+    ];
 
     /// <summary>Puts names and grades on a set of holders, in one read.</summary>
     private async Task<IReadOnlyList<PositionHolderRef>> NameHoldersAsync(

@@ -19,4 +19,18 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WorkMate.Web/WorkMate.Web.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Shared with the integration suite. See AbandonedContentRoots. -->
+    <Compile Include="../Shared/AbandonedContentRoots.cs" Link="Shared/AbandonedContentRoots.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      How many test collections run at once. Each one here is a Kestrel server AND a Chromium, so
+      xunit's default — one per logical processor — asks a four-core machine to run four of each.
+      The result is not a slower suite but a failing one: clicks time out waiting for a page that
+      is only slow because the machine is oversubscribed, and the failures land on whichever test
+      was unlucky rather than on whatever is wrong.
+    -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

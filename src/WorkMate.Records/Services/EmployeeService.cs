@@ -604,6 +604,38 @@ internal sealed class EmployeeService : IEmployeeService
         return new Page<EmployeeRecord>([.. rows.Select(ToRecord)], total, skip, take);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, EmployeeRecord>> GetManyAsync(
+        IReadOnlyList<string> employeeIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(employeeIds);
+
+        var found = new Dictionary<string, EmployeeRecord>(StringComparer.Ordinal);
+        var wanted = employeeIds.Distinct(StringComparer.Ordinal).ToList();
+
+        if (wanted.Count == 0)
+        {
+            return found;
+        }
+
+        // In chunks, for the reason ListRestrictedAsync gives: an IN clause of several thousand
+        // ids is refused outright by some providers and planned badly by the rest.
+        foreach (var chunk in wanted.Chunk(ChunkSize))
+        {
+            var rows = await _session
+                .QueryIndex<EmployeeIndex>(index => index.Latest && index.ContentItemId.IsIn(chunk))
+                .ListAsync(cancellationToken);
+
+            foreach (var row in rows)
+            {
+                found[row.ContentItemId] = ToRecord(row);
+            }
+        }
+
+        return found;
+    }
+
     /// <summary>How many employees in this set match, without listing them.</summary>
     private static int ChunkSize => 400;
 

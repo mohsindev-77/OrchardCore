@@ -160,8 +160,12 @@
                reporting-line row at all, leaving the post off that axis entirely. *@
             var reportsToNobody = T["— Reports to nobody (top of the reporting line) —"];
 
+            @* near-unit: the department this post is being created in, whose own posts come first
+               — slice F6c. Somebody saying what a new Site Supervisor reports to is looking inside
+               Civil, and an alphabetical first page across the company rarely had it. *@
             <workmate-position-picker for="ReportsToRecordId" label="@T["Reports to"]"
                                       structure-id="@Model.ReportingStructureId"
+                                      near-unit="@Model.ParentRecordId"
                                       as-at="@Model.EffectiveFrom"
                                       date-field="record-create-effective-from"
                                       allow-none="true"

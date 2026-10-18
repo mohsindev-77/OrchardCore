@@ -1028,8 +1028,12 @@ public sealed class EmployeesJoinThroughPositionsTenantTests : IAsyncLifetime, I
         page.QuerySelector("#job-reports-to-vacant")!.TextContent
             .Should().Contain("Manager Technology").And.Contain("vacant");
 
+        // NAMED SINCE F6c, not counted. "No one above holds a post yet" was true and
+        // unactionable — a reader could not tell whether one chair was empty or three, or which.
+        // The claim being tested is unchanged: the posts exist and are empty.
         page.QuerySelector("#line-manager-nobody-above")!.TextContent.Trim()
-            .Should().Be("No one above holds a post yet");
+            .Should().Contain("No acting manager")
+            .And.Contain("Manager Technology", "the empty chair directly above");
 
         page.QuerySelector("#line-manager-derived").Should().BeNull("nobody is acting");
         page.QuerySelector("select[data-line-manager-choice]").Should().BeNull("and none to choose");

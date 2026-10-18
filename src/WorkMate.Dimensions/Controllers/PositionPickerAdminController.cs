@@ -84,6 +84,7 @@ public sealed class PositionPickerAdminController : Controller
         string? asAt,
         string? excluding,
         string? structureId,
+        string? near,
         int take = PageSize,
         CancellationToken cancellationToken = default)
     {
@@ -99,7 +100,9 @@ public sealed class PositionPickerAdminController : Controller
         DateOnly? date = IsoDate.TryParse(asAt, out var parsed) ? parsed : null;
         var page = Math.Clamp(take, 1, PageSize);
 
-        var found = await _positions.SearchSelectableAsync(q, date, page, cancellationToken);
+        // Slice F6c: the posts in the same department first, so the obvious answer is on the
+        // first page rather than alphabetically somewhere in the company.
+        var found = await _positions.SearchSelectableAsync(q, date, page, near, cancellationToken);
 
         var onTheAxis = string.IsNullOrEmpty(structureId)
             ? null

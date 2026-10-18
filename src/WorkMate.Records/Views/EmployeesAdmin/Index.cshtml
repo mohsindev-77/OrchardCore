@@ -69,6 +69,20 @@
             }
         </select>
     </div>
+    @if (Model.IsPositionBased)
+    {
+        @* Filtering by the post itself, which is a different question from filtering by the unit
+           it sits in: a Site Supervisor in Civil and a Site Supervisor in Electrical are the same
+           post in two places, and "show me every Site Supervisor" is the question D26 D's
+           several-holders case makes routine. *@
+        <div class="col-sm-5">
+            @* none-label, because the picker's default blank option reads "— reports to nobody —":
+               right on the form that chooses a post's parent, and meaningless as a filter. *@
+            <workmate-position-picker for="PositionRecordId" label="@T["Position"]"
+                                      allow-none="true" none-label="@T["Every position"]" />
+        </div>
+    }
+    <input type="hidden" name="sort" value="@Model.Sort" />
     <div class="col-sm-3">
         <button type="submit" class="btn btn-secondary">@T["Filter"]</button>
     </div>
@@ -91,6 +105,16 @@
     }
 </form>
 
+@if (Model.SortWasTooWide)
+{
+    @* Said rather than quietly ignored. A list that returned name order while its heading claimed
+       position order would look exactly like a correct answer — see
+       EmployeesAdminController.SortByDerivedAsync for why there is a limit at all. *@
+    <div class="alert alert-warning" id="employee-sort-too-wide">
+        @T["Too many people to order by position or grade. Narrow the list first — by unit, by position or by searching — and the order will apply."]
+    </div>
+}
+
 @if (Model.Employees.Count == 0)
 {
     <p id="employee-list-empty">
@@ -110,7 +134,35 @@ else
         <thead>
             <tr>
                 <th>@T["Code"]</th>
-                <th>@T["Name"]</th>
+                <th>
+                    @* Sortable headers, and only where the list can actually honour them. Name is
+                       index-backed; Position and Grade are resolved by hand over the matching set
+                       — EmployeesAdminController.SortByDerivedAsync says why, and why no column on
+                       EmployeeIndex can do it instead. *@
+                    <partial name="_EmployeeSortLink"
+                             model="@(new EmployeeSortLinkViewModel(Model, EmployeeListSort.Name, T["Name"].Value))" />
+                </th>
+                @if (Model.IsPositionBased)
+                {
+                    @* D22: Position stands where Job title used to. The core block is the source of
+                       truth and the Job details section's typed value is history. *@
+                    <th>
+                        <partial name="_EmployeeSortLink"
+                                 model="@(new EmployeeSortLinkViewModel(Model, EmployeeListSort.Position, T["Position"].Value))" />
+                    </th>
+                    <th>
+                        <partial name="_EmployeeSortLink"
+                                 model="@(new EmployeeSortLinkViewModel(Model, EmployeeListSort.Grade, T["Grade"].Value))" />
+                    </th>
+                    @* The LIVE line manager, never a stored one — D31 addendum 2. Read through the
+                       same GetLineManagerAsync the employee's own page uses, batched for the page,
+                       so the two cannot disagree. *@
+                    <th>@T["Reports to"]</th>
+                    @* ONE column, in the tenant's OWN dimension names — D28 D. Four hard-coded
+                       columns (Division, Department, Business unit, Cost centre) would be right
+                       for Zenith and wrong for Crescent. *@
+                    <th>@T["Organisation"]</th>
+                }
                 <th>@T["Status"]</th>
                 <th>@T["Joined"]</th>
                 <th>@T["Where they sit"]</th>
@@ -155,6 +207,77 @@ else
                             <div dir="rtl" lang="ar" class="text-muted small">@employee.NameAr</div>
                         }
                     </td>
+                    @if (Model.IsPositionBased)
+                    {
+                        <td class="employee-position">
+                            @if (employee.Organisation?.HasNoPositionYet == true)
+                            {
+                                @* ADR-0029's mid-migration state, named rather than blank. D28 C:
+                                   the mixed state is made legible, and the unit is what the reader
+                                   needs in order to go and fix it. *@
+                                <span class="text-warning employee-no-position">
+                                    @T["No position yet — {0}", employee.Organisation.LegacyUnitPath]
+                                </span>
+                            }
+                            else if (string.IsNullOrEmpty(employee.Organisation?.PositionName))
+                            {
+                                <span class="text-muted">@T["Not placed"]</span>
+                            }
+                            else
+                            {
+                                @employee.Organisation.PositionName
+                            }
+                        </td>
+                        <td class="employee-grade">
+                            @if (string.IsNullOrEmpty(employee.Organisation?.GradeName))
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-light">@employee.Organisation.GradeName</span>
+                            }
+                        </td>
+                        <td class="employee-line-manager">
+                            @if (employee.Organisation?.LineManager is { } lineManager
+                                 && !string.IsNullOrEmpty(lineManager.Name))
+                            {
+                                @lineManager.Name
+
+                                @if (lineManager.How == LineManagerHow.NeedsChoice)
+                                {
+                                    @* Never silently replaced by another holder — D28 A — so the
+                                       list flags it rather than showing a stale name as though it
+                                       were current. *@
+                                    <span class="badge text-bg-warning ms-1 employee-line-manager-stale">
+                                        @T["Needs a new one"]
+                                    </span>
+                                }
+                                else if (lineManager.How == LineManagerHow.Override)
+                                {
+                                    <span class="text-muted small d-block">@T["Differs from the reporting line"]</span>
+                                }
+                                else if (lineManager.How is LineManagerHow.Acting or LineManagerHow.ChosenActing)
+                                {
+                                    <span class="text-muted small d-block">@T["Acting"]</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="employee-organisation text-muted">
+                            @if (string.IsNullOrEmpty(employee.Organisation?.OrganisationPath))
+                            {
+                                <span>—</span>
+                            }
+                            else
+                            {
+                                @employee.Organisation.OrganisationPath
+                            }
+                        </td>
+                    }
                     <td>
                         <partial name="_EmploymentStatus" model="employee.Status" />
                         <div class="text-muted small">@T["since {0}", EmployeeDisplay.Date(employee.StatusEffectiveFrom)]</div>

@@ -52,3 +52,26 @@ public static class LookupFieldEditor
     /// </remarks>
     public const string Name = "WorkMateLookup";
 }
+
+/// <summary>
+/// The editor name that retires a field: kept, readable, and no longer offered. D22, slice F6c.
+/// </summary>
+/// <remarks>
+/// <b>An editor, not a deletion, and not a setting on the part.</b> D22's whole shape is that the
+/// field stays — a tenant's history is exactly the values it already typed — while the thing that
+/// answers the question moves somewhere else. Orchard's editor alternate is the sanctioned way to
+/// say that: <c>ContentPartFieldSettings.Editor</c> becomes this name, Orchard resolves the shape
+/// alternate <c>TextField_Edit__WorkMateRetired</c>, and this module supplies the view. No field
+/// driver is registered and nothing collides with the one <c>OrchardCore.ContentFields</c> already
+/// has, exactly as <see cref="LookupFieldEditor"/> records.
+///
+/// <b>The view must round-trip the value in a hidden input.</b> Orchard's field drivers bind their
+/// editor's model and write the result back, so an editor that rendered nothing at all would post
+/// nothing and the driver would store the empty string — retiring the field by deleting its
+/// contents, which is the one outcome D22 forbids.
+/// </remarks>
+public static class RetiredFieldEditor
+{
+    /// <summary>The value of <c>ContentPartFieldSettings.Editor</c> on a retired field.</summary>
+    public const string Name = "WorkMateRetired";
+}

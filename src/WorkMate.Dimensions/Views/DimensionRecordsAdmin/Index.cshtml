@@ -75,6 +75,9 @@
 
         @if (Model.CanEdit)
         {
+            @* The group travels with it — slice F6c. On a grouped "All <plural>" list there is no
+               single DimensionTypeId to send, and without the group Create had nothing at all to
+               work from and answered 404. With it, Create asks which organisation first. *@
             <a class="btn btn-sm btn-primary" id="record-new"
                asp-action="Create"
                asp-route-dimensionTypeId="@Model.DimensionTypeId"
