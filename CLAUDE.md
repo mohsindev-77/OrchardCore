@@ -137,6 +137,30 @@ content parts. Tests named for the behaviour they assert.
 The pipeline additionally applies every recipe under /recipes to a fresh tenant;
 a recipe that fails to apply fails the build.
 
+Locally, run the suites one after another, never all at once: Dimensions,
+Platform, Records, Integration, then Browser. Running Integration and Browser
+together starves the machine and produces click timeouts that are not defects.
+Report counts per suite and in total.
+
+If api.nuget.org is unreachable, restore with `dotnet restore
+-p:NuGetAudit=false` and then build and test with `--no-restore`. Use the flag
+on the command line only; never disable NuGet audit in Directory.Build.props or
+any other repository file.
+
+## Working in this repository
+- Never report a result you did not run. If a build or test command fails for a
+  tool or environment reason, stop and say so with the exact error; do not
+  describe unverified changes as passing.
+- Ask before stopping a running WorkMate.Web. Say so if you leave it stopped.
+- Line endings are LF. Do not rewrite a file's line endings; `git diff --stat`
+  must show only real changes.
+- Do not commit or push. The user commits.
+- Record every product decision in docs/requirements/frs-v2.5-decisions.md (the
+  next D-number, or an addendum to the one it narrows), and update the module
+  README in the same change.
+- Tests must not depend on shared demo data they also change. A test that places
+  people creates its own throwaway position; recipe positions stay untouched.
+
 ## Definition of done
 Tests at the levels the spec requires; permissions and entitlement checked in
 services; every string localised; module README current; audit trail covers
