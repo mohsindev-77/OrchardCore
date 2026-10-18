@@ -41,6 +41,24 @@ public static class FormsAuditTrail
     /// file we loaded said Grade One" is asking about this and nothing else.
     /// </remarks>
     public const string LookupValuesRemapped = "LookupValuesRemapped";
+
+    /// <summary>A form definition was created, renamed, or had its fields changed. Slice B3.</summary>
+    /// <remarks>
+    /// The DRAFT event. Nothing a reader of an employee record can see has changed yet — that is
+    /// <see cref="FormDefinitionPublished"/> — and keeping the two apart is what lets an auditor
+    /// ask "when did this become a field on every employee" and get one answer rather than ten.
+    /// </remarks>
+    public const string FormDefinitionChanged = "FormDefinitionChanged";
+
+    /// <summary>
+    /// A form definition was published: the content definition changed. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// Specification section 9 names a content-definition change as a WorkMate audit event type,
+    /// and this is the event that produces one. It names the version, because "what did the form
+    /// look like then" is answerable from the version document and the entry is what points at it.
+    /// </remarks>
+    public const string FormDefinitionPublished = "FormDefinitionPublished";
 }
 
 /// <summary>
@@ -71,6 +89,18 @@ public sealed class FormsAuditTrailOptionsConfiguration : IConfigureOptions<Audi
                 FormsAuditTrail.LookupValuesRemapped,
                 S => S["Lookup values remapped"],
                 S => S["A value stored on employee records was rewritten onto an entry of a lookup list."],
+                enableByDefault: true,
+                isMandatory: true)
+            .WithEvent(
+                FormsAuditTrail.FormDefinitionChanged,
+                S => S["Form definition changed"],
+                S => S["A form definition was created, renamed, or had its fields changed. Nothing on an employee record changes until it is published."],
+                enableByDefault: true,
+                isMandatory: true)
+            .WithEvent(
+                FormsAuditTrail.FormDefinitionPublished,
+                S => S["Form definition published"],
+                S => S["A form definition was applied to the employee record: fields, and possibly a section, were added."],
                 enableByDefault: true,
                 isMandatory: true);
     }
@@ -178,6 +208,45 @@ public sealed class LookupListAuditEvent
     /// The same reasoning as <c>EmployeeAuditEvent.Operation</c>: a retire and a rename look alike
     /// in a before-and-after of two entry lists, and what they mean to a report that groups by this
     /// list does not.
+    /// </remarks>
+    public string Operation { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// The payload of a <see cref="FormsAuditTrail.FormDefinitionChanged"/> or
+/// <see cref="FormsAuditTrail.FormDefinitionPublished"/> entry. Slice B3.
+/// </summary>
+/// <remarks>
+/// <b>What it carries and what it deliberately does not.</b> The code, the target, the version and
+/// the field count — enough for an auditor to find the definition and the version document that
+/// holds the full shape. The fields themselves are not duplicated here: a published version IS the
+/// before-and-after, immutable and already stored, and copying it into the audit entry would mean
+/// two records of one thing that can drift.
+/// </remarks>
+public sealed class AuditTrailFormDefinitionEvent
+{
+    public string Code { get; set; } = string.Empty;
+
+    public string NameEn { get; set; } = string.Empty;
+
+    /// <summary>What the definition adds fields to, by name.</summary>
+    public string Target { get; set; } = string.Empty;
+
+    /// <summary>The section's item type, or empty for a record-level definition.</summary>
+    public string SectionItemType { get; set; } = string.Empty;
+
+    /// <summary>The version this entry is about, or zero for a draft change.</summary>
+    public int PublishedVersion { get; set; }
+
+    public int FieldCount { get; set; }
+
+    /// <summary>
+    /// The operation, named, so a reader does not have to infer it from the numbers.
+    /// </summary>
+    /// <remarks>
+    /// The same reasoning <c>LookupListAuditEvent.Operation</c> gives: a rename and a field change
+    /// look alike in a diff of two counts, and what they mean to somebody asking why a form grew a
+    /// box does not.
     /// </remarks>
     public string Operation { get; set; } = string.Empty;
 }

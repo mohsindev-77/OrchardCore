@@ -1,3 +1,5 @@
+using WorkMate.Records.Models;
+
 namespace WorkMate.Records.Services;
 
 /// <summary>
@@ -98,6 +100,54 @@ public static class EmployeeContentDefinitionGuard
             throw new InvalidOperationException(violation.Describe());
         }
     }
+
+    /// <summary>
+    /// Whether a form definition may put fields on this part at all. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// <b>The question <see cref="Check"/> does not ask.</b> That one is about a field's name on a
+    /// part the caller has already decided is fair game; this is about the part. The form designer
+    /// is the first caller that chooses its own target, and the two are different refusals: "you
+    /// may not call it that" and "you may not write there at all".
+    ///
+    /// <b>What is designable.</b> The part named for an employee-section item type —
+    /// <c>EmployeeJobDetail</c> and the rest, and any a tenant has added — and
+    /// <c>EmployeeProfilePart</c>, which exists for exactly this. Nothing else.
+    ///
+    /// <b>What is refused, and why each.</b> <c>EmployeePart</c> is the fixed core and is closed
+    /// by specification section 5; <c>TitlePart</c>, <c>BagPart</c> and anything else of Orchard's
+    /// are not ours to weld fields onto, and a product that let an administrator do it would be
+    /// changing Orchard rather than extending it — the hard boundary CLAUDE.md states. A part this
+    /// module does not recognise is refused rather than permitted, because the safe default for
+    /// "I have not heard of this" is no.
+    /// </remarks>
+    /// <param name="partName">The part a definition would add fields to.</param>
+    /// <param name="knownSectionTypes">
+    /// The employee-section item types this tenant has, which is a runtime question —
+    /// <c>IEmployeeSectionCatalogue</c> answers it from the content definition, so a section a
+    /// previous publish created is designable without this class being changed.
+    /// </param>
+    public static EmployeeDefinitionViolation? CheckTarget(
+        string partName,
+        IReadOnlySet<string> knownSectionTypes)
+    {
+        ArgumentNullException.ThrowIfNull(knownSectionTypes);
+
+        if (string.Equals(partName, EmployeeFieldNames.PartName, StringComparison.Ordinal))
+        {
+            return new EmployeeDefinitionViolation(
+                partName, string.Empty, EmployeeDefinitionViolationKind.CoreIsClosed);
+        }
+
+        if (string.Equals(partName, nameof(EmployeeProfilePart), StringComparison.Ordinal) ||
+            knownSectionTypes.Contains(partName))
+        {
+            return null;
+        }
+
+        return new EmployeeDefinitionViolation(
+            partName, string.Empty, EmployeeDefinitionViolationKind.TargetIsNotDesignable);
+    }
 }
 
 /// <summary>Why a field may not be defined where it was going.</summary>
@@ -130,6 +180,17 @@ public enum EmployeeDefinitionViolationKind
     /// meaningful, while holding something else entirely.
     /// </remarks>
     RetiredByTheDimension,
+
+    /// <summary>
+    /// The part is not somewhere a form definition may write. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// An employee-section item type or <c>EmployeeProfilePart</c>, and nothing else. Orchard's
+    /// own parts are not ours to weld fields onto — that would be changing Orchard rather than
+    /// extending it — and a part this module has not heard of is refused rather than permitted,
+    /// because the safe default for an unknown target is no.
+    /// </remarks>
+    TargetIsNotDesignable,
 }
 
 /// <summary>One refused addition to the employee record.</summary>
@@ -157,6 +218,16 @@ public sealed record EmployeeDefinitionViolation(
         EmployeeDefinitionViolationKind.ReservedName =>
             $"A field on '{PartName}' cannot be called '{FieldName}': the name belongs to the "
             + "employee record's fixed core and would read as that field everywhere.",
+
+        EmployeeDefinitionViolationKind.RetiredByTheDimension =>
+            $"A field on '{PartName}' cannot be called '{FieldName}': decision D22 retired that "
+            + "name, and the Position and Grade dimensions answer for it now. The shipped Job "
+            + "details section still holds the historical value under it.",
+
+        EmployeeDefinitionViolationKind.TargetIsNotDesignable =>
+            $"A form definition cannot add fields to '{PartName}'. A definition targets an "
+            + "employee section's item type or EmployeeProfilePart; Orchard's own parts are not "
+            + "ours to extend.",
 
         _ =>
             $"A field on '{PartName}' cannot be called '{FieldName}': an employee's placement is a "

@@ -41,6 +41,13 @@ public static class RecordsDocuments
         new HashSet<string>(StringComparer.Ordinal)
         {
             "WorkMate.Records.Models.LookupListDocument",
+
+            // Slice B3. The definition is the working copy and two designers saving it at once is
+            // an ordinary thing to happen; the version is immutable once written, and is listed
+            // for the same reason the guard finds it — a document whose writes are not checked is
+            // a document that can lose one silently.
+            "WorkMate.Records.Models.FormDefinitionDocument",
+            "WorkMate.Records.Models.FormVersionDocument",
         };
 
     /// <summary>

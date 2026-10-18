@@ -302,6 +302,118 @@ public sealed class RecordsMigrationUpgradeTenantTests
         }
     }
 
+    /// <summary>
+    /// A tenant from before the form designer upgrades, and a definition publishes end to end.
+    /// Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// The rule CLAUDE.md states for every schema change: build the tables as the previous version
+    /// left them, migrate forward, and assert the result matches a fresh install — <b>by exercising
+    /// the real operation</b> rather than by checking a column exists. So this publishes a
+    /// definition through <c>IFormDefinitionService</c>, which is the thing a customer would do and
+    /// the thing that would throw on a missing table.
+    ///
+    /// Both tables are dropped and the version rolled back together, because a tenant of that
+    /// vintage had neither. Rolling back only the number would leave the tables in place and
+    /// <c>UpdateFrom7Async</c>'s re-entry guard would simply skip them, which is a different thing
+    /// from the upgrade this is about.
+    /// </remarks>
+    [Fact]
+    public async Task ATenantStuckBeforeTheFormDesignerUpgradesAndADefinitionPublishes()
+    {
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+            var migration = record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass);
+
+            migration.Version.Should().BeGreaterThanOrEqualTo(
+                8, "this test's premise is a schema that already includes the form designer tables");
+
+            migration.Version = 7;
+            session.Save(record);
+            await session.SaveChangesAsync();
+
+            await DropTableAsync(services, typeof(FormDefinitionIndex));
+            await DropTableAsync(services, typeof(FormVersionIndex));
+        });
+
+        await InTenantAsSystemAsync(async services =>
+            await services.GetRequiredService<IDataMigrationManager>().UpdateAllFeaturesAsync());
+
+        await InTenantAsSystemAsync(async services =>
+        {
+            var session = services.GetRequiredService<ISession>();
+
+            var record = await session.Query<DataMigrationRecord>().FirstOrDefaultAsync();
+
+            record!.DataMigrations.Single(m => m.DataMigrationClass == MigrationClass).Version
+                .Should().BeGreaterThanOrEqualTo(8, "the upgrade runs every step the tenant had not reached");
+
+            // THE REAL OPERATION, not a column check. A definition created, fielded, published and
+            // read back is what a customer does and what a missing table would have thrown on.
+            var forms = services.GetRequiredService<IFormDefinitionService>();
+
+            var created = await forms.CreateAsync(
+                "upgrade-test-form",
+                new BilingualText("Upgrade test form", "نموذج اختبار الترقية"),
+                FormTarget.Record);
+
+            created.Succeeded.Should().BeTrue(created.Describe());
+
+            (await forms.SetFieldsAsync(
+                created.Value!.FormDefinitionId,
+                [
+                    new FormFieldDefinition(
+                        "UpgradeMarker",
+                        FormFieldType.Text,
+                        new BilingualText("Upgrade marker", "علامة الترقية"),
+                        new BilingualText(string.Empty, string.Empty)),
+                ]))
+                .Succeeded.Should().BeTrue();
+
+            var published = await forms.PublishAsync(created.Value!.FormDefinitionId);
+
+            published.Succeeded.Should().BeTrue(published.Describe());
+            published.Value!.Version!.VersionNumber.Should().Be(1);
+
+            (await forms.GetVersionsAsync("upgrade-test-form")).Should().ContainSingle(
+                "the version table is usable too, not merely present");
+        });
+    }
+
+    /// <summary>Drops one index table, the way a tenant of an earlier vintage had it.</summary>
+    /// <inheritdoc cref="DropLookupListTableAsync"/>
+    private static async Task DropTableAsync(IServiceProvider services, Type indexType)
+    {
+        var store = services.GetRequiredService<IStore>();
+        var connection = store.Configuration.ConnectionFactory.CreateConnection();
+
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            var tableName = store.Configuration.TablePrefix
+                + store.Configuration.TableNameConvention.GetIndexTable(indexType, string.Empty);
+
+            using var command = connection.CreateCommand();
+
+            // The table name is built from the index type's own metadata, never from input.
+            command.CommandText = $"DROP TABLE IF EXISTS '{tableName}'";
+
+            await command.ExecuteNonQueryAsync();
+        }
+        finally
+        {
+            await connection.CloseAsync();
+            await connection.DisposeAsync();
+        }
+    }
+
     private Task InTenantAsSystemAsync(Func<IServiceProvider, Task> work) =>
         _fixture.InTenantAsync(async services =>
         {

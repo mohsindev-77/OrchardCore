@@ -105,4 +105,16 @@ public enum RecordRule
     /// operator's problem and not an administrator's.
     /// </remarks>
     StandardListsUnavailable,
+
+    /// <summary>
+    /// A form definition, or the section it names, is not there. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// Covers both "no definition with that id" and "this tenant has no section called that",
+    /// because to the reader they are one kind of answer — the thing you named does not exist —
+    /// and the message says which. Appended rather than inserted: this enum is serialised into
+    /// audit entries, and <c>System.Text.Json</c> writes an enum as its number unless told
+    /// otherwise, so a member added anywhere but the end renumbers every entry already written.
+    /// </remarks>
+    UnknownFormDefinition,
 }

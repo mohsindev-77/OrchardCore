@@ -1584,3 +1584,136 @@ read model rather than a column on the record, and that is a later slice's decis
 - **Add on a grouped "All &lt;plural&gt;" list asks which organisation first**, which is the pending
   item from the F6 design note section 8. One type goes straight to the form, unchanged. It used to
   post an empty dimension type id and answer 404 from a button the screen had just offered.
+
+---
+
+# D33 — The form designer's definition model and compiler
+
+**Status: accepted.** Built in slice B3 (no UI).
+**Date:** 18 October 2026
+**Answers:** Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q10, Q12 of the session B design note.
+**Rests on:** ADR-0006, ADR-0008, ADR-0009, ADR-0014, ADR-0019, ADR-0030, D22 and its addendum,
+D30, D31 and its addenda, D32.
+
+## The shape
+
+**A form definition is the source of truth; the content type is the output.** Publishing compiles
+the definition into Orchard content definitions. If the two ever disagree — because somebody used
+Orchard's own content-type editor, which cannot be taken away — the definition wins and
+republishing makes it so. That split is what lets B6 export a tenant's forms as definitions and
+have them still apply after an Orchard upgrade that changes how content types are stored.
+
+## The answers
+
+**Q1 — three targets, confirmed.** A definition adds fields to **one of the six standard sections**
+(or one a tenant added earlier), **creates a new section** (a new item type plus a new bag on
+`Employee`, shaped exactly like the six the product ships), or **adds fields to the employee record
+itself**. A fourth — a request form of its own — is slice B7's and is deliberately not declared in
+the enum: a member nothing writes and nothing reads is a promise the model has not made.
+
+**Q2 — `EmployeeProfilePart`, accepted.** Record-level designer fields live there. It declares no
+properties of its own: everything on it is a field the compiler wrote, and a property would be a
+field the designer did not put there and cannot see. It is `Attachable = false` like `EmployeePart`,
+and the guard's reserved, position-shaped and D22-retired names all apply to what is written on it.
+
+**Q3 — calculated fields are not in B3 or B4.** Formulas arrive with the rule language in B5. **At
+that point the work stops and proposes the library-versus-own-engine ADR**; nothing in this slice
+assumes either answer.
+
+**Q4 — uniqueness deferred.** Nothing here declares or checks it.
+
+**Q5 — definitions are versioned; records are not pinned.** A `FormVersionDocument` is written per
+**real** publish and is immutable. Employee records carry no version stamp: the record's shape is
+additive, so a record keyed against version 2 still reads correctly against version 5 — every field
+version 2 had is still there. The versions are for audit and export, which are answered by reading
+a version rather than by stamping one on two hundred thousand rows. **Request-form submissions do
+pin**, because a submission is a statement made against the form as it was, and that is B7's.
+
+**Q6 — section-level visibility is a B5 rule.** Not built.
+
+**Q7 and Q12 — editions undecided, and the seam is in place.** `Capabilities.FormDesigner` and
+`Capabilities.FormDefinitionVersioning` are declared, and `IFormDefinitionService` asks
+`IEntitlementService.IsAllowedAsync` beside every permission check. `AllowAllEntitlementService`
+answers yes to everything until prompt 8/9. **Nothing is hidden by edition**, and which edition
+each capability belongs to stays an open product decision recorded in the module README.
+
+**Q8 — "employee type" undecided.** Nothing in this slice references one, by name or by shape.
+
+**Q10 — ADR-0008 exactly.** Publishing an unchanged definition is a **success that writes nothing**:
+no version, no audit entry, no version number allocated. A recipe applied twice must not fail on
+the second pass, and a history full of identical entries is a history nobody reads. The recipe and
+export step itself is B6.
+
+## The safety rules, as built
+
+| | Rule | How it is kept |
+| --- | --- | --- |
+| 1 | **A published field is never removed** | By the compiler having no code that removes anything. Nothing takes a field off a part, a part off `Employee`, or touches a value |
+| 2 | **A published field's type never changes** | Refused by `SetFieldsAsync` and again at publish, naming the field |
+| 3 | **A published field's name never changes** | The name *is* the identity: a field under a new name is a new field, and the old one keeps its definition and its data |
+| 4 | **A field may be retired** | It stays in the definition, stays in the content definition, keeps its data, and stops being offered. Un-retiring is the exact inverse |
+| 5 | **The fixed core is unreachable** | `EmployeeContentDefinitionGuard.Check` on **every** field the compiler defines, plus a new `CheckTarget` so a definition cannot aim at `EmployeePart` or at any part that is not an employee section or `EmployeeProfilePart` |
+| 6 | **Designer parts are not attachable** | `ContentPartSettings.Attachable = false`, like `EmployeePart` and like every shipped section |
+
+### One place this reads differently from the design note, stated plainly
+
+The design note's §5.3 rule 1 **refuses** an edit that drops a published field, with *"Retire it
+instead."* The brief for this slice states as a hard rule that *"removing a field from a definition
+hides it; the data stays"*, and asks for a test that removing a field and republishing keeps stored
+values. **The brief wins on what is built**, per CLAUDE.md's precedence, and this is the flag it
+asks for.
+
+So: taking a field out of a definition is **allowed and non-destructive**. It stops being rendered;
+its definition and its data are untouched. Retire remains the *labelled* way to do the same thing,
+and the difference is the designer's memory of the field — a retired field is still listed and can
+be un-retired, a removed one is not. Rule 1 is therefore kept where it cannot be forgotten: in the
+compiler, which has no code that could delete.
+
+**If the product owner wants the refusal back**, it is one guard in `SetFieldsAsync` and the test
+inverts; say so and it changes. What must not change either way is that **no publish deletes
+anything**.
+
+## Field types
+
+The palette is **closed**: Text, multi-line text, bilingual text, number, date, yes/no, **choice**,
+employee picker, file. Nothing on it points at anything that does not already have its own service
+and its own dated model, which is what keeps §9's position question open — a designer field can
+never become a second, undated answer to "where does this person sit".
+
+**A choice is a `TextField` storing a code with a different editor, not a new field type.** That is
+what makes turning free text into a managed choice a settings change rather than a migration, and
+it is the same mechanism D22's retirement used. **A retired list is not offered** for a new choice
+field: the question it answered is answered by a dimension now.
+
+## ADR-0006, and the half of it that was missing
+
+`PublishAsync` alters content definitions, so every definition read on that path is `Load…` and
+never `Get…`. The ADR also required `EmployeeHandler` to carry the repair `DimensionRecordHandler`
+has had since prompt 3, and **it needed a second half nobody had written**:
+
+> The ADR's repair asks whether the **cached** type definition is missing, which is right for a type
+> **created** in this scope. A type **altered** in this scope fails differently and more quietly:
+> `Employee` has existed since the migration, so the cached read returns it — the *old* one, without
+> the bag a publish just welded. `NewAsync` then builds an employee that is correct in every respect
+> except the section that changed, and every value written into it is discarded with nothing thrown.
+> **Nothing is null, so no null check can see it.**
+
+`ContentDefinitionChangesInThisScope` is the answer: the scope that altered the definition says so,
+and the handler repairs on that signal as well as on a cache miss. A marker rather than comparing
+definitions, because comparing would cost a document read on every employee *activated* — which an
+import does in bulk — and the scope knows the answer for free.
+
+`PublishingAndThenCreatingAnEmployeeInOneScopeStillWeldsTheNewSection` pins it, and was confirmed
+to fail without the repair rather than merely to pass with it.
+
+## What does not change
+
+- **The fixed core** — identity and the Job and organisation block (D30, D31) — takes no additions,
+  by any route, and the guard now refuses `LineManager`, `LineManagerId`, `LineManagerCode`,
+  `Manager` and `ManagerId` alongside the position-shaped names it already refused.
+- **D22's retired names** `JobTitle` and `GradeCode` stay refused for new definitions, with the
+  shipped Job details section exempt.
+- **Migrations stay append-only.** `UpdateFrom7Async` adds two index tables and alters no content
+  definition: a migration that compiled definitions would be a second write path for the thing the
+  safety rules exist to protect.
+- **No UI.** B4 builds the screens against a model that is settled by then.

@@ -76,6 +76,27 @@ public sealed class Permissions : IPermissionProvider
         nameof(ManageLookupLists),
         "Create and change the lookup lists that form fields choose from");
 
+    /// <summary>
+    /// Design the employee record's forms: add fields, add sections, publish a definition.
+    /// Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// <b>Its own permission, above <see cref="ManageLookupLists"/>, and the gap between them is
+    /// the point.</b> Keeping a list current says what a field may hold; publishing a definition
+    /// says what fields exist at all, and the result is a content-definition change on every
+    /// employee in the tenant. A customer routinely wants an HR officer who maintains the grades
+    /// and emphatically does not want them inventing a section.
+    ///
+    /// <b>Security-critical</b>, which <see cref="ManageLookupLists"/> deliberately is not. A
+    /// definition decides what is collected about a person — specification section 9's audit
+    /// concern — and publishing one is the event the audit trail records by name. Granting it is a
+    /// decision somebody should be made to think about.
+    /// </remarks>
+    public static readonly Permission ManageFormDefinitions = new(
+        nameof(ManageFormDefinitions),
+        "Design the employee record's forms and publish the definitions",
+        isSecurityCritical: true);
+
     private static readonly IReadOnlyList<Permission> AllPermissions =
     [
         ManageEmployees,
@@ -83,6 +104,7 @@ public sealed class Permissions : IPermissionProvider
         ChangeEmploymentStatus,
         ViewEmployeeSensitiveData,
         ManageLookupLists,
+        ManageFormDefinitions,
     ];
 
     public Task<IEnumerable<Permission>> GetPermissionsAsync() =>

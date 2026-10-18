@@ -16,6 +16,7 @@ using WorkMate.Records.Handlers;
 using WorkMate.Records.Recipes;
 using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
+using WorkMate.Records.Internal;
 using WorkMate.Records.Navigation;
 using WorkMate.Records.Models;
 using WorkMate.Records.Services;
@@ -37,6 +38,12 @@ public sealed class Startup : StartupBase
         services.AddContentPart<EmployeePart>();
         services.AddIndexProvider<EmployeeIndexProvider>();
 
+        // Where designer-added record-level fields live — D33 (Q2), slice B3. Registered the same
+        // way for the same reason: Orchard materialises it by deserialising the content item's
+        // JSON into it, and a part it cannot activate is a part whose fields silently vanish. It
+        // declares no properties of its own; everything on it is a field the compiler wrote.
+        services.AddContentPart<EmployeeProfilePart>();
+
         // The invariants run at the item level, not the part level. A ContentPartHandler's
         // validation context carries its own result object that the caller never sees, so a rule
         // written there compiles, runs and silently rejects nothing — see EmployeeHandler, and
@@ -49,6 +56,18 @@ public sealed class Startup : StartupBase
         // taxonomies, per ADR-0014 — read it before changing any of this.
         services.AddIndexProvider<LookupListIndexProvider>();
         services.AddScoped<ILookupListService, LookupListService>();
+
+        // The form designer's definition model and compiler — slice B3, decision D33. No screens
+        // yet: B4 builds those against a model that is settled by then, which is the build order
+        // the dimension engine's architecture argued for and CLAUDE.md's working pattern repeats.
+        services.AddIndexProvider<FormDefinitionIndexProvider>();
+        services.AddIndexProvider<FormVersionIndexProvider>();
+        services.AddScoped<IFormDefinitionService, FormDefinitionService>();
+
+        // ADR-0006's second half: which definitions THIS scope has moved, so EmployeeHandler can
+        // repair an item Orchard welded from a cached definition that is now out of date. Scoped,
+        // because the window it describes is exactly one shell scope long.
+        services.AddScoped<ContentDefinitionChangesInThisScope>();
 
         // The read side, cached per tenant. The concrete uncached lookup is registered as itself
         // so the decorator can take it, exactly as WorkMate.Dimensions registers its own pair —

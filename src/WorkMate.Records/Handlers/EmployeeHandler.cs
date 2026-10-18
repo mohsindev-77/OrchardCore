@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Localization;
 using OrchardCore.ContentManagement;
 using OrchardCore.ContentManagement.Handlers;
+using OrchardCore.ContentManagement.Metadata;
 using WorkMate.Platform.Services;
 using WorkMate.Records.Indexes;
+using WorkMate.Records.Internal;
 using WorkMate.Records.Models;
 using WorkMate.Records.Services;
 using YesSql;
@@ -34,16 +36,113 @@ public sealed class EmployeeHandler : ContentHandlerBase
 {
     private readonly ISession _session;
     private readonly IBilingualNamePolicy _namePolicy;
+
+    /// <summary>For the ADR-0006 repair. See <see cref="ActivatingAsync"/>.</summary>
+    private readonly IContentDefinitionManager _contentDefinitionManager;
+
+    /// <summary>Builds a part instance to weld when Orchard did not. ADR-0006.</summary>
+    private readonly ITypeActivatorFactory<ContentPart> _partFactory;
+
+    /// <summary>Whether this scope altered the Employee definition. ADR-0006, slice B3.</summary>
+    private readonly ContentDefinitionChangesInThisScope _changes;
+
     private readonly IStringLocalizer S;
 
     public EmployeeHandler(
         ISession session,
         IBilingualNamePolicy namePolicy,
+        IContentDefinitionManager contentDefinitionManager,
+        ITypeActivatorFactory<ContentPart> partFactory,
+        ContentDefinitionChangesInThisScope changes,
         IStringLocalizer<EmployeeHandler> stringLocalizer)
     {
         _session = session;
         _namePolicy = namePolicy;
+        _contentDefinitionManager = contentDefinitionManager;
+        _partFactory = partFactory;
+        _changes = changes;
         S = stringLocalizer;
+    }
+
+    /// <summary>
+    /// Welds the parts Orchard could not see, when a definition changed in this same scope.
+    /// ADR-0006; slice B3.
+    /// </summary>
+    /// <remarks>
+    /// <b>The failure this repairs, measured rather than feared.</b> ADR-0006: inside the scope
+    /// that altered a content definition, <c>IContentDefinitionManager</c>'s <em>cached</em> read
+    /// cannot see the change, and <c>IContentManager.NewAsync</c> is one of its callers. Given a
+    /// type it cannot see properly, <c>NewAsync</c> returns an item with <b>no parts welded at
+    /// all</b> — not <c>EmployeePart</c>, not <c>TitlePart</c>, not the bags. Nothing throws. The
+    /// caller gets an item that looks usable, silently discards every field set on it, and then
+    /// fails validation about something else entirely.
+    ///
+    /// <b>Why the employee record needs this NOW and did not before.</b> Until B3 nothing altered
+    /// <c>Employee</c>'s definition at run time — the six sections arrive in a migration, long
+    /// before anybody creates an employee. <c>IFormDefinitionService.PublishAsync</c> changes
+    /// that: a recipe can publish a form and then create employees in the same shell scope, which
+    /// is precisely the sequence the ADR describes and precisely the one B6's recipe step will
+    /// perform. <c>DimensionRecordHandler.ActivatingAsync</c> has carried this repair since
+    /// prompt 3; this is the same code for the same reason, and the ADR named it as slice B3's to
+    /// write.
+    ///
+    /// <b>It costs one cache read on the ordinary path.</b> The cached definition is present for
+    /// every type that existed before the scope began — virtually always — and the method returns
+    /// immediately. Only when it is missing does anything else happen.
+    ///
+    /// <b>Scoped to this module's own type</b>, because a handler is called for every content item
+    /// in the tenant and welding parts onto somebody else's type on the strength of a cache miss
+    /// would be this module repairing a problem that is not its to diagnose.
+    /// </remarks>
+    public override async Task ActivatingAsync(ActivatingContentContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (!string.Equals(context.ContentType, EmployeeFieldNames.ContentType, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // TWO WAYS THE CACHE IS WRONG, and the cheap one is checked first.
+        //
+        // A type CREATED in this scope: the cached read returns null, which is ADR-0006's own
+        // case and the one DimensionRecordHandler was written for.
+        //
+        // A type ALTERED in this scope — which is what a form publish does to Employee — fails
+        // more quietly: the cached read returns the definition as it was, so NewAsync welds the
+        // OLD parts and silently drops everything written into the new section. Nothing is null,
+        // so no null check can see it. The scope that made the change says so instead; see
+        // ContentDefinitionChangesInThisScope for why a marker beats comparing definitions.
+        if (!_changes.WasAltered(context.ContentType) &&
+            await _contentDefinitionManager.GetTypeDefinitionAsync(context.ContentType) is not null)
+        {
+            return;
+        }
+
+        // The cached definition is blind to a change made in this scope. The loaded one is not —
+        // that is the whole of ADR-0006's rule — so it is the authority for what should be welded.
+        var definition = await _contentDefinitionManager.LoadTypeDefinitionAsync(context.ContentType);
+
+        if (definition is null)
+        {
+            return;
+        }
+
+        foreach (var part in definition.Parts)
+        {
+            if (context.ContentItem.Has(part.Name))
+            {
+                continue;
+            }
+
+            // EVERY part on the definition, not only this module's own. The bags carry the
+            // sections, and a designer-added section is exactly the part a publish in this scope
+            // has just created — so welding only EmployeePart would repair the half of the failure
+            // that was not the reason this was written.
+            var activator = _partFactory.GetTypeActivator(part.PartDefinition.Name);
+
+            context.ContentItem.Weld(part.Name, activator.CreateInstance());
+        }
     }
 
     /// <summary>

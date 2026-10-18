@@ -570,6 +570,92 @@ public sealed partial class Migrations : DataMigration
     }
 
     /// <summary>
+    /// The two tables the form designer's definitions and their versions live in. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// <b>Created here and nowhere else.</b> A brand-new tenant runs <see cref="CreateAsync"/> and
+    /// then every <c>UpdateFromNAsync</c> in turn, so a table named in both would be created twice
+    /// and the second attempt fails the whole migration — which fails tenant setup, with an error
+    /// about a table rather than about the step that added it. That is the rule
+    /// <see cref="CreateLookupListIndexAsync"/> sets out at length and the reason
+    /// <c>UpdateFrom3Async</c> is shaped the way it is.
+    ///
+    /// <b>Safe to re-enter</b>, for the same three reasons that step gives: a recorded migration
+    /// version can go backwards — an operator repairing a half-migrated tenant, a restore, or
+    /// another test rolling this module back — and a step that threw on an existing table would
+    /// abort every later step and surface somewhere else entirely.
+    ///
+    /// <b>No content definition changes here.</b> The form designer alters definitions at publish
+    /// time, through <c>IFormDefinitionService</c>, which is the only place that may: a migration
+    /// that compiled definitions would be a second write path for the thing the safety rules exist
+    /// to protect.
+    /// </remarks>
+    public async Task<int> UpdateFrom7Async()
+    {
+        if (!await TableExistsAsync(nameof(FormDefinitionIndex)))
+        {
+            await CreateFormDefinitionIndexAsync();
+        }
+
+        if (!await TableExistsAsync(nameof(FormVersionIndex)))
+        {
+            await CreateFormVersionIndexAsync();
+        }
+
+        return 8;
+    }
+
+    /// <summary>The table behind <see cref="FormDefinitionIndex"/>. Slice B3.</summary>
+    private async Task CreateFormDefinitionIndexAsync()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<FormDefinitionIndex>(table => table
+            .Column<string>(nameof(FormDefinitionIndex.FormDefinitionId), column => column.WithLength(IdentifierLength))
+            .Column<string>(nameof(FormDefinitionIndex.Code), column => column.WithLength(FormCodes.MaxCodeLength))
+            .Column<string>(nameof(FormDefinitionIndex.CodeUpper), column => column.WithLength(FormCodes.MaxCodeLength))
+            .Column<string>(nameof(FormDefinitionIndex.NameEn), column => column.WithLength(NameLength))
+            .Column<string>(nameof(FormDefinitionIndex.Target), column => column.WithLength(StatusLength))
+            .Column<string>(nameof(FormDefinitionIndex.SectionItemType), column => column.WithLength(NameLength))
+            .Column<int>(nameof(FormDefinitionIndex.PublishedVersion))
+            .Column<bool>(nameof(FormDefinitionIndex.HasUnpublishedChanges))
+            .Column<int>(nameof(FormDefinitionIndex.FieldCount)));
+
+        await SchemaBuilder.AlterIndexTableAsync<FormDefinitionIndex>(table =>
+        {
+            // The uniqueness check on create and the lookup a recipe, an export and every designer
+            // screen make. On the folded column, because that is what the comparison uses.
+            table.CreateIndex($"IDX_{nameof(FormDefinitionIndex)}_CodeUpper", nameof(FormDefinitionIndex.CodeUpper));
+
+            table.CreateIndex($"IDX_{nameof(FormDefinitionIndex)}_Id", nameof(FormDefinitionIndex.FormDefinitionId));
+
+            // "Is another definition already on this section" — asked on every publish.
+            table.CreateIndex(
+                $"IDX_{nameof(FormDefinitionIndex)}_Section",
+                nameof(FormDefinitionIndex.SectionItemType));
+        });
+    }
+
+    /// <summary>The table behind <see cref="FormVersionIndex"/>. Slice B3.</summary>
+    private async Task CreateFormVersionIndexAsync()
+    {
+        await SchemaBuilder.CreateMapIndexTableAsync<FormVersionIndex>(table => table
+            .Column<string>(nameof(FormVersionIndex.FormCode), column => column.WithLength(FormCodes.MaxCodeLength))
+            .Column<string>(nameof(FormVersionIndex.FormCodeUpper), column => column.WithLength(FormCodes.MaxCodeLength))
+            .Column<int>(nameof(FormVersionIndex.VersionNumber))
+            .Column<DateTime>(nameof(FormVersionIndex.PublishedOnUtc))
+            .Column<string>(nameof(FormVersionIndex.PublishedBy), column => column.WithLength(NameLength))
+            .Column<int>(nameof(FormVersionIndex.FieldCount)));
+
+        await SchemaBuilder.AlterIndexTableAsync<FormVersionIndex>(table =>
+            // Both questions a version is ever asked, in the order they filter: every version of
+            // this form, and version N of this form — which is what slice B7's pinned submission
+            // resolves on every render of a stored request.
+            table.CreateIndex(
+                $"IDX_{nameof(FormVersionIndex)}_FormVersion",
+                nameof(FormVersionIndex.FormCodeUpper),
+                nameof(FormVersionIndex.VersionNumber)));
+    }
+
+    /// <summary>
     /// Points <c>JobTitle</c> and <c>GradeCode</c> at the retired editor. D22, slice F6c.
     /// </summary>
     private Task RetireSupersededFieldsAsync() =>

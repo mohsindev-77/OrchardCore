@@ -36,4 +36,16 @@ internal static class RecordsCacheKeys
         $"{Prefix}:{tenant}:LookupList:Code:{code}";
 
     public static string LookupListList(string tenant) => $"{Prefix}:{tenant}:LookupList:List";
+
+    /// <summary>
+    /// The signal every cached form-definition read is tagged with. Slice B3.
+    /// </summary>
+    /// <remarks>
+    /// Its own signal rather than sharing the lookup lists' one, even though both are form
+    /// configuration: a lookup list is read on every employee editor render and a definition is
+    /// read when the designer opens, so sharing a token would drop the hot cache every time
+    /// somebody saved a draft. The tenant name leads, like every key here, so one tenant's write
+    /// can never invalidate another's reads.
+    /// </remarks>
+    public static string FormDefinitionsSignal(string tenant) => $"{Prefix}:{tenant}:FormDefinitions";
 }

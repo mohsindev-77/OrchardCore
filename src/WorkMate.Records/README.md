@@ -319,7 +319,7 @@ because there are several routes in, all reading one policy —
 | A section this module defines colliding with a core name | Every section field goes through `EnsureMayDefine` as the migration declares it, so it fails at tenant setup | **Yes** |
 | A section reintroducing placement as a field (`DepartmentCode`, `CostCentre`, …) | The same guard, `PlacementBelongsInTheDimensionEngine` | **Yes** |
 | A section reintroducing what slice F6 **derives** (`Position`, `Grade`, `ReportsTo`, …) | The same guard. Added in F6b: an employee's position, grade and reporting line are read from the dated assignment and from where that position sits (D30) and are on the record nowhere, so a designed field of that name would be an undated shadow of all three | **Yes** |
-| A form definition naming the `Employee` type | Session B's compiler, which is a write path of ours and can refuse | **Not yet** |
+| A form definition naming the `Employee` type | `IFormDefinitionService` calls `EmployeeContentDefinitionGuard.CheckTarget` on the target and `Check` on every field it compiles | **Yes** — slice B3, D33 |
 
 **`JobTitle` and `GradeCode` are deliberately *not* in that set yet.** The shipped
 `JobDetails` section defines both, so forbidding them would make `CreateAsync`
@@ -1027,6 +1027,7 @@ Append-only, per CLAUDE.md rule 6 and ADR-0009. The body of a shipped step is ne
 | `UpdateFrom4Async` | binds the standard section fields to the lookup lists |
 | `UpdateFrom5Async` | **the line manager backfill** — D31 addendum 2 |
 | `UpdateFrom6Async` | **D22's retirement** — points `JobTitle` and `GradeCode` at the retired editor and marks the `job-title` and `grade` lists superseded |
+| `UpdateFrom7Async` | **the form designer's two tables** — `FormDefinitionIndex` and `FormVersionIndex`. Slice B3, D33. Alters no content definition: publishing is the only thing that may |
 
 ### The line manager backfill — D31 addendum 2
 
@@ -1094,7 +1095,42 @@ Filters by position and by unit, intersected. Sorts by name (index-backed), and 
 over the matching set up to a cap — see D32 for why no column on `EmployeeIndex` can do it and why
 the list says so rather than sorting a subset. A tenant with no positions sees none of it.
 
+### The form designer's model and compiler — D33, slice B3
+
+**No UI in this slice**, deliberately: the model is the part most expensive to get wrong and least
+useful to build against an unsettled screen. B4 builds the screens; B6 builds the recipe step.
+
+**The definition is the source of truth and the content type is the output.** `PublishAsync`
+rebuilds the content definition from `FormDefinitionDocument` every time, so **a hand edit made on
+Orchard's own content-type editor survives until the next publish and then loses.** That is the
+right direction and it is said here so nobody is surprised by it — Orchard's type editor cannot be
+taken away, and the mitigation is the direction of truth rather than a lock.
+
+A definition targets a **standard section**, a **new section** (a new item type plus a bag on
+`Employee`, shaped exactly like the six shipped ones), or the **record itself** through
+`EmployeeProfilePart`. Every field goes through `EmployeeContentDefinitionGuard`, and the target
+goes through its new `CheckTarget`.
+
+**Publishing is additive, enforced by there being no code that deletes.** No field is taken off a
+part, no part off `Employee`, no value touched. A field removed from a definition stops being
+rendered and keeps its data. `RemovingAFieldFromADefinitionKeepsTheFieldAndItsValue` pins it.
+
+**A version is written per real publish.** Publishing an unchanged definition is a success that
+writes nothing — ADR-0008, so a recipe applied twice does not fail on the second pass.
+
+**ADR-0006 needed a second half here**, and D33 records it: the ADR's null check catches a type
+*created* in this scope, and a type *altered* in this scope fails more quietly — the cached read
+returns the old definition, `NewAsync` welds the old parts, and values for the new section vanish
+with nothing thrown. `ContentDefinitionChangesInThisScope` is the signal the handler repairs on.
+
 ## Known limitations
+
+### Which edition each form capability belongs to is still undecided
+
+`Capabilities.FormDesigner` and `FormDefinitionVersioning` are declared and asked through
+`IEntitlementService` on every write, and `AllowAllEntitlementService` answers yes to everything
+until prompt 8/9. **Nothing is hidden by edition.** D33 (Q7) leaves the mapping open on purpose:
+guessing it here would turn a commercial decision into a code one taken by accident.
 
 ### Ordering by position or grade needs a filter on a very large tenant
 

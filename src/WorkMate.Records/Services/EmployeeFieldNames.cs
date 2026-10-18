@@ -108,6 +108,18 @@ public static class EmployeeFieldNames
             "Grade",
             "GradeId",
             "ReportsTo",
+
+            // The line manager, by every name a designer would reach for. Slice B3: the record
+            // holds exactly one answer to "who manages this person" and D31 addendum 2 made it a
+            // LIVE one — stored only where somebody chose, derived everywhere else. A designer
+            // field called LineManager would be a second answer, undated and never derived, and
+            // the two would part company the first time the post above changed hands. The id and
+            // the kind are already reserved as core names; these are the ones a person types.
+            "LineManager",
+            "LineManagerId",
+            "LineManagerCode",
+            "Manager",
+            "ManagerId",
         ]);
 
         return names;

@@ -1709,3 +1709,97 @@ msgstr "يصبح هذا الحقل للقراءة فقط بمجرد أن ينش�
 #: Views/Shared/_LineManagerChoice.cshtml
 msgid "No acting manager — {0} are also vacant"
 msgstr "لا يوجد مدير بالإنابة — {0} شاغرة أيضاً"
+
+#. ---- Slice B3, D33: the form designer's definition model and compiler ----
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is not a valid form code. Use a letter followed by letters, digits, hyphens or underscores, up to {1} characters."
+msgstr "‏'{0}' ليس رمز نموذج صالحاً. استخدم حرفاً يليه حروف أو أرقام أو شرطات أو شرطات سفلية، بحد أقصى {1} حرفاً."
+
+#: Services/FormDefinitionService.cs
+msgid "There is already a form definition with the code '{0}' in this tenant."
+msgstr "يوجد بالفعل تعريف نموذج بالرمز '{0}' في هذا المستأجر."
+
+#: Services/FormDefinitionService.cs
+msgid "There is no form definition with the id '{0}' in this tenant."
+msgstr "لا يوجد تعريف نموذج بالمعرّف '{0}' في هذا المستأجر."
+
+#: Services/FormDefinitionService.cs
+msgid "A form definition needs an English name."
+msgstr "يحتاج تعريف النموذج إلى اسم بالإنجليزية."
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is not a valid section type name. Use a letter followed by letters and digits."
+msgstr "‏'{0}' ليس اسم نوع قسم صالحاً. استخدم حرفاً يليه حروف وأرقام."
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is not a valid section name. Use a letter followed by letters and digits."
+msgstr "‏'{0}' ليس اسم قسم صالحاً. استخدم حرفاً يليه حروف وأرقام."
+
+#: Services/FormDefinitionService.cs
+msgid "This tenant has no section called '{0}'. Create it as a new section instead of adding fields to it."
+msgstr "لا يوجد في هذا المستأجر قسم باسم '{0}'. أنشئه كقسم جديد بدلاً من إضافة حقول إليه."
+
+#: Services/FormDefinitionService.cs
+msgid "This tenant already has a section called '{0}'. Add fields to it instead of creating it again."
+msgstr "يوجد في هذا المستأجر قسم باسم '{0}' بالفعل. أضف حقولاً إليه بدلاً من إنشائه من جديد."
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is not a valid field name. Use a letter followed by letters and digits — a field name is a property in Liquid, in GraphQL and in every report."
+msgstr "‏'{0}' ليس اسم حقل صالحاً. استخدم حرفاً يليه حروف وأرقام — فاسم الحقل خاصية في Liquid وفي GraphQL وفي كل تقرير."
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is named twice on this form. Two fields of one name are one field."
+msgstr "‏'{0}' مذكور مرتين في هذا النموذج. حقلان بالاسم نفسه هما حقل واحد."
+
+#: Services/FormDefinitionService.cs
+msgid "'{0}' is a choice field and names no list. A choice offers the entries of a managed list."
+msgstr "‏'{0}' حقل اختيار ولا يذكر أي قائمة. يعرض حقل الاختيار مدخلات قائمة مُدارة."
+
+#: Services/FormDefinitionService.cs
+msgid "The list '{0}' has been superseded and is not offered for new fields. A dimension answers that question now."
+msgstr "القائمة '{0}' استُعيض عنها ولا تُعرض للحقول الجديدة. أصبح أحد الأبعاد يجيب عن هذا السؤال."
+
+#: Services/FormDefinitionService.cs
+msgid "The field '{0}' cannot change type once it has been published. Every value already stored in it is shaped for the type it has. Retire it and add a new field instead."
+msgstr "لا يمكن تغيير نوع الحقل '{0}' بعد نشره. كل قيمة مخزّنة فيه مهيّأة للنوع الحالي. أوقف استخدامه وأضف حقلاً جديداً بدلاً من ذلك."
+
+#: Services/FormDefinitionService.cs
+msgid "The field '{0}' cannot be pointed at a different list once it has been published. Every code already stored in it belongs to the list it had."
+msgstr "لا يمكن توجيه الحقل '{0}' إلى قائمة أخرى بعد نشره. كل رمز مخزّن فيه يخص القائمة السابقة."
+
+#: Services/FormDefinitionService.cs
+msgid "The employee record's fixed core takes no added fields. Payroll, leave and attendance depend on its fields by name. Add them to a section instead."
+msgstr "لا يقبل الجوهر الثابت لسجل الموظف أي حقول مضافة. تعتمد الرواتب والإجازات والحضور على حقوله بالاسم. أضفها إلى قسم بدلاً من ذلك."
+
+#: Services/FormDefinitionService.cs
+msgid "A field cannot be called '{0}': the name belongs to the employee record's fixed core and would read as that field everywhere."
+msgstr "لا يمكن تسمية حقل بـ '{0}': الاسم يخص الجوهر الثابت لسجل الموظف وسيُقرأ على أنه ذلك الحقل في كل مكان."
+
+#: Services/FormDefinitionService.cs
+msgid "A field cannot be called '{0}': where somebody sits, what post they hold and who they report to are dated rows in the organisation engine, not fields on the record."
+msgstr "لا يمكن تسمية حقل بـ '{0}': موقع الشخص والمنصب الذي يشغله والجهة التي يتبعها هي صفوف مؤرخة في محرك الهيكل التنظيمي، وليست حقولاً في السجل."
+
+#: Services/FormDefinitionService.cs
+msgid "A field cannot be called '{0}': that name was retired, and the Position and Grade dimensions answer for it now."
+msgstr "لا يمكن تسمية حقل بـ '{0}': أُوقف استخدام هذا الاسم، وأصبح بُعدا المنصب والدرجة يجيبان عنه."
+
+#: Services/FormDefinitionService.cs
+msgid "A form definition cannot add fields to '{0}'."
+msgstr "لا يمكن لتعريف النموذج إضافة حقول إلى '{0}'."
+
+#: Services/FormsAuditTrail.cs
+msgid "Form definition changed"
+msgstr "تغيّر تعريف نموذج"
+
+#: Services/FormsAuditTrail.cs
+msgid "A form definition was created, renamed, or had its fields changed. Nothing on an employee record changes until it is published."
+msgstr "أُنشئ تعريف نموذج أو أُعيدت تسميته أو تغيّرت حقوله. لا يتغيّر شيء في سجل الموظف حتى يُنشر."
+
+#: Services/FormsAuditTrail.cs
+msgid "Form definition published"
+msgstr "نُشر تعريف نموذج"
+
+#: Services/FormsAuditTrail.cs
+msgid "A form definition was applied to the employee record: fields, and possibly a section, were added."
+msgstr "طُبّق تعريف نموذج على سجل الموظف: أُضيفت حقول، وربما قسم."
